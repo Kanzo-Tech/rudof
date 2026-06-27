@@ -20,7 +20,7 @@ pub use build_rdf::BuildRDF;
 pub use errors::RDFError;
 pub use focus_rdf::FocusRDF;
 pub use matcher::{Any, Matcher};
-pub use neighs_rdf::{Neigh, NeighsIterator, NeighsRDF};
+pub use neighs_rdf::NeighsRDF;
 pub use rdf::Rdf;
 pub use rdf_data_config::{EndpointDescription, RdfDataConfig};
 pub use rdf_format::RDFFormat;

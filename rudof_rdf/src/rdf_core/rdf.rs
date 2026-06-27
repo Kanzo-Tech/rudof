@@ -134,7 +134,7 @@ pub trait Rdf: Sized {
     fn numeric_value(&self, term: &Self::Term) -> Option<Decimal> {
         let maybe_object: Result<Object, _> = term.clone().try_into();
         match maybe_object {
-            Ok(object) => object.numeric_value().map(|n| n.to_decimal().unwrap()),
+            Ok(object) => object.numeric_value().and_then(|n| n.to_decimal()),
             Err(_) => None,
         }
     }
@@ -318,13 +318,13 @@ pub trait Rdf: Sized {
         if term.is_blank_node() {
             Err(RDFError::TermAsLang { term: term.to_string() })
         } else if let Ok(literal) = Self::term_as_literal(term) {
-            let lang = Lang::new(literal.lexical_form());
-            match lang {
-                Ok(lang) => Ok(lang),
-                Err(_) => todo!(),
-            }
+            Lang::new(literal.lexical_form()).map_err(|e| RDFError::LanguageTagError {
+                literal: term.to_string(),
+                language: literal.lexical_form().to_string(),
+                error: e.to_string(),
+            })
         } else {
-            todo!()
+            Err(RDFError::TermAsLang { term: term.to_string() })
         }
     }
 

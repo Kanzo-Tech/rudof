@@ -1,16 +1,21 @@
 use crate::error::ValidationError;
 use crate::ir::components::Class;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::{BasicSparqlValidator, NativeValidator, validate_ask_with, validate_with};
+use crate::validator::constraints::{NativeValidator, validate_with};
+#[cfg(feature = "sparql")]
+use crate::validator::constraints::{BasicSparqlValidator, validate_ask_with};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
+#[cfg(feature = "sparql")]
 use indoc::formatdoc;
+#[cfg(feature = "sparql")]
 use rudof_rdf::rdf_core::query::QueryRDF;
 use rudof_rdf::rdf_core::term::Term;
 use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfsVocab};
 use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+#[cfg(feature = "sparql")]
 use std::fmt::Debug;
 
 impl<S: NeighsRDF + 'static> NativeValidator<S> for Class {

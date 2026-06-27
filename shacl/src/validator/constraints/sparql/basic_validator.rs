@@ -3,8 +3,7 @@ use crate::ir::components::BasicSparql;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
 use crate::validator::constraints::sparql::{inject_values_into_where, path_to_sparql};
-use crate::validator::constraints::{BasicSparqlValidator, NativeValidator};
-use crate::validator::engine::Engine;
+use crate::validator::constraints::BasicSparqlValidator;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
 use rudof_rdf::rdf_core::query::QueryRDF;
@@ -13,24 +12,6 @@ use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
 use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
-impl<RDF: NeighsRDF + Debug + 'static> NativeValidator<RDF> for BasicSparql {
-    fn validate_native(
-        &self,
-        _: &IRComponent,
-        _: &IRShape,
-        _: &RDF,
-        _: &mut dyn Engine<RDF>,
-        _: &ValueNodes<RDF>,
-        _: Option<&IRShape>,
-        _: Option<&SHACLPath>,
-        _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
-        // Silently skip since sh:sparql requires a SPARQL engine
-        Ok(Vec::new())
-    }
-}
-
-#[cfg(feature = "sparql")]
 impl<RDF: QueryRDF + NeighsRDF + Debug + 'static> BasicSparqlValidator<RDF> for BasicSparql {
     fn validate_sparql(
         &self,

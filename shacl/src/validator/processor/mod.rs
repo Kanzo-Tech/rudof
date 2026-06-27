@@ -12,6 +12,8 @@ use crate::validator::report::ValidationReport;
 #[cfg(feature = "sparql")]
 pub use endpoint::EndpointValidation;
 pub use graph::GraphValidation;
+// wasm has no threads: validate shapes sequentially there, in parallel elsewhere.
+#[cfg(not(target_family = "wasm"))]
 use rayon::prelude::*;
 #[cfg(feature = "sparql")]
 pub use rdf_data::DataValidation;
@@ -74,10 +76,21 @@ pub trait ShaclProcessor<S: NeighsRDF + Debug + Send + Sync> {
             // pre-built class index and cache.
             let mut forked_runners: Vec<Box<dyn Engine<S>>> = level.iter().map(|_| master_runner.fork()).collect();
 
-            // Validate all shapes in the level in parallel.
+            // Validate all shapes in the level in parallel (sequentially on wasm).
+            #[cfg(not(target_family = "wasm"))]
             let level_results: Vec<Result<Vec<_>, ValidationError>> = forked_runners
                 .par_iter_mut()
                 .zip(level.par_iter())
+                .map(|(runner, idx)| {
+                    let shape = shapes_graph.get_shape_from_idx_e(idx)?;
+                    shape.validate(store, runner.as_mut(), None, Some(shape), shapes_graph)
+                })
+                .collect();
+
+            #[cfg(target_family = "wasm")]
+            let level_results: Vec<Result<Vec<_>, ValidationError>> = forked_runners
+                .iter_mut()
+                .zip(level.iter())
                 .map(|(runner, idx)| {
                     let shape = shapes_graph.get_shape_from_idx_e(idx)?;
                     shape.validate(store, runner.as_mut(), None, Some(shape), shapes_graph)

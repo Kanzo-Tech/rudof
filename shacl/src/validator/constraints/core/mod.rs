@@ -1,3 +1,4 @@
+mod basic_sparql;
 mod cardinality;
 mod logical;
 mod non_shape;

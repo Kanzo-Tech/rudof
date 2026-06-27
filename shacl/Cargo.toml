@@ -22,13 +22,17 @@ itertools.workspace = true
 rudof_iri.workspace = true
 petgraph.workspace = true
 prefixmap.workspace = true
-rayon.workspace = true
 rudof_rdf.workspace = true
 serde.workspace = true
 sparql_service.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
+
+# rayon needs OS threads; keep it out of the wasm build (validation runs
+# sequentially there — see validator/processor).
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+rayon.workspace = true
 
 [dev-dependencies]
 oxrdf = { workspace = true, features = [ "oxsdatatypes" ] }

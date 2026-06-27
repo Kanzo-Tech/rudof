@@ -1,10 +1,19 @@
+// Only `from_path` (not available on wasm) surfaces a `ValidationError` here.
+#[cfg(not(target_family = "wasm"))]
 use crate::error::ValidationError;
 use crate::validator::ShaclValidationMode;
-use crate::validator::engine::{Engine, NativeEngine, SparqlEngine};
+use crate::validator::engine::{Engine, NativeEngine};
+#[cfg(feature = "sparql")]
+use crate::validator::engine::SparqlEngine;
 use crate::validator::processor::ShaclProcessor;
 use crate::validator::store::{Graph, Store};
+#[cfg(not(target_family = "wasm"))]
 use rudof_rdf::rdf_core::RDFFormat;
+#[cfg(not(feature = "sparql"))]
+use rudof_rdf::rdf_impl::OxigraphInMemory;
+#[cfg(feature = "sparql")]
 use sparql_service::RdfData;
+#[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 
 // TODO - move to validation::algorithm module
@@ -61,6 +70,19 @@ impl ShaclProcessor<RdfData> for GraphValidation {
             ShaclValidationMode::Native => Box::new(NativeEngine::new()),
             ShaclValidationMode::Sparql => Box::new(SparqlEngine::new()),
         }
+    }
+}
+
+// Without the `sparql` feature the store is a plain in-memory graph and only the
+// native engine is available. This is the path used by the wasm build.
+#[cfg(not(feature = "sparql"))]
+impl ShaclProcessor<OxigraphInMemory> for GraphValidation {
+    fn store(&self) -> &OxigraphInMemory {
+        self.store.store()
+    }
+
+    fn runner(_mode: &ShaclValidationMode) -> Box<dyn Engine<OxigraphInMemory>> {
+        Box::new(NativeEngine::new())
     }
 }
 

@@ -1,4 +1,5 @@
 mod core;
+#[cfg(feature = "sparql")]
 mod sparql;
 mod test;
 
@@ -10,9 +11,12 @@ use crate::ir::components::{
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
 use crate::validator::engine::Engine;
-use crate::validator::iteration::{IterationStrategy, ValueNodeIteration};
+use crate::validator::iteration::IterationStrategy;
+#[cfg(feature = "sparql")]
+use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
+#[cfg(feature = "sparql")]
 use rudof_rdf::rdf_core::query::QueryRDF;
 use rudof_rdf::rdf_core::term::Object;
 use rudof_rdf::rdf_core::{NeighsRDF, Rdf, SHACLPath};
@@ -355,6 +359,7 @@ fn validate_with_focus<S: Rdf, I: IterationStrategy<S>>(
     )
 }
 
+#[cfg(feature = "sparql")]
 fn validate_ask_with<S: QueryRDF>(
     component: &IRComponent,
     shape: &IRShape,

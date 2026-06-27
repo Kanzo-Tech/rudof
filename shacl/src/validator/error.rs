@@ -1,6 +1,9 @@
 use crate::error::{IRError, ShaclParserError};
 use rudof_rdf::rdf_core::{RDFError, Rdf};
-use rudof_rdf::rdf_impl::{OxigraphEndpointError, OxigraphInMemoryError};
+use rudof_rdf::rdf_impl::OxigraphInMemoryError;
+#[cfg(feature = "sparql")]
+use rudof_rdf::rdf_impl::OxigraphEndpointError;
+#[cfg(feature = "sparql")]
 use sparql_service::RdfDataError;
 use std::io;
 use std::io::Error;

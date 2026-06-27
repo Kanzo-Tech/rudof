@@ -1,9 +1,16 @@
-use crate::error::ValidationError;
 use crate::validator::store::Store;
+use rudof_rdf::rdf_impl::OxigraphInMemory;
+// These are only used by `from_path`, which is not available on wasm.
+#[cfg(not(target_family = "wasm"))]
+use crate::error::ValidationError;
+#[cfg(not(target_family = "wasm"))]
 use rudof_rdf::rdf_core::RDFFormat;
-use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
-use sparql_service::RdfData;
+#[cfg(not(target_family = "wasm"))]
+use rudof_rdf::rdf_impl::ReaderMode;
+#[cfg(not(target_family = "wasm"))]
 use std::path::Path;
+#[cfg(feature = "sparql")]
+use sparql_service::RdfData;
 
 pub struct Graph {
     #[cfg(feature = "sparql")]
@@ -62,6 +69,13 @@ impl TryFrom<OxigraphInMemory> for Graph {
 impl From<OxigraphInMemory> for Graph {
     fn from(value: OxigraphInMemory) -> Self {
         Self { store: value }
+    }
+}
+
+#[cfg(not(feature = "sparql"))]
+impl Store<OxigraphInMemory> for Graph {
+    fn store(&self) -> &OxigraphInMemory {
+        &self.store
     }
 }
 

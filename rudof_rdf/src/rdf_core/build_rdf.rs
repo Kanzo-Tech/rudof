@@ -22,7 +22,7 @@ pub trait BuildRDF: NeighsRDF {
     /// # Arguments
     ///
     /// * `base` - Optional base IRI for resolving relative references
-    fn add_base(&mut self, base: &Option<IriS>);
+    fn add_base(&mut self, base: &Option<IriS>) -> Result<(), Self::Err>;
 
     /// Adds a namespace prefix declaration to the graph.
     ///
@@ -30,21 +30,21 @@ pub trait BuildRDF: NeighsRDF {
     ///
     /// * `alias` - The prefix alias (e.g., "foaf", "ex", "rdf")
     /// * `iri` - The full namespace IRI this prefix represents
-    fn add_prefix(&mut self, alias: &str, iri: &IriS);
+    fn add_prefix(&mut self, alias: &str, iri: &IriS) -> Result<(), Self::Err>;
 
     /// Replaces the graph prefixmap.
     ///
     /// # Arguments
     ///
     /// * `prefix_map` - A map of prefix aliases to namespace IRIs
-    fn set_prefix_map(&mut self, prefix_map: PrefixMap);
+    fn set_prefix_map(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err>;
 
     /// Merges the graph prefixmap with another given.
     ///
     /// # Arguments
     ///
     /// * `prefix_map` - A map of prefix aliases to namespace IRIs
-    fn merge_prefixes(&mut self, prefix_map: PrefixMap);
+    fn merge_prefixes(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err>;
 
     /// Adds an RDF triple to the graph.
     ///

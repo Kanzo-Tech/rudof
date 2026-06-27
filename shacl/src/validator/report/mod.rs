@@ -91,7 +91,9 @@ impl ValidationReport {
     }
 
     pub fn to_rdf<RDF: BuildRDF + Sized>(&self, writer: &mut RDF) -> Result<(), ValidationError> {
-        writer.add_prefix("sh", ShaclVocab::sh_ref());
+        writer
+            .add_prefix("sh", ShaclVocab::sh_ref())
+            .map_err(error_mapper::<RDF>("Error adding prefix sh"))?;
 
         let report_node: RDF::Subject = writer
             .add_bnode()

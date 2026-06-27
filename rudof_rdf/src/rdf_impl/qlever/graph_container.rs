@@ -333,26 +333,31 @@ impl BuildRDF for QleverGraphContainer {
         panic!("QleverGraphContainer::empty() is not supported; use `from_path`/`open`/`from_reader`");
     }
 
-    fn add_base(&mut self, _base: &Option<IriS>) {}
+    fn add_base(&mut self, _base: &Option<IriS>) -> Result<(), Self::Err> {
+        Ok(())
+    }
 
-    fn add_prefix(&mut self, alias: &str, iri: &IriS) {
+    fn add_prefix(&mut self, alias: &str, iri: &IriS) -> Result<(), Self::Err> {
         let mut pm = (*self.prefixmap).clone();
         pm.add_prefix(alias, iri.clone());
         self.prefixmap = Arc::new(pm.clone());
         let new_sparql = self.sparql.clone().with_prefixmap(pm);
         self.sparql = new_sparql;
+        Ok(())
     }
 
-    fn set_prefix_map(&mut self, prefix_map: PrefixMap) {
+    fn set_prefix_map(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
         self.prefixmap = Arc::new(prefix_map.clone());
         self.sparql = self.sparql.clone().with_prefixmap(prefix_map);
+        Ok(())
     }
 
-    fn merge_prefixes(&mut self, prefix_map: PrefixMap) {
+    fn merge_prefixes(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
         let mut pm = (*self.prefixmap).clone();
         pm.merge(prefix_map);
         self.prefixmap = Arc::new(pm.clone());
         self.sparql = self.sparql.clone().with_prefixmap(pm);
+        Ok(())
     }
 
     fn add_triple<S, P, O>(&mut self, _subj: S, _pred: P, _obj: O) -> Result<(), QleverError>

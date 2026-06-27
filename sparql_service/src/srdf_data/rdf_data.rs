@@ -481,20 +481,24 @@ impl BuildRDF for RdfData {
         RdfData::new()
     }
 
-    fn add_base(&mut self, base: &Option<IriS>) {
-        self.primary.add_base(base);
+    fn add_base(&mut self, base: &Option<IriS>) -> Result<(), Self::Err> {
+        self.primary.add_base(base)?;
+        Ok(())
     }
 
-    fn add_prefix(&mut self, alias: &str, iri: &IriS) {
-        self.primary.add_prefix(alias, iri);
+    fn add_prefix(&mut self, alias: &str, iri: &IriS) -> Result<(), Self::Err> {
+        self.primary.add_prefix(alias, iri)?;
+        Ok(())
     }
 
-    fn set_prefix_map(&mut self, prefix_map: PrefixMap) {
-        self.primary.set_prefix_map(prefix_map);
+    fn set_prefix_map(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
+        self.primary.set_prefix_map(prefix_map)?;
+        Ok(())
     }
 
-    fn merge_prefixes(&mut self, prefix_map: PrefixMap) {
-        self.primary.merge_prefixes(prefix_map);
+    fn merge_prefixes(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
+        self.primary.merge_prefixes(prefix_map)?;
+        Ok(())
     }
 
     fn add_triple<S, P, O>(&mut self, subj: S, pred: P, obj: O) -> Result<(), Self::Err>

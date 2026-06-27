@@ -264,44 +264,48 @@ impl BuildRDF for RdfBackend {
         RdfBackend::in_memory()
     }
 
-    fn add_base(&mut self, base: &Option<IriS>) {
+    fn add_base(&mut self, base: &Option<IriS>) -> Result<(), Self::Err> {
         match self {
-            RdfBackend::InMemory(b) => b.add_base(base),
+            RdfBackend::InMemory(b) => b.add_base(base)?,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => {},
             #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.add_base(base),
+            RdfBackend::Qlever(b) => b.add_base(base)?,
         }
+        Ok(())
     }
 
-    fn add_prefix(&mut self, alias: &str, iri: &IriS) {
+    fn add_prefix(&mut self, alias: &str, iri: &IriS) -> Result<(), Self::Err> {
         match self {
-            RdfBackend::InMemory(b) => b.add_prefix(alias, iri),
+            RdfBackend::InMemory(b) => b.add_prefix(alias, iri)?,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => {},
             #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.add_prefix(alias, iri),
+            RdfBackend::Qlever(b) => b.add_prefix(alias, iri)?,
         }
+        Ok(())
     }
 
-    fn set_prefix_map(&mut self, prefix_map: PrefixMap) {
+    fn set_prefix_map(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
         match self {
-            RdfBackend::InMemory(b) => b.set_prefix_map(prefix_map),
+            RdfBackend::InMemory(b) => b.set_prefix_map(prefix_map)?,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => {},
             #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.set_prefix_map(prefix_map),
+            RdfBackend::Qlever(b) => b.set_prefix_map(prefix_map)?,
         }
+        Ok(())
     }
 
-    fn merge_prefixes(&mut self, prefix_map: PrefixMap) {
+    fn merge_prefixes(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
         match self {
-            RdfBackend::InMemory(b) => b.merge_prefixes(prefix_map),
+            RdfBackend::InMemory(b) => b.merge_prefixes(prefix_map)?,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => {},
             #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.merge_prefixes(prefix_map),
+            RdfBackend::Qlever(b) => b.merge_prefixes(prefix_map)?,
         }
+        Ok(())
     }
 
     fn add_bnode(&mut self) -> Result<Self::BNode, Self::Err> {

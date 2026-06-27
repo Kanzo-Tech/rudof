@@ -112,7 +112,13 @@ fn load_data_from_specs_rdf(
             pm.merge(load_user_prefixes(prefix)?)
         }
 
-        rudof.data.as_mut().unwrap().unwrap_rdf_mut().merge_prefixes(pm);
+        rudof
+            .data
+            .as_mut()
+            .unwrap()
+            .unwrap_rdf_mut()
+            .merge_prefixes(pm)
+            .map_err(|e| RudofError::Generic { error: format!("merging user prefixes: {e}") })?;
     }
     Ok(())
 }

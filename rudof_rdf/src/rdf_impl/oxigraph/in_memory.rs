@@ -223,7 +223,7 @@ impl OxigraphInMemory {
             (Some(b), None) => Some(b.clone()),
             (_, Some(b)) => Some(IriS::new_unchecked(b)),
         };
-        self.merge_prefixes(prefixes.try_into()?);
+        self.merge_prefixes(prefixes.try_into()?)?;
 
         Ok(())
     }
@@ -922,8 +922,9 @@ impl BuildRDF for OxigraphInMemory {
     /// # Parameters
     ///
     /// * `base` - Optional base IRI to set
-    fn add_base(&mut self, base: &Option<IriS>) {
+    fn add_base(&mut self, base: &Option<IriS>) -> Result<(), Self::Err> {
         self.base = base.clone();
+        Ok(())
     }
 
     /// Adds a prefix mapping to the graph's prefix map.
@@ -938,8 +939,9 @@ impl BuildRDF for OxigraphInMemory {
     /// # Errors
     ///
     // Returns an error if the prefix cannot be added to the prefix map.
-    fn add_prefix(&mut self, alias: &str, iri: &IriS) {
+    fn add_prefix(&mut self, alias: &str, iri: &IriS) -> Result<(), Self::Err> {
         self.pm.add_prefix(alias, iri.clone());
+        Ok(())
     }
 
     /// Replaces the entire prefix map with a new one.
@@ -947,8 +949,9 @@ impl BuildRDF for OxigraphInMemory {
     /// # Parameters
     ///
     /// * `prefix_map` - The new prefix map to use
-    fn set_prefix_map(&mut self, prefix_map: PrefixMap) {
+    fn set_prefix_map(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
         self.pm = prefix_map;
+        Ok(())
     }
 
     /// Merges a prefix map into the graph's prefix map.
@@ -960,8 +963,9 @@ impl BuildRDF for OxigraphInMemory {
     /// # Errors
     ///
     // Returns an error if merging fails due to conflicting prefixes.
-    fn merge_prefixes(&mut self, prefix_map: PrefixMap) {
+    fn merge_prefixes(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
         self.pm.merge(prefix_map);
+        Ok(())
     }
 
     /// Generates a new unique blank node.

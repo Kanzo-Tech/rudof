@@ -265,12 +265,22 @@ impl IRSchema {
     pub fn build_graph<RDF: BuildRDF>(&self) -> Result<RDF, IRError> {
         let mut graph = RDF::empty();
 
-        graph.set_prefix_map(self.prefixmap.clone());
-        graph.add_prefix("rdf", RdfVocab::base_iri());
-        graph.add_prefix("xsd", XsdVocab::base_iri());
-        graph.add_prefix("sh", ShaclVocab::base_iri());
+        graph
+            .set_prefix_map(self.prefixmap.clone())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("set prefix map", e))?;
+        graph
+            .add_prefix("rdf", RdfVocab::base_iri())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("add prefix rdf", e))?;
+        graph
+            .add_prefix("xsd", XsdVocab::base_iri())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("add prefix xsd", e))?;
+        graph
+            .add_prefix("sh", ShaclVocab::base_iri())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("add prefix sh", e))?;
 
-        graph.add_base(&self.base().cloned());
+        graph
+            .add_base(&self.base().cloned())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("add base", e))?;
 
         self.labels_idx_map.iter().try_for_each(|(_, idx)| {
             let shape = self.shapes.get(idx).ok_or(IRError::ShapeNotFound(*idx))?;

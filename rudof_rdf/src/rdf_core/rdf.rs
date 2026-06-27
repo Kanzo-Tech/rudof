@@ -73,7 +73,11 @@ pub trait Rdf: Sized {
     type Triple: Triple<Self::Subject, Self::IRI, Self::Term>;
 
     /// The error type for fallible operations.
-    type Err: Display;
+    ///
+    /// `Send + Sync + 'static` so it can be boxed (`thiserror`/`anyhow`),
+    /// `?`-bridged across crates, and carried across threads — production code
+    /// logs, stores, and propagates these errors.
+    type Err: Display + Send + Sync + 'static;
 
     /// Returns the prefixed name corresponding to an IRI.
     ///

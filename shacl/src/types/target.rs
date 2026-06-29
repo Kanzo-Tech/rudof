@@ -2,10 +2,11 @@ use rudof_iri::IriS;
 use rudof_rdf::rdf_core::BuildRDF;
 use rudof_rdf::rdf_core::term::Object;
 use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfsVocab, ShaclVocab};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 /// Represents target declarations
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Target {
     Node(Object), // TODO - Replace with node expr
     Class(Object),

@@ -1,7 +1,8 @@
 use rudof_iri::IriS;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum ClosedInfo {
     Yes {
         /// Properties that have been declared as ignored

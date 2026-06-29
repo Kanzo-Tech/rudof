@@ -3,6 +3,7 @@ mod message_map;
 mod node_kind;
 mod severity;
 mod shacl_format;
+pub(crate) mod shacl_path_serde;
 mod target;
 mod value;
 

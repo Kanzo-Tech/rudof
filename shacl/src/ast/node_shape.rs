@@ -3,10 +3,11 @@ use crate::ast::{ASTComponent, ASTSchema, defined_properties_for};
 use crate::types::{ClosedInfo, MessageMap, Severity, Target};
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::term::Object;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ASTNodeShape {
     id: Object,
     components: Vec<ASTComponent>,

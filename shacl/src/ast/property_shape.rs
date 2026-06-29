@@ -6,12 +6,16 @@ use rudof_iri::IriS;
 use rudof_rdf::rdf_core::SHACLPath;
 use rudof_rdf::rdf_core::term::Object;
 use rudof_rdf::rdf_core::term::literal::NumericLiteral;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ASTPropertyShape {
     id: Object,
+    // `SHACLPath` (rudof_rdf) only derives `Serialize`; the missing
+    // `Deserialize` is recovered locally via `types::shacl_path_serde`.
+    #[serde(deserialize_with = "crate::types::shacl_path_serde::deserialize")]
     path: SHACLPath,
     components: Vec<ASTComponent>,
     targets: Vec<Target>,
@@ -246,5 +250,34 @@ impl Display for ASTPropertyShape {
         //     writeln!(f, "\tvalues: {}", v)?;
         // }
         write!(f, "}}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::ASTComponent;
+    use crate::types::Value;
+    use rudof_iri::iri;
+
+    #[test]
+    fn property_shape_serde_round_trip() {
+        // A complex (inverse-of-sequence) path exercises the local SHACLPath
+        // deserialize adapter, plus serde over components and Value.
+        let path = SHACLPath::inverse(SHACLPath::sequence(vec![
+            SHACLPath::iri(iri!("http://ex/a")),
+            SHACLPath::iri(iri!("http://ex/b")),
+        ]));
+        let ps = ASTPropertyShape::new(Object::iri(iri!("http://ex/ps")), path)
+            .with_components(vec![
+                ASTComponent::MinCount(1),
+                ASTComponent::Datatype(prefixmap::IriRef::iri(iri!(
+                    "http://www.w3.org/2001/XMLSchema#string"
+                ))),
+                ASTComponent::HasValue(Value::from(iri!("http://ex/v"))),
+            ]);
+        let json = serde_json::to_string(&ps).expect("serialize");
+        let back: ASTPropertyShape = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(ps, back);
     }
 }

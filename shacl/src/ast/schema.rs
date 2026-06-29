@@ -2,11 +2,12 @@ use crate::ast::shape::ASTShape;
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::term::Object;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::hash_map::IntoIter;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ASTSchema {
     // imports: Vec<IriS>
     // entailments: Vec<IriS>

@@ -4052,6 +4052,7 @@ dependencies = [
  "rudof_iri",
  "rudof_rdf",
  "serde",
+ "serde_json",
  "sparql_service",
  "thiserror",
  "toml",

@@ -26,7 +26,7 @@ impl SparqlEngine {
     }
 }
 
-impl<S: QueryRDF + NeighsRDF + Debug + 'static> Engine<S> for SparqlEngine {
+impl<S: QueryRDF + NeighsRDF + Debug> Engine<S> for SparqlEngine {
     fn fork(&self) -> Self {
         SparqlEngine {
             cache: ValidationCache::default(),

@@ -12,7 +12,7 @@ use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
 use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
-impl<RDF: QueryRDF + NeighsRDF + Debug + 'static> BasicSparqlValidator<RDF> for BasicSparql {
+impl<RDF: QueryRDF + NeighsRDF + Debug> BasicSparqlValidator<RDF> for BasicSparql {
     fn validate_sparql(
         &self,
         component: &IRComponent,

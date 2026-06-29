@@ -13,7 +13,7 @@ use std::fmt::Debug;
 /// [`BasicSparqlValidator`](crate::validator::constraints::BasicSparqlValidator)
 /// impl. Kept always-compiled because the native validator dispatch covers every
 /// `IRComponent` variant, `BasicSparql` included.
-impl<RDF: NeighsRDF + Debug + 'static> NativeValidator<RDF> for BasicSparql {
+impl<RDF: NeighsRDF + Debug> NativeValidator<RDF> for BasicSparql {
     fn validate_native<E: Engine<RDF>>(
         &self,
         _: &IRComponent,

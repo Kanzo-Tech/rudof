@@ -1,4 +1,4 @@
-use crate::rdf_core::{RDFError, visualizer::RDFVisualizationConfig};
+use crate::rdf_core::RDFError;
 use std::{collections::HashMap, io, path::Path, str::FromStr};
 
 use prefixmap::PrefixMap;
@@ -22,9 +22,6 @@ pub struct RdfDataConfig {
     /// If true, automatically set the base IRI to the local file or URI of the document being processed.
     pub automatic_base: Option<bool>,
 
-    /// Configuration for RDF visualization appearance and styling.
-    pub rdf_visualization: Option<RDFVisualizationConfig>,
-
     /// Optional QLever backend configuration. Reading this section from TOML only records the user's preferences, the QLever container is not started
     /// until the caller explicitly invokes [`QleverGraphContainer::from_path`](crate::rdf_impl::QleverGraphContainer::from_path) or `from_reader`.
     #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
@@ -36,7 +33,6 @@ impl PartialEq for RdfDataConfig {
         self.base == other.base
             && self.endpoints == other.endpoints
             && self.automatic_base == other.automatic_base
-            && self.rdf_visualization == other.rdf_visualization
     }
 }
 
@@ -50,7 +46,6 @@ impl RdfDataConfig {
             base: None,
             endpoints: None,
             automatic_base: Some(true),
-            rdf_visualization: None,
             #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
             qlever: None,
         }
@@ -104,15 +99,6 @@ impl RdfDataConfig {
             error: e,
         })?;
         Ok(config)
-    }
-
-    /// Gets the RDF visualization configuration, using defaults if none is set.
-    ///
-    /// # Returns
-    /// The `RDFVisualizationConfig` to use for visualization, either from this config
-    /// or the default configuration if none is specified.
-    pub fn rdf_visualization_config(&self) -> RDFVisualizationConfig {
-        self.rdf_visualization.clone().unwrap_or_default()
     }
 }
 

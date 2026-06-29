@@ -3482,6 +3482,7 @@ dependencies = [
  "rudof_generate",
  "rudof_iri",
  "rudof_rdf",
+ "rudof_rdf_viz",
  "serde",
  "serde_json",
  "shacl",
@@ -3570,6 +3571,16 @@ dependencies = [
  "toml",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "rudof_rdf_viz"
+version = "0.3.4"
+dependencies = [
+ "rudof_rdf",
+ "serde",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -4077,6 +4088,7 @@ dependencies = [
  "rdf_config",
  "rudof_iri",
  "rudof_rdf",
+ "rudof_rdf_viz",
  "serde",
  "shacl",
  "shex_ast",

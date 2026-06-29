@@ -1,4 +1,4 @@
-use crate::rdf_core::visualizer::style::{ThicknessStyle, UmlColor};
+use crate::style::{ThicknessStyle, UmlColor};
 use serde::{Deserialize, Serialize};
 
 /// Default line thickness used when no explicit thickness is specified.

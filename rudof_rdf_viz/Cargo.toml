@@ -1,0 +1,18 @@
+[package]
+name = "rudof_rdf_viz"
+version.workspace = true
+authors.workspace = true
+description = "RDF visualization (PlantUML/UML) for rudof_rdf"
+documentation = "https://docs.rs/rudof_rdf_viz"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+rudof_rdf = { workspace = true }
+serde.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tempfile.workspace = true

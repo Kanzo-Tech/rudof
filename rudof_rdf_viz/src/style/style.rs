@@ -1,4 +1,4 @@
-use crate::rdf_core::visualizer::{RDFVisualizationConfig, style::StereotypeStyle};
+use crate::{RDFVisualizationConfig, style::StereotypeStyle};
 
 /// Main style container for RDF visualization.
 ///

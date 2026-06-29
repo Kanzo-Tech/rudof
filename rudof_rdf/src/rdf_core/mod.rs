@@ -12,7 +12,6 @@ mod rdf_format;
 mod shacl_path;
 pub mod term;
 pub mod utils;
-pub mod visualizer;
 pub mod vocabs;
 
 pub use async_rdf::AsyncRDF;

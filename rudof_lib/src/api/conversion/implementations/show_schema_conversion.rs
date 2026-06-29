@@ -11,7 +11,7 @@ use crate::{
         ShExFormat,
     },
 };
-use rudof_rdf::rdf_core::visualizer::uml_converter::{ImageFormat, UmlConverter, UmlGenerationMode};
+use rudof_rdf_viz::uml_converter::{ImageFormat, UmlConverter, UmlGenerationMode};
 use shapes_converter::{ShEx2Html, ShEx2Sparql, ShEx2Uml, Shacl2ShEx, Tap2ShEx};
 use shex_ast::ShapeMapParser;
 use std::{

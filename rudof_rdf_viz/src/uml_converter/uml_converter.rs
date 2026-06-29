@@ -1,4 +1,4 @@
-use crate::rdf_core::visualizer::uml_converter::errors::UmlConverterError;
+use crate::uml_converter::errors::UmlConverterError;
 use std::io::Write;
 #[cfg(not(target_family = "wasm"))]
 use {

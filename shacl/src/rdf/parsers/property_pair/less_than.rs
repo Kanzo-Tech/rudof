@@ -1,11 +1,11 @@
 use crate::ast::ASTComponent;
 use prefixmap::IriRef;
-use rudof_rdf::rdf_core::FocusRDF;
+use rudof_rdf::rdf_core::NeighsRDF;
 use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::IrisPropertyParser;
 use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
 
-pub(crate) fn less_than<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn less_than<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     IrisPropertyParser::new(ShaclVocab::sh_less_than()).map(|ns| {
         ns.into_iter()
             .map(|n| {

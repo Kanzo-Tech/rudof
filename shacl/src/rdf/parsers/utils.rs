@@ -5,14 +5,14 @@ use rudof_iri::IriS;
 use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
 use rudof_rdf::rdf_core::term::{Iri, Object, Term};
-use rudof_rdf::rdf_core::{FocusRDF, RDFError, Rdf};
+use rudof_rdf::rdf_core::{NeighsRDF, RDFError, Rdf};
 
 pub(crate) fn parse_components_for_iri<RDF, P>(
     iri: IriS,
     component_parser: P,
 ) -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF, Output = ASTComponent>,
 {
     component_parser.map_property(iri)

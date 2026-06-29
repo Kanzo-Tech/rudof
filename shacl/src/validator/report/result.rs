@@ -4,7 +4,7 @@ use crate::validator::report::error_mapper;
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::term::Object;
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{BuildRDF, FocusRDF, NeighsRDF, SHACLPath};
+use rudof_rdf::rdf_core::{BuildRDF, NeighsRDF, ParseCtx, RdfFocus, SHACLPath};
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 
@@ -94,7 +94,7 @@ impl ValidationResult {
 }
 
 impl ValidationResult {
-    pub(crate) fn parse<S: FocusRDF>(store: &mut S, validation_result: &S::Term) -> Result<Self, ValidationError> {
+    pub(crate) fn parse<S: NeighsRDF>(store: &mut S, validation_result: &S::Term) -> Result<Self, ValidationError> {
         // Start processing the required fields
         let focus_node = store
             .object_for(validation_result, &ShaclVocab::sh_focus_node().into())?
@@ -124,7 +124,10 @@ impl ValidationResult {
             ))?;
 
         // Process the optional fields
-        let path = store.get_path_for(validation_result, &ShaclVocab::sh_result_path().into())?;
+        let path = {
+            let mut focus = RdfFocus::empty();
+            ParseCtx::new(store, &mut focus).get_path_for(validation_result, &ShaclVocab::sh_result_path().into())?
+        };
 
         let source = store.object_for(validation_result, &ShaclVocab::sh_source_shape().into())?;
 

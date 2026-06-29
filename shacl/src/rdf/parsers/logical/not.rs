@@ -3,9 +3,9 @@ use crate::rdf::parsers::utils::parse_components_for_iri;
 use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::TermParser;
 use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{FocusRDF, RDFError};
+use rudof_rdf::rdf_core::{NeighsRDF, RDFError};
 
-pub(crate) fn not<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn not<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     parse_components_for_iri(
         ShaclVocab::sh_not(),
         TermParser::new().flat_map(|t| {

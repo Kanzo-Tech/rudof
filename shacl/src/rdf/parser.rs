@@ -9,15 +9,15 @@ use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::rdf_core::term::Object;
 use rudof_rdf::rdf_core::term::Triple;
 use rudof_rdf::rdf_core::vocabs::{RdfVocab, ShaclVocab};
-use rudof_rdf::rdf_core::{Any, FocusRDF, Matcher};
+use rudof_rdf::rdf_core::{Any, NeighsRDF, Matcher};
 use std::collections::{HashMap, HashSet};
 
-pub struct ShaclParser<RDF: FocusRDF> {
+pub struct ShaclParser<RDF: NeighsRDF> {
     rdf_parser: RDFParse<RDF>,
     shapes: HashMap<Object, ASTShape>,
 }
 
-impl<RDF: FocusRDF> ShaclParser<RDF> {
+impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
     pub fn new(rdf: RDF) -> Self {
         Self {
             rdf_parser: RDFParse::new(rdf),
@@ -32,8 +32,8 @@ impl<RDF: FocusRDF> ShaclParser<RDF> {
 
         while let Some(node) = state.pop_pending() {
             if !self.shapes.contains_key(&node) {
-                self.rdf_parser.rdf_mut().set_focus(&node.clone().into());
-                let shape = shape().parse_focused(self.rdf_parser.rdf_mut())?;
+                self.rdf_parser.set_focus(&node.clone().into());
+                let shape = shape().parse_focused(&mut self.rdf_parser.ctx())?;
                 self.shapes.insert(node, shape);
             }
         }
@@ -165,7 +165,7 @@ impl<RDF: FocusRDF> ShaclParser<RDF> {
 
         for subject in self.objects_with_predicate(pred)? {
             self.rdf_parser.set_focus(&subject.into());
-            let vs = ListParser::new().parse_focused(self.rdf_parser.rdf_mut())?;
+            let vs = ListParser::new().parse_focused(&mut self.rdf_parser.ctx())?;
             for v in vs {
                 if let Ok(subj) = term_to_subject::<RDF>(&v, context) {
                     rs.insert(subj);
@@ -192,14 +192,14 @@ impl<RDF: FocusRDF> ShaclParser<RDF> {
     }
 }
 
-fn term_to_subject<RDF: FocusRDF>(term: &RDF::Term, context: &str) -> Result<RDF::Subject, ShaclParserError> {
+fn term_to_subject<RDF: NeighsRDF>(term: &RDF::Term, context: &str) -> Result<RDF::Subject, ShaclParserError> {
     RDF::term_as_subject(term).map_err(|_| ShaclParserError::ExpectedSubject {
         term: term.to_string(),
         context: context.to_string(),
     })
 }
 
-fn shape<RDF: FocusRDF + 'static>() -> impl RDFNodeParse<RDF, Output = ASTShape> {
+fn shape<RDF: NeighsRDF + 'static>() -> impl RDFNodeParse<RDF, Output = ASTShape> {
     node_shape()
         .then(move |ns| SuccessParser::new(ASTShape::NodeShape(Box::new(ns))))
         .or(property_shape().then(|ps| SuccessParser::new(ASTShape::PropertyShape(Box::new(ps)))))

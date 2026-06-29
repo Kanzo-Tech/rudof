@@ -5,9 +5,9 @@ use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::ValuesPropertyPa
 use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::rdf_core::term::Iri;
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{FocusRDF, Rdf};
+use rudof_rdf::rdf_core::{NeighsRDF, Rdf};
 
-pub(crate) fn node_kind<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn node_kind<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     ValuesPropertyParser::new(ShaclVocab::sh_node_kind()).flat_map(|ns| {
         let nks: Vec<_> = ns
             .into_iter()

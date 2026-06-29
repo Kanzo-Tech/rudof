@@ -1,5 +1,7 @@
+#[cfg(feature = "sparql")]
 use crate::error::ValidationError;
 use crate::ir::components::BasicSparql;
+#[cfg(feature = "sparql")]
 use crate::ir::IRSchema;
 use crate::validator::constraints::ConstraintComponent;
 use crate::validator::iteration::ValueNodeIteration;

@@ -62,7 +62,7 @@ macro_rules! combine_rdf_parser_impl {
         $(#[$derive])*
         $struct_vis struct $type_name<$($type_params)*>
             where
-             $input_type : $crate::rdf_core::FocusRDF,
+             $input_type : $crate::rdf_core::NeighsRDF,
              $($where_clause)*
         {
             $(pub $arg : $arg_type,)*
@@ -72,7 +72,7 @@ macro_rules! combine_rdf_parser_impl {
         impl<$($type_params)*> $crate::rdf_core::parser::rdf_node_parser::RDFNodeParse<$input_type>
             for $type_name<$($type_params)*>
         where
-            $input_type: $crate::rdf_core::FocusRDF,
+            $input_type: $crate::rdf_core::NeighsRDF,
             $($where_clause)*
         {
             type Output = $output_type;
@@ -80,7 +80,7 @@ macro_rules! combine_rdf_parser_impl {
             #[inline]
             fn parse_focused(
                 &self,
-                rdf: &mut $input_type,
+                rdf: &mut $crate::rdf_core::parser::ParseCtx<'_, $input_type>,
             ) -> Result<Self::Output, $crate::rdf_core::RDFError> {
                 let $type_name { $( $arg, )* .. } = self;
                 $parser.parse_focused(rdf)
@@ -93,7 +93,7 @@ macro_rules! combine_rdf_parser_impl {
                 $($arg : $arg_type),*
             ) -> $type_name<$($type_params)*>
             where
-                $input_type: $crate::rdf_core::FocusRDF,
+                $input_type: $crate::rdf_core::NeighsRDF,
                 $($where_clause)*
         {
             $type_name {

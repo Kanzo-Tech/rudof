@@ -1,6 +1,6 @@
 use crate::rdf_core::vocabs::RdfVocab;
 use crate::rdf_core::{
-    FocusRDF, RDFError,
+    NeighsRDF, ParseCtx, RDFError,
     parser::rdf_node_parser::{RDFNodeParse, constructors::SingleValuePropertyParser},
     term::{
         Iri, IriOrBlankNode,
@@ -16,7 +16,7 @@ use rudof_iri::{IriS, iri};
 ///
 /// # Type Parameters
 ///
-/// * `RDF` - The RDF graph type implementing `FocusRDF`
+/// * `RDF` - The RDF graph type implementing `NeighsRDF`
 ///
 /// # Arguments
 ///
@@ -31,7 +31,7 @@ use rudof_iri::{IriS, iri};
 /// * `RDFError::ExpectedIRIError` - If the term is not an IRI (e.g., it's a blank node or literal)
 pub fn value_to_iri<RDF>(value: RDF::Term) -> Result<IriS, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     let iri: IriS = RDF::term_as_iri(&value)
         .map_err(|_| RDFError::ExpectedIRIError {
@@ -63,7 +63,7 @@ where
 /// * `RDFError::ExpectedLiteralError` - If the term is not a literal
 pub fn term_to_literal<R>(term: &R::Term) -> Result<R::Literal, RDFError>
 where
-    R: FocusRDF,
+    R: NeighsRDF,
 {
     let literal: R::Literal =
         <R::Term as TryInto<R::Literal>>::try_into(term.clone()).map_err(|_| RDFError::ExpectedLiteralError {
@@ -95,7 +95,7 @@ where
 /// * `RDFError::ExpectedIntegerError` - If the literal is not an integer type
 pub fn term_to_int<R>(term: &R::Term) -> Result<isize, RDFError>
 where
-    R: FocusRDF,
+    R: NeighsRDF,
 {
     let literal: R::Literal =
         <R::Term as TryInto<R::Literal>>::try_into(term.clone()).map_err(|_| RDFError::ExpectedLiteralError {
@@ -131,7 +131,7 @@ where
 /// * `RDFError::ExpectedNumberError` - If the concrete literal is not numeric
 pub fn term_to_number<R>(term: &R::Term) -> Result<NumericLiteral, RDFError>
 where
-    R: FocusRDF,
+    R: NeighsRDF,
 {
     let literal: R::Literal =
         <R::Term as TryInto<R::Literal>>::try_into(term.clone()).map_err(|_| RDFError::ExpectedLiteralError {
@@ -173,7 +173,7 @@ where
 /// * `RDFError::ExpectedBooleanError` - If the literal is not a boolean type
 pub fn term_to_bool<R>(term: &R::Term) -> Result<bool, RDFError>
 where
-    R: FocusRDF,
+    R: NeighsRDF,
 {
     let literal: R::Literal =
         <R::Term as TryInto<R::Literal>>::try_into(term.clone()).map_err(|_| RDFError::ExpectedLiteralError {
@@ -207,7 +207,7 @@ where
 /// * `RDFError::ExpectedIRIError` - If the term is not an IRI
 pub fn term_to_iri<R>(term: &R::Term) -> Result<IriS, RDFError>
 where
-    R: FocusRDF,
+    R: NeighsRDF,
 {
     let iri: R::IRI = <R::Term as TryInto<R::IRI>>::try_into(term.clone()).map_err(|_| RDFError::ExpectedIRIError {
         term: format!("{term}"),
@@ -239,7 +239,7 @@ where
 /// * `RDFError::SubjectToIriOrBlankNodeError` - If the subject cannot be converted to `IriOrBlankNode`
 pub fn term_to_iri_or_blanknode<R>(term: &R::Term) -> Result<IriOrBlankNode, RDFError>
 where
-    R: FocusRDF,
+    R: NeighsRDF,
 {
     let subj: R::Subject = <R::Term as TryInto<R::Subject>>::try_into(term.clone()).map_err(|_| {
         RDFError::ExpectedIriOrBlankNodeError {
@@ -278,7 +278,7 @@ where
 /// * `RDFError::ExpectedLiteralError` - If the term is not a literal
 pub fn term_to_string<R>(term: &R::Term) -> Result<String, RDFError>
 where
-    R: FocusRDF,
+    R: NeighsRDF,
 {
     let literal: R::Literal =
         <R::Term as TryInto<R::Literal>>::try_into(term.clone()).map_err(|_| RDFError::ExpectedLiteralError {
@@ -287,9 +287,9 @@ where
     Ok(literal.lexical_form().to_string())
 }
 
-pub fn parse_list_recursive<RDF>(mut visited: Vec<RDF::Term>, rdf: &mut RDF) -> Result<Vec<RDF::Term>, RDFError>
+pub fn parse_list_recursive<RDF>(mut visited: Vec<RDF::Term>, rdf: &mut ParseCtx<'_, RDF>) -> Result<Vec<RDF::Term>, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     let focus = rdf.get_focus().ok_or(RDFError::NoFocusNodeError)?.clone();
 
@@ -331,7 +331,7 @@ where
 
 fn is_nil_node<RDF>(node: &RDF::Term) -> bool
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     let tmp: Result<RDF::IRI, _> = <RDF::Term as TryInto<RDF::IRI>>::try_into(node.clone());
     match tmp {

@@ -1,5 +1,5 @@
 use crate::rdf_core::{
-    Any, FocusRDF, RDFError,
+    Any, NeighsRDF, ParseCtx, RDFError,
     parser::rdf_node_parser::{
         ParserExt, RDFNodeParse,
         constructors::{ListParser, SetFocusParser},
@@ -35,15 +35,16 @@ impl<RDF> ValuesPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for ValuesPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = HashSet<RDF::Term>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         if let Ok(subject) = rdf.get_focus_as_subject() {
             let pred: RDF::IRI = self.property.clone().into();
 
             Ok(rdf
+                .graph()
                 .triples_matching(&subject, &pred, &Any)
                 .map_err(|e| RDFError::OutgoingArcsError {
                     focus: format!("{}", self.property),
@@ -73,11 +74,11 @@ impl<RDF> NonEmptyValuesPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for NonEmptyValuesPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = HashSet<RDF::Term>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let vals = self.inner.parse_focused(rdf)?;
         if vals.is_empty() {
             Err(RDFError::NoValuesPredicateError {
@@ -114,11 +115,11 @@ impl<RDF> SingleValuePropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for SingleValuePropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = RDF::Term;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let focus_str = rdf
             .get_focus()
             .map(|f| f.to_string())
@@ -158,11 +159,11 @@ impl<RDF> SingleValuePropertyAsListParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for SingleValuePropertyAsListParser<RDF>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF,
 {
     type Output = Vec<RDF::Term>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         SingleValuePropertyParser::new(self.property.clone())
             .then(|node| SetFocusParser::new(node).then(|_| ListParser::new()))
             .parse_focused(rdf)
@@ -190,11 +191,11 @@ impl<RDF> IntegersPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for IntegersPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<isize>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         ValuesPropertyParser::new(self.property.clone())
             .parse_focused(rdf)?
             .into_iter()
@@ -221,11 +222,11 @@ impl<RDF> BoolsPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for BoolsPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<bool>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let bools = ValuesPropertyParser::new(self.property.clone())
             .parse_focused(rdf)?
             .into_iter()
@@ -257,11 +258,11 @@ impl<RDF> StringsPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for StringsPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<String>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         ValuesPropertyParser::new(self.property.clone())
             .parse_focused(rdf)?
             .into_iter()
@@ -288,11 +289,11 @@ impl<RDF> IrisPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for IrisPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = HashSet<IriS>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         ValuesPropertyParser::new(self.property.clone())
             .parse_focused(rdf)?
             .into_iter()
@@ -319,11 +320,11 @@ impl<RDF> IrisOrBnodesPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for IrisOrBnodesPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = HashSet<IriOrBlankNode>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         ValuesPropertyParser::new(self.property.clone())
             .parse_focused(rdf)?
             .into_iter()
@@ -350,11 +351,11 @@ impl<RDF> ObjectsPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for ObjectsPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<Object>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         ValuesPropertyParser::new(self.property.clone())
             .parse_focused(rdf)?
             .into_iter()
@@ -385,11 +386,11 @@ impl<RDF> LiteralsPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for LiteralsPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<ConcreteLiteral>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         ValuesPropertyParser::new(self.property.clone())
             .parse_focused(rdf)?
             .into_iter()
@@ -428,11 +429,11 @@ impl<RDF> SingleIntegerPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for SingleIntegerPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = isize;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         SingleValuePropertyParser::new(self.property.clone())
             .parse_focused(rdf)
             .and_then(|term| term_to_int::<RDF>(&term))
@@ -457,11 +458,11 @@ impl<RDF> SingleBoolPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for SingleBoolPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = bool;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         SingleValuePropertyParser::new(self.property.clone())
             .parse_focused(rdf)
             .and_then(|term| term_to_bool::<RDF>(&term))
@@ -486,11 +487,11 @@ impl<RDF> SingleIriPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for SingleIriPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = IriS;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         SingleValuePropertyParser::new(self.property.clone())
             .parse_focused(rdf)
             .and_then(|term| term_to_iri::<RDF>(&term))
@@ -515,11 +516,11 @@ impl<RDF> SingleStringPropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for SingleStringPropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = String;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         SingleValuePropertyParser::new(self.property.clone())
             .parse_focused(rdf)
             .and_then(|term| term_to_string::<RDF>(&term))
@@ -544,11 +545,11 @@ impl<RDF> SingleIriOrBlankNodePropertyParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for SingleIriOrBlankNodePropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = IriOrBlankNode;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         SingleValuePropertyParser::new(self.property.clone())
             .parse_focused(rdf)
             .and_then(|term| term_to_iri_or_blanknode::<RDF>(&term))
@@ -563,7 +564,7 @@ where
 #[derive(Debug, Clone)]
 pub struct SubjectsWithValuePropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     property: RDF::IRI,
     value: RDF::Term,
@@ -571,7 +572,7 @@ where
 
 impl<RDF> SubjectsWithValuePropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     pub fn new(property: RDF::IRI, value: RDF::Term) -> Self {
         SubjectsWithValuePropertyParser { property, value }
@@ -580,12 +581,13 @@ where
 
 impl<RDF> RDFNodeParse<RDF> for SubjectsWithValuePropertyParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<RDF::Subject>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         Ok(rdf
+            .graph()
             .triples_matching(&Any, &self.property, &self.value)
             .map_err(|e| RDFError::ObtainingTriples { error: e.to_string() })?
             .map(Triple::into_subject)

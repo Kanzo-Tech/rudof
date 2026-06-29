@@ -6,10 +6,10 @@ use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{
 use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::rdf_core::term::Iri;
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{FocusRDF, RDFError};
+use rudof_rdf::rdf_core::{NeighsRDF, RDFError};
 use std::collections::HashSet;
 
-pub(crate) fn closed<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn closed<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     SingleBoolPropertyParser::new(ShaclVocab::sh_closed())
         .optional()
         .then(move |maybe_closed| {
@@ -24,7 +24,7 @@ pub(crate) fn closed<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<AST
         })
 }
 
-fn ignored_properties<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = HashSet<IriS>> {
+fn ignored_properties<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = HashSet<IriS>> {
     SingleValuePropertyAsListParser::new(ShaclVocab::sh_ignored_properties())
         .optional()
         .flat_map(|is| match is {

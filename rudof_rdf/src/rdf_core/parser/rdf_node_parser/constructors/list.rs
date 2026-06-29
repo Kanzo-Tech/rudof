@@ -1,5 +1,5 @@
 use crate::rdf_core::{
-    FocusRDF, RDFError,
+    NeighsRDF, ParseCtx, RDFError,
     parser::rdf_node_parser::{RDFNodeParse, utils::parse_list_recursive},
 };
 use std::marker::PhantomData;
@@ -27,11 +27,11 @@ impl<RDF> Default for ListParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for ListParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<RDF::Term>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let focus = rdf.get_focus().ok_or(RDFError::NoFocusNodeError)?;
         parse_list_recursive::<RDF>(vec![focus.clone()], rdf)
     }

@@ -1,7 +1,7 @@
 use crate::types::Severity;
 use prefixmap::PrefixMap;
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{BuildRDF, FocusRDF, Rdf};
+use rudof_rdf::rdf_core::{BuildRDF, NeighsRDF, Rdf};
 use std::fmt::{Display, Formatter};
 
 mod result;
@@ -74,7 +74,7 @@ impl ValidationReport {
 }
 
 impl ValidationReport {
-    pub fn parse<S: FocusRDF>(store: &mut S, subject: S::Term) -> Result<Self, ValidationError> {
+    pub fn parse<S: NeighsRDF>(store: &mut S, subject: S::Term) -> Result<Self, ValidationError> {
         let mut results = Vec::new();
 
         for result in store.objects_for(&subject, &ShaclVocab::sh_result().into())? {

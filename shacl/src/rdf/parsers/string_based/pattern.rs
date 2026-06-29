@@ -2,9 +2,9 @@ use crate::ast::ASTComponent;
 use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{SingleStringPropertyParser, StringsPropertyParser};
 use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{FocusRDF, RDFError};
+use rudof_rdf::rdf_core::{NeighsRDF, RDFError};
 
-pub(crate) fn pattern<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn pattern<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     SingleStringPropertyParser::new(ShaclVocab::sh_flags())
         .optional()
         .then(move |maybe_flags| {

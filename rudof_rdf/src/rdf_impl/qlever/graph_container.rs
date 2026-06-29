@@ -21,7 +21,7 @@ use super::index_builder::{build_index, convert_to_native, fingerprint_inputs};
 use super::server::QleverServer;
 use super::{IndexHandle, InputFile, NativeFormat, QleverConfig, QleverError};
 use crate::rdf_core::{
-    Any, AsyncRDF, BuildRDF, FocusRDF, Matcher, NeighsRDF, RDFFormat, Rdf,
+    Any, AsyncRDF, BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf,
     query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions},
 };
 use crate::rdf_impl::OxigraphEndpoint;
@@ -44,9 +44,6 @@ pub struct QleverGraphContainer {
 
     /// Prefix map.
     prefixmap: Arc<PrefixMap>,
-
-    /// Current focus term for [`FocusRDF`] operations.
-    focus: Option<OxTerm>,
 }
 
 impl std::fmt::Debug for QleverGraphContainer {
@@ -158,7 +155,6 @@ impl QleverGraphContainer {
             endpoint_iri,
             sparql,
             prefixmap: Arc::new(PrefixMap::new()),
-            focus: None,
         })
     }
 
@@ -315,16 +311,6 @@ impl QueryRDF for QleverGraphContainer {
 
     fn query_ask(&self, query: &str) -> Result<bool, QleverError> {
         Ok(self.sparql.query_ask(query)?)
-    }
-}
-
-impl FocusRDF for QleverGraphContainer {
-    fn set_focus(&mut self, focus: &OxTerm) {
-        self.focus = Some(focus.clone());
-    }
-
-    fn get_focus(&self) -> Option<&OxTerm> {
-        self.focus.as_ref()
     }
 }
 

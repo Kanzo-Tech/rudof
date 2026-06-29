@@ -28,6 +28,10 @@ qlever = [
     "dep:tokio-util",
 ]
 qlever-docker-tests = ["qlever"]
+# Opt-in, type-erased parser combinators (`Opaque`/`FnOpaque`). Off by default so the
+# core parser stays 100% generic / monomorphized. Only needed to tame compile-time
+# blow-up from pathologically deep combinator nesting (a build-time concern).
+parser-erased = []
 
 [dependencies]
 colored.workspace = true

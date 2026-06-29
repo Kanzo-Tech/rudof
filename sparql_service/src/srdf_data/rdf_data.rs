@@ -10,7 +10,7 @@ use rudof_iri::IriS;
 use rudof_rdf::rdf_impl::QleverGraphContainer;
 use rudof_rdf::{
     rdf_core::{
-        BuildRDF, FocusRDF, Matcher, NeighsRDF, RDFFormat, Rdf, RdfDataConfig,
+        BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf, RdfDataConfig,
         query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions},
     },
     rdf_impl::{OxigraphEndpoint, OxigraphInMemory, RdfBackend, ReaderMode},
@@ -466,15 +466,6 @@ impl NeighsRDF for RdfData {
     }
 }
 
-impl FocusRDF for RdfData {
-    fn set_focus(&mut self, focus: &Self::Term) {
-        self.primary.set_focus(focus);
-    }
-
-    fn get_focus(&self) -> Option<&Self::Term> {
-        self.primary.get_focus()
-    }
-}
 
 impl BuildRDF for RdfData {
     fn empty() -> Self {

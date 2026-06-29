@@ -313,11 +313,11 @@ impl Shacl2ShEx {
         match component {
             IRComponent::Class(cls) => {
                 // TODO: Converting Class components for {cls:?} doesn't match rdfs:subClassOf semantics of SHACL yet
-                let se = self.create_class_constraint(cls.class_rule())?;
+                let se = self.create_class_constraint(cls)?;
                 Ok(se)
             },
             IRComponent::Datatype(dt) => Ok(ShapeExpr::node_constraint(
-                NodeConstraint::new().with_datatype(dt.datatype().clone().into()),
+                NodeConstraint::new().with_datatype(dt.clone().into()),
             )),
             IRComponent::NodeKind(_) => todo!(),
             IRComponent::MinCount(_) => todo!(),

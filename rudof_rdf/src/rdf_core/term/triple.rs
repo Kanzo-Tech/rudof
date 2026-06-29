@@ -302,7 +302,7 @@ impl Object {
     ///
     /// This method attempts to parse:
     /// - Blank nodes: strings starting with "_:"
-    /// - Literals: strings starting with '"' (not yet implemented)
+    /// - Literals: strings starting with '"' (not supported here)
     /// - IRIs: all other strings, resolved against the base if provided
     ///
     /// # Parameters
@@ -311,11 +311,17 @@ impl Object {
     ///
     /// # Errors
     /// - `RDFError::ParsingIri` if IRI parsing fails
+    /// - `RDFError::ParseFailError` if given a quoted literal (use the RDF parser
+    ///   for full N-Triples literal syntax, including datatypes and language tags)
     pub fn parse(str: &str, base: Option<&str>) -> Result<Object, RDFError> {
         if let Some(bnode_id) = str.strip_prefix("_:") {
             Ok(Object::bnode(bnode_id.to_string()))
         } else if str.starts_with('"') {
-            todo!()
+            Err(RDFError::ParseFailError {
+                msg: format!(
+                    "Parsing a quoted literal {str} as an Object is not supported here; use the RDF parser for full literal syntax"
+                ),
+            })
         } else {
             let iri = IriS::from_str_base(str, base).map_err(|e| RDFError::ParsingIri {
                 iri: str.to_string(),
@@ -386,7 +392,17 @@ impl From<Object> for oxrdf::Term {
             Object::Iri(iri_s) => oxrdf::NamedNode::new_unchecked(iri_s.as_str()).into(),
             Object::BlankNode(bnode) => oxrdf::BlankNode::new_unchecked(bnode).into(),
             Object::Literal(literal) => oxrdf::Term::Literal(literal.into()),
-            Object::Triple { .. } => todo!(),
+            // RDF-star: recursively lower the quoted triple into an oxrdf quoted triple term.
+            Object::Triple {
+                subject,
+                predicate,
+                object,
+            } => {
+                let subj: oxrdf::NamedOrBlankNode = (*subject).into();
+                let pred = oxrdf::NamedNode::new_unchecked(predicate.as_str());
+                let obj: oxrdf::Term = (*object).into();
+                oxrdf::Term::Triple(Box::new(oxrdf::Triple::new(subj, pred, obj)))
+            },
         }
     }
 }
@@ -437,8 +453,20 @@ impl TryFrom<Object> for oxrdf::NamedOrBlankNode {
         match value {
             Object::Iri(iri_s) => Ok(oxrdf::NamedNode::new_unchecked(iri_s.as_str()).into()),
             Object::BlankNode(bnode) => Ok(oxrdf::BlankNode::new_unchecked(bnode).into()),
-            Object::Literal(_) => todo!(),
-            Object::Triple { .. } => todo!(),
+            // A literal cannot appear in subject position.
+            Object::Literal(lit) => Err(RDFError::ExpectedIriOrBlankNodeFoundLiteral {
+                literal: lit.to_string(),
+            }),
+            // oxrdf's NamedOrBlankNode cannot represent an RDF-star quoted triple subject.
+            Object::Triple {
+                subject,
+                predicate,
+                object,
+            } => Err(RDFError::ExpectedIriOrBlankNodeFoundTriple {
+                subject: subject.to_string(),
+                predicate: predicate.to_string(),
+                object: object.to_string(),
+            }),
         }
     }
 }
@@ -474,13 +502,17 @@ impl Display for Object {
     /// - IRIs: displayed as-is
     /// - Blank nodes: prefixed with "_:"
     /// - Literals: uses the literal's Display implementation
-    /// - Triples: not yet implemented
+    /// - Triples (RDF-star): quoted with `<< subject predicate object >>`
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Object::Iri(iri) => write!(f, "{iri}"),
             Object::BlankNode(bnode) => write!(f, "_:{bnode}"),
             Object::Literal(lit) => write!(f, "{lit}"),
-            Object::Triple { .. } => todo!(),
+            Object::Triple {
+                subject,
+                predicate,
+                object,
+            } => write!(f, "<< {subject} {predicate} {object} >>"),
         }
     }
 }
@@ -511,20 +543,24 @@ impl Debug for Object {
 // Trait Implementations - Ordering
 // ============================================================================
 
-#[allow(clippy::non_canonical_partial_ord_impl)]
-impl PartialOrd for Object {
-    /// Implements partial ordering for objects.
+impl Object {
+    /// Compares two objects following SPARQL/RDF value semantics (a **partial** order).
     ///
     /// The ordering priority is: IRIs < Blank Nodes < Literals.
     /// Within each category, standard comparison applies:
     /// - IRIs: lexicographic ordering of IRI strings
     /// - Blank nodes: lexicographic ordering of identifiers
-    /// - Literals: ordering defined by `ConcreteLiteral::cmp`
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    /// - Literals: ordering defined by [`ConcreteLiteral::sparql_compare`]
+    ///
+    /// Returns `None` for combinations that are not comparable under these rules
+    /// (notably any comparison involving an RDF-star quoted triple, or
+    /// incomparable literals). For a *total* order suitable for sorting use the
+    /// [`Ord`]/[`PartialOrd`] implementations instead.
+    pub fn sparql_compare(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Object::Iri(a), Object::Iri(b)) => Some(a.cmp(b)),
             (Object::BlankNode(a), Object::BlankNode(b)) => Some(a.cmp(b)),
-            (Object::Literal(a), Object::Literal(b)) => a.partial_cmp(b),
+            (Object::Literal(a), Object::Literal(b)) => a.sparql_compare(b),
             (Object::Iri(_), _) => Some(Ordering::Less),
             (Object::BlankNode(_), Object::Iri(_)) => Some(Ordering::Greater),
             (Object::BlankNode(_), Object::Literal(_)) => Some(Ordering::Less),
@@ -536,14 +572,50 @@ impl PartialOrd for Object {
             (Object::Triple { .. }, Object::Triple { .. }) => None,
         }
     }
+
+    /// Returns a stable rank for each variant, used to define a total order.
+    fn variant_rank(&self) -> u8 {
+        match self {
+            Object::Iri(_) => 0,
+            Object::BlankNode(_) => 1,
+            Object::Literal(_) => 2,
+            Object::Triple { .. } => 3,
+        }
+    }
 }
 
 impl Ord for Object {
-    /// Implements total ordering for objects according to RDF semantics.
+    /// Implements a **total** ordering for objects that never panics.
     ///
-    /// If elements are not comparable, [`Ordering::Less`] is returned
+    /// Objects are ordered first by variant rank (IRI < BlankNode < Literal <
+    /// Triple) and then by their contents. This is a structural total order; for
+    /// SPARQL/RDF value semantics use [`Object::sparql_compare`].
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap_or(Ordering::Less)
+        self.variant_rank().cmp(&other.variant_rank()).then_with(|| match (self, other) {
+            (Object::Iri(a), Object::Iri(b)) => a.cmp(b),
+            (Object::BlankNode(a), Object::BlankNode(b)) => a.cmp(b),
+            (Object::Literal(a), Object::Literal(b)) => a.cmp(b),
+            (
+                Object::Triple {
+                    subject: s1,
+                    predicate: p1,
+                    object: o1,
+                },
+                Object::Triple {
+                    subject: s2,
+                    predicate: p2,
+                    object: o2,
+                },
+            ) => s1.cmp(s2).then_with(|| p1.cmp(p2)).then_with(|| o1.cmp(o2)),
+            // Different variants are fully discriminated by `variant_rank` above.
+            _ => Ordering::Equal,
+        })
+    }
+}
+
+impl PartialOrd for Object {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 

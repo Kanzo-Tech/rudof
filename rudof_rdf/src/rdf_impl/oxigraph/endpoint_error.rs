@@ -113,6 +113,13 @@ pub enum OxigraphEndpointError {
         #[from]
         err: IriSError,
     },
+
+    /// Error building the shared tokio runtime used by the blocking SPARQL methods.
+    ///
+    /// # Fields
+    /// - `error`: Detailed description of the runtime build failure
+    #[error("Failed to build shared tokio runtime for SPARQL queries: {error}")]
+    RuntimeBuildError { error: String },
 }
 
 /// Converts a reqwest error into an HTTPRequestError.

@@ -468,13 +468,16 @@ proptest! {
         }
     }
 
-    /// Numeric literals should be comparable
+    /// Numeric literals should be comparable by value under SPARQL semantics.
+    ///
+    /// Note: the `Ord`/`PartialOrd` impls define a *total* (rank + lexical-form)
+    /// order, so numeric value comparison lives in `sparql_compare`.
     #[test]
     fn numeric_literals_comparable(n1 in any::<i32>(), n2 in any::<i32>()) {
         let lit1 = ConcreteLiteral::integer(n1 as i128);
         let lit2 = ConcreteLiteral::integer(n2 as i128);
 
-        match lit1.partial_cmp(&lit2) {
+        match lit1.sparql_compare(&lit2) {
             Some(ord) => prop_assert_eq!(ord, n1.cmp(&n2)),
             None => prop_assert!(false, "Integer literals should be comparable"),
         }

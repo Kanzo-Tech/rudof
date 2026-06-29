@@ -628,14 +628,26 @@ impl NeighsRDF for OxigraphEndpoint {
 }
 
 // Shared tokio runtime used by the blocking SPARQL methods.
+//
+// Building a runtime can fail (e.g. OS resource exhaustion), so the fallible
+// result is cached and surfaced as a typed error at the call site rather than
+// panicking during static initialization.
 #[cfg(not(target_family = "wasm"))]
-static SPARQL_RUNTIME: once_cell::sync::Lazy<tokio::runtime::Runtime> = once_cell::sync::Lazy::new(|| {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .thread_name("rudof-sparql")
-        .build()
-        .expect("failed to build shared tokio runtime for SPARQL queries")
-});
+static SPARQL_RUNTIME: once_cell::sync::Lazy<std::io::Result<tokio::runtime::Runtime>> =
+    once_cell::sync::Lazy::new(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_name("rudof-sparql")
+            .build()
+    });
+
+/// Returns the shared SPARQL tokio runtime, or a typed error if it failed to build.
+#[cfg(not(target_family = "wasm"))]
+fn sparql_runtime() -> Result<&'static tokio::runtime::Runtime> {
+    SPARQL_RUNTIME
+        .as_ref()
+        .map_err(|e| OxigraphEndpointError::RuntimeBuildError { error: e.to_string() })
+}
 
 // QueryRDF is only available on non-WASM platforms.
 // On native platforms, these sync methods bridge to the async implementations
@@ -646,21 +658,21 @@ impl QueryRDF for OxigraphEndpoint {
     ///
     /// This is a blocking wrapper around `query_construct_async`.
     fn query_construct(&self, query: &str, format: &QueryResultFormat) -> Result<String> {
-        SPARQL_RUNTIME.block_on(self.query_construct_async(query, format))
+        sparql_runtime()?.block_on(self.query_construct_async(query, format))
     }
 
     /// Executes a SPARQL SELECT query synchronously.
     ///
     /// This is a blocking wrapper around `query_select_async`.
     fn query_select(&self, query: &str) -> Result<QuerySolutions<Self>> {
-        SPARQL_RUNTIME.block_on(self.query_select_async(query))
+        sparql_runtime()?.block_on(self.query_select_async(query))
     }
 
     /// Executes a SPARQL ASK query synchronously.
     ///
     /// This is a blocking wrapper around `query_ask_async`.
     fn query_ask(&self, query: &str) -> Result<bool> {
-        SPARQL_RUNTIME.block_on(self.query_ask_async(query))
+        sparql_runtime()?.block_on(self.query_ask_async(query))
     }
 }
 

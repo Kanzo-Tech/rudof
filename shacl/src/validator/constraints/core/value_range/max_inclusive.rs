@@ -33,7 +33,7 @@ impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for MaxInclusive {
             value_nodes,
             ValueNodeIteration,
             |n| match S::term_as_sliteral(n) {
-                Ok(lit) => lit.partial_cmp(self.max_inclusive()).map(|o| o.is_gt()).unwrap_or(true),
+                Ok(lit) => lit.sparql_compare(self.max_inclusive()).map(|o| o.is_gt()).unwrap_or(true),
                 Err(_) => true,
             },
             &format!("MaxInclusive({}) not satisfied", self.max_inclusive()),

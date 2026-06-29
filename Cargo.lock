@@ -3494,7 +3494,6 @@ dependencies = [
  "tabled",
  "termtree",
  "thiserror",
- "tokio",
  "toml",
  "tracing",
  "url",
@@ -3534,13 +3533,10 @@ dependencies = [
 name = "rudof_rdf"
 version = "0.3.4"
 dependencies = [
- "bollard",
  "colored",
  "const_format",
  "csv",
- "futures",
  "getrandom 0.3.4",
- "nix",
  "once_cell",
  "oxigraph",
  "oxilangtag",
@@ -3564,11 +3560,34 @@ dependencies = [
  "spargebra",
  "tabled",
  "tempfile",
+ "thiserror",
+ "tokio",
+ "toml",
+ "url",
+]
+
+[[package]]
+name = "rudof_rdf_qlever"
+version = "0.3.4"
+dependencies = [
+ "bollard",
+ "colored",
+ "futures",
+ "nix",
+ "oxiri",
+ "oxrdf",
+ "oxrdfio",
+ "prefixmap",
+ "reqwest",
+ "rudof_iri",
+ "rudof_rdf",
+ "serde",
+ "sparesults",
+ "tempfile",
  "testcontainers",
  "thiserror",
  "tokio",
  "tokio-util",
- "toml",
  "tracing",
  "url",
 ]

@@ -195,9 +195,7 @@ impl RudofConfig {
     /// Lets callers tweak individual fields without rebuilding the whole `RdfDataConfig`, e.g.:
     ///
     /// ```ignore
-    /// rudof_config.rdf_data_mut().qlever = Some(
-    ///     QleverConfig::default().with_container_memory("8G")
-    /// );
+    /// rudof_config.rdf_data_mut().automatic_base = Some(false);
     /// ```
     pub fn rdf_data_mut(&mut self) -> &mut RdfDataConfig {
         self.rdf_data.get_or_insert_with(RdfDataConfig::default)

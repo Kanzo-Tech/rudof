@@ -21,11 +21,6 @@ pub struct RdfDataConfig {
 
     /// If true, automatically set the base IRI to the local file or URI of the document being processed.
     pub automatic_base: Option<bool>,
-
-    /// Optional QLever backend configuration. Reading this section from TOML only records the user's preferences, the QLever container is not started
-    /// until the caller explicitly invokes [`QleverGraphContainer::from_path`](crate::rdf_impl::QleverGraphContainer::from_path) or `from_reader`.
-    #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-    pub qlever: Option<crate::rdf_impl::QleverConfig>,
 }
 
 impl PartialEq for RdfDataConfig {
@@ -46,8 +41,6 @@ impl RdfDataConfig {
             base: None,
             endpoints: None,
             automatic_base: Some(true),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            qlever: None,
         }
     }
 

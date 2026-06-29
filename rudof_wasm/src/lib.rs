@@ -4,11 +4,12 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, Term as OxTerm};
-use rudof_rdf::rdf_core::{BuildRDF, RDFFormat};
-use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
-use shacl::ast::ASTSchema;
-use shacl::rdf::ShaclParser;
+// Every rudof-native type the binding marshals against comes from the façade
+// (`rudof_lib::form`), so this crate depends on `rudof_lib` alone — it never
+// reaches into `shacl`/`rudof_rdf`/`oxrdf` directly.
+use rudof_lib::form::{
+    BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm,
+};
 
 mod dto;
 mod project;
@@ -94,53 +95,49 @@ pub(crate) fn object_to_value(o: &OxTerm) -> TermValue {
 /// One form session: the live data graph plus the source of the loaded shapes.
 #[wasm_bindgen]
 pub struct Session {
-    data: OxigraphInMemory,
-    shapes_graph: Option<OxigraphInMemory>,
-    shapes_ast: Option<ASTSchema>,
+    engine: FormEngine,
 }
 
 #[wasm_bindgen]
 impl Session {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Session {
-        Session { data: OxigraphInMemory::new(), shapes_graph: None, shapes_ast: None }
+        Session { engine: FormEngine::new() }
     }
 
     #[wasm_bindgen(js_name = loadShapes)]
     pub fn load_shapes(&mut self, text: String, media_type: String) -> Result<JsValue, JsError> {
-        let graph = OxigraphInMemory::from_str(&text, &format_of(&media_type), None, &ReaderMode::Lax)
+        self.engine
+            .load_shapes(&text, &format_of(&media_type))
             .map_err(|e| JsError::new(&e.to_string()))?;
-        let schema = ShaclParser::new(graph.clone())
-            .parse()
-            .map_err(|e| JsError::new(&e.to_string()))?;
-        let json = shapes::schema_to_json(&schema, &graph);
-        self.shapes_graph = Some(graph);
-        self.shapes_ast = Some(schema);
+        let ast = self.engine.shapes_ast().expect("shapes just loaded");
+        let graph = self.engine.shapes_graph().expect("shapes just loaded");
+        let json = shapes::schema_to_json(ast, graph);
         to_js(&json)
     }
 
     #[wasm_bindgen(js_name = loadData)]
     pub fn load_data(&mut self, text: String, media_type: String) -> Result<(), JsError> {
-        self.data = OxigraphInMemory::from_str(&text, &format_of(&media_type), None, &ReaderMode::Lax)
-            .map_err(|e| JsError::new(&e.to_string()))?;
-        Ok(())
+        self.engine
+            .load_data(&text, &format_of(&media_type))
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = newData)]
     pub fn new_data(&mut self) {
-        self.data = OxigraphInMemory::new();
+        self.engine.new_data();
     }
 
     pub fn add(&mut self, subject: JsValue, predicate: JsValue, object: JsValue) -> Result<(), JsError> {
         let (s, p, o): (TermValue, TermValue, TermValue) = (from_js(subject)?, from_js(predicate)?, from_js(object)?);
-        self.data
+        self.engine
             .add_triple(term_to_subject(&s)?, named(&p.value), term_to_object(&o))
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
     pub fn remove(&mut self, subject: JsValue, predicate: JsValue, object: JsValue) -> Result<(), JsError> {
         let (s, p, o): (TermValue, TermValue, TermValue) = (from_js(subject)?, from_js(predicate)?, from_js(object)?);
-        self.data
+        self.engine
             .remove_triple(term_to_subject(&s)?, named(&p.value), term_to_object(&o))
             .map_err(|e| JsError::new(&e.to_string()))
     }
@@ -150,7 +147,7 @@ impl Session {
         let p: Option<TermValue> = from_js(predicate)?;
         let o: Option<TermValue> = from_js(object)?;
         let out: Vec<RudofQuad> = self
-            .data
+            .engine
             .quads()
             .filter(|q| {
                 s.as_ref().is_none_or(|t| &subject_to_value(&q.subject) == t)
@@ -167,17 +164,14 @@ impl Session {
     }
 
     pub fn serialize(&self, media_type: String) -> Result<String, JsError> {
-        let mut buf: Vec<u8> = Vec::new();
-        BuildRDF::serialize(&self.data, &format_of(&media_type), &mut buf)
-            .map_err(|e| JsError::new(&e.to_string()))?;
-        String::from_utf8(buf).map_err(|e| JsError::new(&e.to_string()))
+        self.engine.serialize(&format_of(&media_type)).map_err(|e| JsError::new(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = projectForm)]
     pub fn project_form(&self, focus: JsValue, shape_id: String) -> Result<JsValue, JsError> {
         let focus: TermValue = from_js(focus)?;
-        match &self.shapes_ast {
-            Some(ast) => to_js(&project::project_form(ast, &self.data, &focus, &shape_id)),
+        match self.engine.shapes_ast() {
+            Some(ast) => to_js(&project::project_form(&self.engine, ast, &focus, &shape_id)),
             None => to_js(&ProjectedForm { focus, properties: vec![] }),
         }
     }
@@ -188,16 +182,12 @@ impl Session {
     /// * `shape_id == Some(id)` → validate only that shape (and its nested
     ///   property shapes) against its own targets — shape-scoped.
     pub fn validate(&self, shape_id: Option<String>) -> Result<JsValue, JsError> {
-        let ast = self
-            .shapes_ast
-            .as_ref()
-            .ok_or_else(|| JsError::new("no shapes loaded; call loadShapes first"))?;
-        let report = match shape_id {
-            Some(id) => validate::validate_shape(&self.data, ast, &id),
-            None => validate::validate(&self.data, ast),
+        let outcome = match shape_id {
+            Some(id) => self.engine.validate_shape(&id),
+            None => self.engine.validate(),
         }
-        .map_err(|e| JsError::new(&e))?;
-        to_js(&report)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&validate::report_from_outcome(&outcome))
     }
 
     /// Validate a single focus node against a single shape (scoped). This is the
@@ -210,12 +200,9 @@ impl Session {
     #[wasm_bindgen(js_name = validateFocus)]
     pub fn validate_focus(&self, focus: JsValue, shape_id: String) -> Result<JsValue, JsError> {
         let focus: TermValue = from_js(focus)?;
-        let ast = self
-            .shapes_ast
-            .as_ref()
-            .ok_or_else(|| JsError::new("no shapes loaded; call loadShapes first"))?;
-        let report = validate::validate_focus(&self.data, ast, &shape_id, &focus).map_err(|e| JsError::new(&e))?;
-        to_js(&report)
+        let focus = validate::focus_object(&focus).map_err(|e| JsError::new(&e))?;
+        let outcome = self.engine.validate_focus(&shape_id, &focus).map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&validate::report_from_outcome(&outcome))
     }
 }
 

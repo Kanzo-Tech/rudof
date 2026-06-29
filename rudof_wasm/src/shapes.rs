@@ -4,14 +4,10 @@
 //! (`sh:name`/`order`/`group`, `shui:editor`/`viewer`) read from the shapes
 //! graph. Emitting JSON here keeps the JS side from re-parsing SHACL.
 
-use oxrdf::{BlankNode, NamedOrBlankNode, Term as OxTerm};
-use prefixmap::IriRef;
-use rudof_rdf::rdf_core::SHACLPath;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
-use rudof_rdf::rdf_impl::OxigraphInMemory;
-use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
-use shacl::types::{NodeKind, Target, Value};
+use rudof_lib::form::{
+    ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape, BlankNode, ConcreteLiteral, IriRef, NamedNode,
+    NamedOrBlankNode, NodeKind, Object, OxigraphInMemory, SHACLPath, Target, Term as OxTerm, Value,
+};
 use std::collections::HashMap;
 
 use crate::dto::*;
@@ -175,7 +171,7 @@ fn resolve_branches(refs: &[Object], schema: &ASTSchema, graph: &OxigraphInMemor
 
 fn object_to_subject(o: &Object) -> Option<NamedOrBlankNode> {
     match o {
-        Object::Iri(i) => Some(NamedOrBlankNode::NamedNode(oxrdf::NamedNode::new_unchecked(i.as_str()))),
+        Object::Iri(i) => Some(NamedOrBlankNode::NamedNode(NamedNode::new_unchecked(i.as_str()))),
         Object::BlankNode(b) => Some(NamedOrBlankNode::BlankNode(BlankNode::new_unchecked(b))),
         _ => None,
     }

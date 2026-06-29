@@ -1,68 +1,63 @@
 use crate::error::ValidationError;
-use crate::ir::components::Class;
-use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::{NativeValidator, validate_with};
-#[cfg(feature = "sparql")]
-use crate::validator::constraints::{BasicSparqlValidator, validate_ask_with};
+use crate::ir::IRSchema;
+use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
+use rudof_rdf::rdf_core::NeighsRDF;
+use rudof_rdf::rdf_core::term::{Object, Term};
+use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfsVocab};
+use std::fmt::Debug;
+#[cfg(feature = "sparql")]
+use crate::ir::{IRComponent, IRShape};
+#[cfg(feature = "sparql")]
+use crate::validator::constraints::sparql_ask;
+#[cfg(feature = "sparql")]
 use crate::validator::nodes::ValueNodes;
+#[cfg(feature = "sparql")]
 use crate::validator::report::ValidationResult;
 #[cfg(feature = "sparql")]
 use indoc::formatdoc;
 #[cfg(feature = "sparql")]
+use rudof_rdf::rdf_core::SHACLPath;
+#[cfg(feature = "sparql")]
 use rudof_rdf::rdf_core::query::QueryRDF;
-use rudof_rdf::rdf_core::term::Term;
-use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfsVocab};
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
-#[cfg(feature = "sparql")]
-use std::fmt::Debug;
 
-impl<S: NeighsRDF> NativeValidator<S> for Class {
-    fn validate_native<E: Engine<S>>(
-        &self,
-        component: &IRComponent,
-        shape: &IRShape,
-        store: &S,
-        _: &mut E,
-        value_nodes: &ValueNodes<S>,
-        _: Option<&IRShape>,
-        maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
-        let class_fn = |vn: &S::Term| {
-            if vn.is_literal() {
-                return true;
-            }
-            let term = S::object_as_term(self.class_rule());
+/// `sh:class` — each value node is a SHACL instance of the given class.
+pub(crate) struct Class<'a>(pub &'a Object);
 
-            !store
-                .objects_for(vn, &RdfVocab::rdf_type().into())
-                .unwrap_or_default()
-                .iter()
-                .any(|ctype| {
-                    ctype == &term
-                        || store
-                            .objects_for(ctype, &RdfsVocab::rdfs_subclass_of_str().into())
-                            .unwrap_or_default()
-                            .contains(&term)
-                })
-        };
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Class<'_> {
+    type Strategy = ValueNodeIteration;
 
-        validate_with(
-            component,
-            shape,
-            value_nodes,
-            ValueNodeIteration,
-            class_fn,
-            &format!("Class constraint not satisfied for class {}", self.class_rule()),
-            maybe_path,
-        )
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
     }
-}
 
-#[cfg(feature = "sparql")]
-impl<S: QueryRDF + Debug> BasicSparqlValidator<S> for Class {
+    fn check<E: Engine<S>>(&self, vn: &S::Term, cx: &mut CheckCtx<'_, S, E>) -> Result<Check, ValidationError> {
+        if vn.is_literal() {
+            return Ok(Check::Violate);
+        }
+        let term = S::object_as_term(self.0);
+        let conforms = cx
+            .store
+            .objects_for(vn, &RdfVocab::rdf_type().into())
+            .unwrap_or_default()
+            .iter()
+            .any(|ctype| {
+                ctype == &term
+                    || cx
+                        .store
+                        .objects_for(ctype, &RdfsVocab::rdfs_subclass_of_str().into())
+                        .unwrap_or_default()
+                        .contains(&term)
+            });
+        Ok(if conforms { Check::Hold } else { Check::Violate })
+    }
+
+    fn message(&self, _schema: &IRSchema) -> String {
+        format!("Class constraint not satisfied for class {}", self.0)
+    }
+
+    #[cfg(feature = "sparql")]
     fn validate_sparql(
         &self,
         component: &IRComponent,
@@ -72,23 +67,25 @@ impl<S: QueryRDF + Debug> BasicSparqlValidator<S> for Class {
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
         _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
+    ) -> Result<Vec<ValidationResult>, ValidationError>
+    where
+        S: QueryRDF,
+    {
         let query_fn = |vn: &S::Term| {
             formatdoc! {"
                 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
                 ASK {{ {} rdf:type/rdfs:subClassOf* {} }}
-            ", vn, self.class_rule()
+            ", vn, self.0
             }
         };
-
-        validate_ask_with(
+        sparql_ask(
             component,
             shape,
             store,
             value_nodes,
             query_fn,
-            &format!("Class constraint not satisfied for class {}", self.class_rule()),
+            &format!("Class constraint not satisfied for class {}", self.0),
             maybe_path,
         )
     }

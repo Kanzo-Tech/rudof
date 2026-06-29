@@ -1,19 +1,31 @@
 use crate::error::ValidationError;
-use crate::ir::components::UniqueLang;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
-use crate::validator::constraints::Validator;
+use crate::validator::constraints::ConstraintComponent;
 use crate::validator::engine::Engine;
+use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
+use rudof_rdf::rdf_core::NeighsRDF;
+use rudof_rdf::rdf_core::SHACLPath;
 use rudof_rdf::rdf_core::term::Object;
 use rudof_rdf::rdf_core::term::literal::Literal;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug> Validator<S> for UniqueLang {
-    fn validate<E: Engine<S>>(
+/// `sh:uniqueLang` — no two literal value nodes share a language tag.
+///
+/// Bespoke whole-set scan per focus node (overrides the per-item template).
+pub(crate) struct UniqueLang(pub bool);
+
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for UniqueLang {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn validate_native<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
@@ -24,15 +36,13 @@ impl<S: NeighsRDF + Debug> Validator<S> for UniqueLang {
         maybe_path: Option<&SHACLPath>,
         _: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
-        // If unique_lang is not activated, just return without any check
-        if !self.unique_lang() {
+        if !self.0 {
             return Ok(Default::default());
         }
 
         let mut validation_results = Vec::new();
         let component = Object::iri(component.into());
 
-        // Collect langs
         for (fnode, nodes) in value_nodes.iter() {
             let fnode_obj = S::term_as_object(fnode)?;
             let mut langs_map: HashMap<String, Vec<S::Term>> = HashMap::new();
@@ -46,7 +56,6 @@ impl<S: NeighsRDF + Debug> Validator<S> for UniqueLang {
 
             for (k, v) in langs_map {
                 if v.len() > 1 {
-                    // If there are multiple nodes with the same language, report a violation
                     let msg = format!(
                         "Unique lang failed for lang {k} with values: {}",
                         v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ")

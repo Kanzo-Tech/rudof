@@ -1,11 +1,9 @@
 use rudof_rdf::rdf_core::SHACLPath;
 
-mod basic_validator;
-
 /// Converts a [`SHACLPath`] to its SPARQL property path [String] representation.
 ///
 /// IRIs are enclosed in angle brackets and path operators follow SPARQL 1.1 property path syntax.
-fn path_to_sparql(path: &SHACLPath) -> String {
+pub(crate) fn path_to_sparql(path: &SHACLPath) -> String {
     match path {
         SHACLPath::Predicate { pred } => format!("<{pred}>"),
         SHACLPath::Alternative { paths } => {
@@ -23,7 +21,7 @@ fn path_to_sparql(path: &SHACLPath) -> String {
     }
 }
 
-fn inject_values_into_where(query: &str, values_clause: &str) -> String {
+pub(crate) fn inject_values_into_where(query: &str, values_clause: &str) -> String {
     let upper = query.to_uppercase();
     if let Some(where_pos) = upper.find("WHERE")
         && let Some(brace_offset) = query[where_pos..].find('{')

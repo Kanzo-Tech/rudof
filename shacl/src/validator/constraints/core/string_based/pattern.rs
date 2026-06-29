@@ -1,53 +1,48 @@
 use crate::error::ValidationError;
+use crate::ir::IRSchema;
 use crate::ir::components::Pattern;
-use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::{NativeValidator, validate_with};
-#[cfg(feature = "sparql")]
-use crate::validator::constraints::{BasicSparqlValidator, validate_ask_with};
+use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
+use rudof_rdf::rdf_core::NeighsRDF;
+use rudof_rdf::rdf_core::term::Term;
+use std::fmt::Debug;
+#[cfg(feature = "sparql")]
+use crate::ir::{IRComponent, IRShape};
+#[cfg(feature = "sparql")]
+use crate::validator::constraints::sparql_ask;
+#[cfg(feature = "sparql")]
 use crate::validator::nodes::ValueNodes;
+#[cfg(feature = "sparql")]
 use crate::validator::report::ValidationResult;
 #[cfg(feature = "sparql")]
 use indoc::formatdoc;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::query::QueryRDF;
-use rudof_rdf::rdf_core::term::Term;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
-use std::fmt::Debug;
-
-impl<S: NeighsRDF + Debug> NativeValidator<S> for Pattern {
-    fn validate_native<E: Engine<S>>(
-        &self,
-        component: &IRComponent,
-        shape: &IRShape,
-        _: &S,
-        _: &mut E,
-        value_nodes: &ValueNodes<S>,
-        _: Option<&IRShape>,
-        maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
-        validate_with(
-            component,
-            shape,
-            value_nodes,
-            ValueNodeIteration,
-            |vn| {
-                if vn.is_blank_node() {
-                    true
-                } else {
-                    !self.match_str(vn.lexical_form().as_str())
-                }
-            },
-            &format!("Pattern({}) not satisfied", self.pattern()),
-            maybe_path,
-        )
-    }
-}
-
+use rudof_rdf::rdf_core::SHACLPath;
 #[cfg(feature = "sparql")]
-impl<S: QueryRDF + Debug> BasicSparqlValidator<S> for Pattern {
+use rudof_rdf::rdf_core::query::QueryRDF;
+
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Pattern {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn check<E: Engine<S>>(&self, vn: &S::Term, _cx: &mut CheckCtx<'_, S, E>) -> Result<Check, ValidationError> {
+        let violates = if vn.is_blank_node() {
+            true
+        } else {
+            !self.match_str(vn.lexical_form().as_str())
+        };
+        Ok(if violates { Check::Violate } else { Check::Hold })
+    }
+
+    fn message(&self, _schema: &IRSchema) -> String {
+        format!("Pattern({}) not satisfied", self.pattern())
+    }
+
+    #[cfg(feature = "sparql")]
     fn validate_sparql(
         &self,
         component: &IRComponent,
@@ -57,7 +52,10 @@ impl<S: QueryRDF + Debug> BasicSparqlValidator<S> for Pattern {
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
         _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
+    ) -> Result<Vec<ValidationResult>, ValidationError>
+    where
+        S: QueryRDF,
+    {
         let query_fn = |vn: &S::Term| match self.flags() {
             None => formatdoc! {
                 "ASK {{ FILTER (regex(str({}), {})) }}",
@@ -68,8 +66,7 @@ impl<S: QueryRDF + Debug> BasicSparqlValidator<S> for Pattern {
                 vn, self.pattern(), flags
             },
         };
-
-        validate_ask_with(
+        sparql_ask(
             component,
             shape,
             store,

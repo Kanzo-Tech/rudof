@@ -2,17 +2,24 @@ use crate::error::ValidationError;
 use crate::ir::components::Or;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
-use crate::validator::constraints::Validator;
+use crate::validator::constraints::ConstraintComponent;
 use crate::validator::engine::{Engine, Validate};
-use crate::validator::nodes::FocusNodes;
-use crate::validator::nodes::ValueNodes;
+use crate::validator::iteration::ValueNodeIteration;
+use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
+use rudof_rdf::rdf_core::NeighsRDF;
+use rudof_rdf::rdf_core::SHACLPath;
 use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug> Validator<S> for Or {
-    fn validate<E: Engine<S>>(
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Or {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn validate_native<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,

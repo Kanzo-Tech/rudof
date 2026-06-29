@@ -2,7 +2,7 @@ use prefixmap::DerefIri;
 use prefixmap::IriRef;
 use prefixmap::error::DerefError;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::vocabs::RdfsVocab;
+use rudof_rdf::vocab::RdfsVocab;
 use serde::ser::SerializeMap;
 use serde::{
     Deserialize, Serialize, Serializer,

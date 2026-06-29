@@ -4,7 +4,7 @@ use crate::ValidatorErrors;
 use prefixmap::PrefixMap;
 use prefixmap::error::PrefixMapError;
 use rbe::RbeError;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 use serde::Serialize;
 use serde::ser::SerializeMap;
 use shex_ast::ir::node_constraint::NodeConstraint;

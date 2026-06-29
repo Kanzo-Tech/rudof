@@ -7,9 +7,9 @@ use crate::ir::shape::IRShape;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
 use crate::types::{ClosedInfo, MessageMap, Severity, Target};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::BuildRDF;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::BuildRDF;
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::ShaclVocab;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]

@@ -55,7 +55,7 @@ impl PartialEq for ASTShape {
 mod tests {
     use crate::ast::{ASTNodeShape, ASTShape};
     use rudof_iri::iri;
-    use rudof_rdf::rdf_core::term::Object;
+    use rudof_rdf::term::Object;
 
     #[test]
     fn test_clone() {

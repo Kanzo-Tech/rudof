@@ -4,7 +4,7 @@ use crate::{
     uml_converter::{UmlConverter, UmlGenerationMode, errors::UmlConverterError},
     utils::UsageCount,
 };
-use rudof_rdf::rdf_core::{NeighsRDF, RDFError, term::Triple};
+use rudof_rdf::{NeighsRDF, RDFError, term::Triple};
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;

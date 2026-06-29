@@ -1,5 +1,5 @@
 use crate::validator::nodes::FocusNodes;
-use rudof_rdf::rdf_core::Rdf;
+use rudof_rdf::Rdf;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 

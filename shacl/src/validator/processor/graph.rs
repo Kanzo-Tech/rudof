@@ -13,11 +13,11 @@ use crate::validator::processor::{ShaclProcessor, run};
 use crate::validator::report::ValidationResult;
 use crate::validator::store::{Graph, Store};
 #[cfg(not(feature = "sparql"))]
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 #[cfg(not(target_family = "wasm"))]
-use rudof_rdf::rdf_core::RDFFormat;
+use rudof_rdf::RDFFormat;
 #[cfg(not(feature = "sparql"))]
-use rudof_rdf::rdf_impl::OxigraphInMemory;
+use rudof_rdf::backend::OxigraphInMemory;
 #[cfg(feature = "sparql")]
 use sparql_service::RdfData;
 #[cfg(not(target_family = "wasm"))]
@@ -51,7 +51,7 @@ impl GraphValidation {
     /// use shacl::validator::processor::GraphValidation;
     /// use shacl::validator::ShaclValidationMode;
     /// use shacl::validator::processor::ShaclProcessor;
-    /// use rudof_rdf::rdf_core::RDFFormat;
+    /// use rudof_rdf::RDFFormat;
     ///
     /// let graph_validation = GraphValidation::from_path(
     ///     "../examples/book_conformant.ttl", // example graph (refer to the examples folder)

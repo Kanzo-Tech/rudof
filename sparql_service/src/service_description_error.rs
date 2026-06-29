@@ -1,4 +1,4 @@
-use rudof_rdf::{rdf_core::RDFError, rdf_impl::OxigraphInMemoryError};
+use rudof_rdf::{RDFError, backend::OxigraphInMemoryError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]

@@ -2,12 +2,12 @@ use crate::ast::ASTComponent;
 use crate::rdf::parsers::non_shape::message;
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{
+use rudof_rdf::parser::rdf_node_parser::constructors::{
     SingleBoolPropertyParser, SingleStringPropertyParser, ValuesPropertyParser,
 };
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::vocabs::{OwlVocab, ShaclVocab};
-use rudof_rdf::rdf_core::{NeighsRDF, ParseCtx, RDFError};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::vocab::{OwlVocab, ShaclVocab};
+use rudof_rdf::{NeighsRDF, ParseCtx, RDFError};
 use std::collections::HashSet;
 use std::marker::PhantomData;
 

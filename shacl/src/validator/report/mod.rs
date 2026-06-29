@@ -1,7 +1,7 @@
 use crate::types::Severity;
 use prefixmap::PrefixMap;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{BuildRDF, NeighsRDF, Rdf};
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{BuildRDF, NeighsRDF, Rdf};
 use std::fmt::{Display, Formatter};
 
 mod result;
@@ -9,7 +9,7 @@ mod sorting;
 
 use crate::error::ValidationError;
 pub use result::ValidationResult;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 pub use sorting::ValidationReportSorting;
 
 #[derive(Debug, Clone)]

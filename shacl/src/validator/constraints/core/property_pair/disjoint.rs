@@ -7,12 +7,12 @@ use crate::validator::iteration::{IterationStrategy, ValueNodeIteration};
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::SHACLPath;
-use rudof_rdf::rdf_core::term::{Object, Triple};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::SHACLPath;
+use rudof_rdf::term::{Object, Triple};
 use std::fmt::Debug;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::query::QueryRDF;
+use rudof_rdf::query::QueryRDF;
 
 /// `sh:disjoint` — the value-node set is disjoint from `<focus, iri, ?>`.
 pub(crate) struct Disjoint<'a>(pub &'a IriS);

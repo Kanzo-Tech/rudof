@@ -2,7 +2,7 @@ use std::fmt;
 
 use prefixmap::error::DerefError;
 use prefixmap::{DerefIri, IriRef};
-use rudof_rdf::rdf_core::term::literal::NumericLiteral;
+use rudof_rdf::term::literal::NumericLiteral;
 use serde::{
     Deserialize, Serialize, Serializer,
     de::{self, MapAccess, Visitor},

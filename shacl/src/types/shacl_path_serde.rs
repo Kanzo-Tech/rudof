@@ -1,7 +1,7 @@
 //! Local serde adapter giving `Deserialize` for [`SHACLPath`].
 //!
 //! `SHACLPath` lives in `rudof_rdf` and only derives `Serialize` (see
-//! `rudof_rdf/src/rdf_core/shacl_path.rs`). Rather than reach across the crate
+//! `rudof_rdf/src/path/shacl_path.rs`). Rather than reach across the crate
 //! boundary, we recover the missing `Deserialize` direction locally with a
 //! shadow enum whose wire shape is identical to `SHACLPath`'s derived
 //! `Serialize` (same variant names, same field names, same leaf types). This is
@@ -11,7 +11,7 @@
 //! serialize direction keeps `SHACLPath`'s own derive.
 
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::SHACLPath;
+use rudof_rdf::SHACLPath;
 use serde::{Deserialize, Deserializer};
 
 /// Mirror of [`SHACLPath`] that derives `Deserialize`. Kept private; converted

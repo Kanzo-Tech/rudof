@@ -4,8 +4,8 @@ mod tests {
     use crate::rdf::ShaclParser;
     use crate::validator::ShaclValidationMode;
     use crate::validator::processor::{DataValidation, ShaclProcessor};
-    use rudof_rdf::rdf_core::RDFFormat;
-    use rudof_rdf::rdf_impl::ReaderMode;
+    use rudof_rdf::RDFFormat;
+    use rudof_rdf::backend::ReaderMode;
     use sparql_service::RdfData;
 
     #[test]

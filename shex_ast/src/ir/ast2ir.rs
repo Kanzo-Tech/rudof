@@ -24,7 +24,7 @@ use rbe::{Cardinality, Pending, RbeError, SingleCond};
 use rbe::{Component, MatchCond, Max, Min, RbeStruct, RbeTable};
 use rudof_iri::IriS;
 use rudof_iri::error::IriSError;
-use rudof_rdf::rdf_core::term::{
+use rudof_rdf::term::{
     Object,
     literal::{ConcreteLiteral, NumericLiteral},
 };

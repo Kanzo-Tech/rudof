@@ -6,10 +6,10 @@ use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::SHACLPath;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::Literal;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::SHACLPath;
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::Literal;
 use std::collections::HashMap;
 use std::fmt::Debug;
 

@@ -15,8 +15,8 @@ use crate::ast::ASTComponent;
 use crate::types::{MessageMap, NodeKind, Value};
 use prefixmap::{IriRef, PrefixMap};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang};
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::{ConcreteLiteral, Lang};
 use std::collections::HashSet;
 
 /// Fold over a single SHACL component. Override the arms of interest; the rest

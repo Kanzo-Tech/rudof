@@ -2,9 +2,9 @@ use crate::error::ValidationError;
 use crate::types::{MessageMap, Severity};
 use crate::validator::report::error_mapper;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{BuildRDF, NeighsRDF, ParseCtx, RdfFocus, SHACLPath};
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{BuildRDF, NeighsRDF, ParseCtx, RdfFocus, SHACLPath};
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 

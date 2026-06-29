@@ -2,10 +2,10 @@ use crate::ast::ASTComponent;
 use crate::types::Value;
 use prefixmap::IriRef;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
-use rudof_rdf::rdf_core::term::{Iri, Object, Term};
-use rudof_rdf::rdf_core::{NeighsRDF, RDFError, Rdf};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::term::literal::ConcreteLiteral;
+use rudof_rdf::term::{Iri, Object, Term};
+use rudof_rdf::{NeighsRDF, RDFError, Rdf};
 
 pub(crate) fn parse_components_for_iri<RDF, P>(
     iri: IriS,

@@ -4,24 +4,22 @@ use crate::{
 };
 use prefixmap::IriRef;
 use rudof_iri::iri;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::ParserExt;
-use rudof_rdf::rdf_core::vocabs::ShexRVocab;
+use rudof_rdf::parser::rdf_node_parser::ParserExt;
+use rudof_rdf::vocab::ShexRVocab;
 use rudof_rdf::{
-    rdf_core::{
-        NeighsRDF, RDFError, Rdf,
-        parser::{
-            RDFParse,
-            rdf_node_parser::{
-                RDFNodeParse,
-                constructors::{
-                    HasTypeParser, IriParser, IsIriParser, SetFocusParser, SingleBoolPropertyParser,
-                    SingleInstanceParser, SingleValuePropertyParser, SuccessParser, TermParser,
-                },
+    NeighsRDF, RDFError, Rdf,
+    parser::{
+        RDFParse,
+        rdf_node_parser::{
+            RDFNodeParse,
+            constructors::{
+                HasTypeParser, IriParser, IsIriParser, SetFocusParser, SingleBoolPropertyParser,
+                SingleInstanceParser, SingleValuePropertyParser, SuccessParser, TermParser,
             },
         },
-        term::Object,
     },
     rdf_parser,
+    term::Object,
 };
 
 pub struct ShExRParser<RDF>

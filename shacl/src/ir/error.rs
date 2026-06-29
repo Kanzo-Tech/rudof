@@ -2,10 +2,10 @@ use crate::ast::error::ASTError;
 use crate::ir::ShapeLabelIdx;
 use crate::rdf::error::ShaclParserError;
 use prefixmap::IriRefError;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::utils::RDFRegexError;
-use rudof_rdf::rdf_core::{RDFError, Rdf, SHACLPath};
-use rudof_rdf::rdf_impl::OxigraphInMemoryError;
+use rudof_rdf::term::Object;
+use rudof_rdf::utils::RDFRegexError;
+use rudof_rdf::{RDFError, Rdf, SHACLPath};
+use rudof_rdf::backend::OxigraphInMemoryError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

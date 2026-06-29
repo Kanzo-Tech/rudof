@@ -5,7 +5,7 @@ use std::{
 };
 
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::vocabs::RdfsVocab;
+use rudof_rdf::vocab::RdfsVocab;
 use serde::{Deserialize, Serialize};
 use shex_validation::ShExConfig;
 use thiserror::Error;

@@ -6,9 +6,9 @@ use crate::validator::engine::focus_nodes_ops::FocusNodesOps;
 use crate::validator::engine::value_nodes_ops::ValueNodesOps;
 use crate::validator::nodes::FocusNodes;
 use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 

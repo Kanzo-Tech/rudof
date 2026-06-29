@@ -1,6 +1,6 @@
 use std::result;
 
-use rudof_rdf::rdf_core::term::literal::NumericLiteral;
+use rudof_rdf::term::literal::NumericLiteral;
 use rust_decimal::prelude::*;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};

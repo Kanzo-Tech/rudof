@@ -4,8 +4,8 @@ use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Literal};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::term::literal::{ConcreteLiteral, Literal};
 use std::fmt::Debug;
 
 /// `sh:datatype` — each value node is a literal of the given datatype.

@@ -15,9 +15,9 @@ use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::query::QueryRDF;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::query::QueryRDF;
+use rudof_rdf::term::Object;
+use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
 /// Outcome of checking a single item against a constraint component.

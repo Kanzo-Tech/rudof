@@ -679,10 +679,10 @@ const fn safe_char(b: u8) -> bool {
 /// Returns the path of the converted file plus the [`NativeFormat`] that should be passed to `-F` for it.
 pub async fn convert_to_native(
     source: &Path,
-    source_format: &rudof_rdf::rdf_core::RDFFormat,
+    source_format: &rudof_rdf::RDFFormat,
     dest_dir: &Path,
 ) -> Result<(PathBuf, NativeFormat), QleverError> {
-    use rudof_rdf::rdf_core::RDFFormat;
+    use rudof_rdf::RDFFormat;
     use oxrdfio::{RdfFormat as OxRdfFormat, RdfParser, RdfSerializer};
     use tokio::io::AsyncReadExt;
 
@@ -736,8 +736,8 @@ pub async fn convert_to_native(
     Ok((target, target_native))
 }
 
-pub(super) fn rdf_format_to_oxrdfio(f: &rudof_rdf::rdf_core::RDFFormat) -> oxrdfio::RdfFormat {
-    use rudof_rdf::rdf_core::RDFFormat;
+pub(super) fn rdf_format_to_oxrdfio(f: &rudof_rdf::RDFFormat) -> oxrdfio::RdfFormat {
+    use rudof_rdf::RDFFormat;
     use oxrdfio::RdfFormat as Ox;
     match f {
         RDFFormat::Turtle => Ox::Turtle,

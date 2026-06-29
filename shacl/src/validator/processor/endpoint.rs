@@ -7,7 +7,7 @@ use crate::validator::processor::{ShaclProcessor, run};
 use crate::validator::report::ValidationResult;
 use crate::validator::store::{Endpoint, Store};
 use prefixmap::PrefixMap;
-use rudof_rdf::rdf_impl::OxigraphEndpoint;
+use rudof_rdf::backend::OxigraphEndpoint;
 
 // TODO - Move to validation::algorithms module
 /// The endpoint Graph Validation Algorithm

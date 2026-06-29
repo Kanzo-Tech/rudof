@@ -1,6 +1,6 @@
 use crate::{NodeId, VisualRDFGraph, errors::RdfVisualizerError};
-use rudof_rdf::rdf_core::vocabs::RdfVocab;
-use rudof_rdf::rdf_core::{
+use rudof_rdf::vocab::RdfVocab;
+use rudof_rdf::{
     NeighsRDF, RDFError, Rdf,
     term::{Iri, IriOrBlankNode, Object},
 };

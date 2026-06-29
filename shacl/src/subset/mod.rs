@@ -1,7 +1,7 @@
 //! Capa-4 graph-subset recorder (prototype).
 //!
 //! Every read performed by the validator and parser funnels through the single
-//! primitive [`NeighsRDF::triples_matching`](rudof_rdf::rdf_core::NeighsRDF::triples_matching).
+//! primitive [`NeighsRDF::triples_matching`](rudof_rdf::NeighsRDF::triples_matching).
 //! That makes a *generic decorator* over that one method enough to record the
 //! exact triples a run touches — the "visited frontier" — which can then be
 //! materialized into a SHACL subgraph. The decorator
@@ -20,8 +20,8 @@ mod recording_rdf;
 
 pub use recording_rdf::RecordingRdf;
 
-use rudof_rdf::rdf_core::term::Triple;
-use rudof_rdf::rdf_core::{BuildRDF, Rdf};
+use rudof_rdf::term::Triple;
+use rudof_rdf::{BuildRDF, Rdf};
 use std::cell::RefCell;
 use std::collections::HashSet;
 
@@ -102,8 +102,8 @@ impl<B: BuildRDF> SubsetRecorder<B> for BuildRdfRecorder<B> {
 #[cfg(test)]
 mod tests {
     use super::{BuildRdfRecorder, NullRecorder, RecordingRdf};
-    use rudof_rdf::rdf_core::{Any, BuildRDF, NeighsRDF, RDFFormat};
-    use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
+    use rudof_rdf::{Any, BuildRDF, NeighsRDF, RDFFormat};
+    use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 
     fn sample_graph() -> OxigraphInMemory {
         let data = r#"

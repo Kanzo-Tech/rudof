@@ -1,9 +1,9 @@
 use crate::error::{IRError, ShaclParserError};
 use crate::ir::ShapeLabelIdx;
-use rudof_rdf::rdf_core::{RDFError, Rdf};
-use rudof_rdf::rdf_impl::OxigraphInMemoryError;
+use rudof_rdf::{RDFError, Rdf};
+use rudof_rdf::backend::OxigraphInMemoryError;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_impl::OxigraphEndpointError;
+use rudof_rdf::backend::OxigraphEndpointError;
 #[cfg(feature = "sparql")]
 use sparql_service::RdfDataError;
 use std::io;

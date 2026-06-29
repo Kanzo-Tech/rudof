@@ -1,7 +1,7 @@
 use super::SubsetRecorder;
 use prefixmap::{PrefixMap, PrefixMapError};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::{Matcher, NeighsRDF, Rdf};
+use rudof_rdf::{Matcher, NeighsRDF, Rdf};
 use std::fmt::{self, Debug};
 
 /// A non-owning decorator over a [`NeighsRDF`] store that records the triples a

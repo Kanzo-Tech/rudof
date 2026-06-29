@@ -1,4 +1,4 @@
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 
 /// State used during the parsing process
 /// This is used to keep track of pending shapes to be parsed

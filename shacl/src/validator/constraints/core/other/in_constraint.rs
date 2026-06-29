@@ -3,8 +3,8 @@ use crate::ir::IRSchema;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::term::Object;
 use std::fmt::Debug;
 
 /// `sh:in` — each value node is a member of the given list.

@@ -8,8 +8,8 @@ mod value_nodes_ops;
 use crate::ir::{IRComponent, IRPropertyShape, IRSchema, IRShape, ShapeLabelIdx};
 use crate::types::Target;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::term::Object;
+use rudof_rdf::{NeighsRDF, SHACLPath};
 #[cfg(feature = "sparql")]
 use std::collections::HashSet;
 
@@ -18,7 +18,7 @@ use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
 pub use native::NativeEngine;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::query::QueryRDF;
+use rudof_rdf::query::QueryRDF;
 #[cfg(feature = "sparql")]
 pub use sparql::SparqlEngine;
 pub use validate::{Validate, validate_focus};

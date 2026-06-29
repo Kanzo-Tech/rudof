@@ -7,10 +7,10 @@ use crate::validator::engine::{Engine, Validate};
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::SHACLPath;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::SHACLPath;
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::ShaclVocab;
 use std::collections::HashSet;
 use std::fmt::Debug;
 

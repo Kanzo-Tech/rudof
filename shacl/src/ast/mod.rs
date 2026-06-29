@@ -21,7 +21,7 @@ pub use property_shape::ASTPropertyShape;
 pub use reifier_info::ReifierInfo;
 pub use visitor::ComponentVisitor;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 pub use schema::ASTSchema;
 pub use shape::ASTShape;
 use std::collections::HashSet;

@@ -7,7 +7,7 @@ use std::io;
 use std::path::PathBuf;
 use thiserror::Error;
 
-use rudof_rdf::rdf_impl::OxigraphEndpointError;
+use rudof_rdf::backend::OxigraphEndpointError;
 
 /// Errors returned by [`QleverGraphContainer`](super::QleverGraphContainer) and
 /// the helpers that build / serve QLever indexes.

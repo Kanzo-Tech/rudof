@@ -1,8 +1,8 @@
 use crate::ast::ReifierInfo;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{SingleBoolPropertyParser, ValuesPropertyParser};
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::parser::rdf_node_parser::constructors::{SingleBoolPropertyParser, ValuesPropertyParser};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::vocab::ShaclVocab;
 
 pub(crate) fn reifier_shape<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Option<ReifierInfo>> {
     ValuesPropertyParser::new(ShaclVocab::sh_reifier_shape()).then(move |vs| {

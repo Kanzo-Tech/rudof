@@ -10,7 +10,7 @@ use colored::*;
 use prefixmap::{IriRef, PrefixMap};
 use pretty::{Arena, DocAllocator, DocBuilder, RefDoc};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang, NumericLiteral};
+use rudof_rdf::term::literal::{ConcreteLiteral, Lang, NumericLiteral};
 use rust_decimal::Decimal;
 use std::{borrow::Cow, io, marker::PhantomData};
 use tracing::trace;

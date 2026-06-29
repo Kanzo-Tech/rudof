@@ -29,7 +29,7 @@ use nom_locate::LocatedSpan;
 use prefixmap::IriRef;
 use regex::Regex;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::{
+use rudof_rdf::{
     RDFError,
     term::literal::{ConcreteLiteral, Lang, NumericLiteral},
 };
@@ -1388,7 +1388,7 @@ pub fn hex_refactor(input: Span) -> IRes<Span> {
     re_find(HEX)(input)
 }
 
-use rudof_rdf::rdf_core::vocabs::RdfVocab;
+use rudof_rdf::vocab::RdfVocab;
 
 pub fn re_find(re: &Lazy<Regex>) -> impl Fn(Span) -> IRes<Span> {
     move |i| {

@@ -1,5 +1,5 @@
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::BuildRDF;
+use rudof_rdf::BuildRDF;
 use thiserror::Error;
 
 use crate::Node;
@@ -57,7 +57,7 @@ impl Materializer {
     /// source.
     ///
     /// The graph type `G` must implement [`BuildRDF`].  Use
-    /// [`rudof_rdf::rdf_impl::OxigraphInMemory`] for an in-memory implementation.
+    /// [`rudof_rdf::backend::OxigraphInMemory`] for an in-memory implementation.
     ///
     /// If `initial_node` is `Some`, it is used as the root subject; otherwise a
     /// fresh blank node is created.
@@ -70,8 +70,8 @@ impl Materializer {
     where
         G: BuildRDF,
         G::BNode: Clone,
-        G::Subject: TryFrom<rudof_rdf::rdf_core::term::Object>,
-        G::Term: From<rudof_rdf::rdf_core::term::Object> + From<G::BNode>,
+        G::Subject: TryFrom<rudof_rdf::term::Object>,
+        G::Term: From<rudof_rdf::term::Object> + From<G::BNode>,
         G::IRI: From<IriS>,
         G::Subject: From<G::BNode>,
         G::Err: std::fmt::Display,
@@ -137,8 +137,8 @@ impl Materializer {
     where
         G: BuildRDF,
         G::BNode: Clone,
-        G::Subject: TryFrom<rudof_rdf::rdf_core::term::Object>,
-        G::Term: From<rudof_rdf::rdf_core::term::Object> + From<G::BNode>,
+        G::Subject: TryFrom<rudof_rdf::term::Object>,
+        G::Term: From<rudof_rdf::term::Object> + From<G::BNode>,
         G::IRI: From<IriS>,
         G::Subject: From<G::BNode>,
         G::Err: std::fmt::Display,
@@ -165,8 +165,8 @@ impl Materializer {
     where
         G: BuildRDF,
         G::BNode: Clone,
-        G::Subject: TryFrom<rudof_rdf::rdf_core::term::Object>,
-        G::Term: From<rudof_rdf::rdf_core::term::Object> + From<G::BNode>,
+        G::Subject: TryFrom<rudof_rdf::term::Object>,
+        G::Term: From<rudof_rdf::term::Object> + From<G::BNode>,
         G::IRI: From<IriS>,
         G::Subject: From<G::BNode>,
         G::Err: std::fmt::Display,
@@ -188,8 +188,8 @@ impl Materializer {
     where
         G: BuildRDF,
         G::BNode: Clone,
-        G::Subject: TryFrom<rudof_rdf::rdf_core::term::Object>,
-        G::Term: From<rudof_rdf::rdf_core::term::Object> + From<G::BNode>,
+        G::Subject: TryFrom<rudof_rdf::term::Object>,
+        G::Term: From<rudof_rdf::term::Object> + From<G::BNode>,
         G::IRI: From<IriS>,
         G::Subject: From<G::BNode>,
         G::Err: std::fmt::Display,
@@ -266,7 +266,7 @@ impl Materializer {
     ) -> Result<(), MaterializeError>
     where
         G: BuildRDF,
-        G::Term: From<rudof_rdf::rdf_core::term::Object>,
+        G::Term: From<rudof_rdf::term::Object>,
         G::Err: std::fmt::Display,
     {
         for act in acts {
@@ -299,8 +299,8 @@ impl Materializer {
 mod tests {
     use oxrdf::{NamedNode as OxNamedNode, NamedOrBlankNode as OxSubject, Term as OxTerm};
     use rudof_iri::{IriS, iri};
-    use rudof_rdf::rdf_core::{Any, NeighsRDF};
-    use rudof_rdf::rdf_impl::OxigraphInMemory;
+    use rudof_rdf::{Any, NeighsRDF};
+    use rudof_rdf::backend::OxigraphInMemory;
 
     use super::*;
     use crate::Node;

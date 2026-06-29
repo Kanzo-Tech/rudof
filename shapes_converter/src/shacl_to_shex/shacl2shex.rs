@@ -2,7 +2,7 @@ use super::{Shacl2ShExConfig, Shacl2ShExError};
 use prefixmap::IriRef;
 use rudof_iri::IriS;
 use rudof_iri::iri;
-use rudof_rdf::rdf_core::{SHACLPath, term::Object};
+use rudof_rdf::{SHACLPath, term::Object};
 use shacl::ir::{IRComponent, IRNodeShape, IRPropertyShape, IRSchema, IRShape};
 use shacl::types::Target;
 use shex_ast::{

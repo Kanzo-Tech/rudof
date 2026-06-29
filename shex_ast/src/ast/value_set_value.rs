@@ -7,7 +7,7 @@ use crate::literal_exclusion::LiteralExclusion;
 use prefixmap::error::DerefError;
 use prefixmap::{DerefIri, IriRef};
 use rudof_iri::error::IriSError;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang};
+use rudof_rdf::term::literal::{ConcreteLiteral, Lang};
 use rust_decimal::Decimal;
 use serde::ser::SerializeMap;
 use serde::{

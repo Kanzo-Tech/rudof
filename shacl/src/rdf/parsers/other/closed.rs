@@ -1,12 +1,12 @@
 use crate::ast::ASTComponent;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{
+use rudof_rdf::parser::rdf_node_parser::constructors::{
     SingleBoolPropertyParser, SingleValuePropertyAsListParser,
 };
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::term::Iri;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{NeighsRDF, RDFError};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::term::Iri;
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{NeighsRDF, RDFError};
 use std::collections::HashSet;
 
 pub(crate) fn closed<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {

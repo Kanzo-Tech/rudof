@@ -1,9 +1,9 @@
 use crate::common::error::TestSuiteError;
 use crate::common::test_instance::TestInstance;
 use oxrdf::{NamedNode, NamedOrBlankNode, Term};
-use rudof_rdf::rdf_core::term::Triple;
-use rudof_rdf::rdf_core::vocabs::{RdfVocab, ShaclTestVocab, TestManifestVocab};
-use rudof_rdf::rdf_core::{Any, NeighsRDF, RDFFormat};
+use rudof_rdf::term::Triple;
+use rudof_rdf::vocab::{RdfVocab, ShaclTestVocab, TestManifestVocab};
+use rudof_rdf::{Any, NeighsRDF, RDFFormat};
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
 use shacl::validator::store::{Graph, Store};

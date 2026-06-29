@@ -1,9 +1,9 @@
 use crate::types::Target;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::IrisPropertyParser;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::parser::rdf_node_parser::constructors::IrisPropertyParser;
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::ShaclVocab;
 
 pub(crate) fn targets_class<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<Target>> {
     IrisPropertyParser::new(ShaclVocab::sh_target_class()).flat_map(move |ts| {

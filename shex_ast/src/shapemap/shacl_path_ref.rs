@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use prefixmap::error::PrefixMapError;
 use prefixmap::{DerefIri, IriRef, PrefixMap};
-use rudof_rdf::rdf_core::SHACLPath;
+use rudof_rdf::SHACLPath;
 use serde::Serialize;
 
 /// SHACLPathRef is similar to SHACLPath but uses IriRef for predicates

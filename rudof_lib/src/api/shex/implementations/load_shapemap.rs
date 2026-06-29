@@ -8,7 +8,7 @@ use crate::{
     utils::get_base_iri,
 };
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::Rdf;
+use rudof_rdf::Rdf;
 use shex_ast::{ShapeMapParser, shapemap::QueryShapeMap};
 use shex_validation::Validator as ShExValidator;
 

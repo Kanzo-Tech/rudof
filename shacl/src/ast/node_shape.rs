@@ -2,7 +2,7 @@ use crate::ast::error::ASTError;
 use crate::ast::{ASTComponent, ASTSchema, defined_properties_for};
 use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};

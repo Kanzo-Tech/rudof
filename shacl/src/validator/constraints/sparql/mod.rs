@@ -1,4 +1,4 @@
-use rudof_rdf::rdf_core::SHACLPath;
+use rudof_rdf::SHACLPath;
 
 /// Converts a [`SHACLPath`] to its SPARQL property path [String] representation.
 ///

@@ -11,8 +11,8 @@
 //!    exactly the same frontier (a fixpoint).
 #![cfg(not(target_family = "wasm"))]
 
-use rudof_rdf::rdf_core::{BuildRDF, NeighsRDF, RDFFormat};
-use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::{BuildRDF, NeighsRDF, RDFFormat};
+use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ast::ASTSchema;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;

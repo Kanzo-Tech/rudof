@@ -1,12 +1,12 @@
 use crate::validator::store::Store;
-use rudof_rdf::rdf_impl::OxigraphInMemory;
+use rudof_rdf::backend::OxigraphInMemory;
 // These are only used by `from_path`, which is not available on wasm.
 #[cfg(not(target_family = "wasm"))]
 use crate::error::ValidationError;
 #[cfg(not(target_family = "wasm"))]
-use rudof_rdf::rdf_core::RDFFormat;
+use rudof_rdf::RDFFormat;
 #[cfg(not(target_family = "wasm"))]
-use rudof_rdf::rdf_impl::ReaderMode;
+use rudof_rdf::backend::ReaderMode;
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 #[cfg(feature = "sparql")]

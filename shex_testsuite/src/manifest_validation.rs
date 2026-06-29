@@ -14,11 +14,11 @@ use prefixmap::IriRef;
 #[cfg(not(target_family = "wasm"))]
 use rudof_iri::IriS;
 #[cfg(not(target_family = "wasm"))]
-use rudof_rdf::rdf_core::term::{Object, literal::ConcreteLiteral};
+use rudof_rdf::term::{Object, literal::ConcreteLiteral};
 #[cfg(not(target_family = "wasm"))]
 use rudof_rdf::{
-    rdf_core::RDFFormat,
-    rdf_impl::{OxigraphInMemory, ReaderMode},
+    RDFFormat,
+    backend::{OxigraphInMemory, ReaderMode},
 };
 use serde::de::{self};
 use serde::{Deserialize, Deserializer, Serialize};

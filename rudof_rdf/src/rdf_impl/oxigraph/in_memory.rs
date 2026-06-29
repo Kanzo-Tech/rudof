@@ -22,7 +22,6 @@ use std::{
     fmt::{Debug, Display, Formatter},
     io::{self, Cursor, Write},
     str::FromStr,
-    sync::Arc,
 };
 #[cfg(not(target_family = "wasm"))]
 use std::{fs::File, io::BufReader, path::Path};
@@ -46,7 +45,7 @@ pub struct OxigraphInMemory {
     focus: Option<OxTerm>,
 
     /// Underlying RDF graph.
-    graph: Arc<Graph>,
+    graph: Graph,
 
     /// Prefix map used for CURIE resolution and qualification.
     pm: PrefixMap,
@@ -190,7 +189,7 @@ impl OxigraphInMemory {
         };
 
         let mut turtle_reader = turtle_parser.for_reader(reader);
-        let graph = Arc::make_mut(&mut self.graph);
+        let graph = &mut self.graph;
 
         for triple_result in turtle_reader.by_ref() {
             let triple = match handle_parse_error(triple_result, reader_mode, |e| {
@@ -245,7 +244,7 @@ impl OxigraphInMemory {
     ) -> Result<(), OxigraphInMemoryError> {
         let parser = NTriplesParser::new();
         let mut nt_reader = parser.for_reader(reader);
-        let graph = Arc::make_mut(&mut self.graph);
+        let graph = &mut self.graph;
 
         for triple_result in nt_reader.by_ref() {
             let triple =
@@ -279,7 +278,7 @@ impl OxigraphInMemory {
     ) -> Result<(), OxigraphInMemoryError> {
         let parser = RdfXmlParser::new();
         let mut xml_reader = parser.for_reader(reader);
-        let graph = Arc::make_mut(&mut self.graph);
+        let graph = &mut self.graph;
 
         for triple_result in xml_reader.by_ref() {
             let triple = match handle_parse_error(triple_result, reader_mode, |e| OxigraphInMemoryError::RDFXMLError {
@@ -313,7 +312,7 @@ impl OxigraphInMemory {
     ) -> Result<(), OxigraphInMemoryError> {
         let parser = NQuadsParser::new();
         let mut nq_reader = parser.for_reader(reader);
-        let graph = Arc::make_mut(&mut self.graph);
+        let graph = &mut self.graph;
 
         for triple_result in nq_reader.by_ref() {
             let triple = match handle_parse_error(triple_result, reader_mode, |e| OxigraphInMemoryError::NQuadsError {
@@ -346,7 +345,7 @@ impl OxigraphInMemory {
     ) -> Result<(), OxigraphInMemoryError> {
         let parser = JsonLdParser::new();
         let mut jsonld_reader = parser.for_reader(reader);
-        let graph = Arc::make_mut(&mut self.graph);
+        let graph = &mut self.graph;
 
         for triple_result in jsonld_reader.by_ref() {
             let triple = match handle_parse_error(triple_result, reader_mode, |e| OxigraphInMemoryError::JsonLDError {
@@ -482,7 +481,7 @@ impl OxigraphInMemory {
         O: Into<TermRef<'a>>,
     {
         let triple = TripleRef::new(subj.into(), pred.into(), obj.into());
-        Arc::make_mut(&mut self.graph).insert(triple);
+        self.graph.insert(triple);
         Ok(())
     }
 }
@@ -997,7 +996,7 @@ impl BuildRDF for OxigraphInMemory {
         O: Into<Self::Term>,
     {
         let triple = OxTriple::new(subj.into(), pred.into(), obj.into());
-        Arc::make_mut(&mut self.graph).insert(&triple);
+        self.graph.insert(&triple);
         Ok(())
     }
 
@@ -1015,7 +1014,7 @@ impl BuildRDF for OxigraphInMemory {
         O: Into<Self::Term>,
     {
         let triple = OxTriple::new(subj.into(), pred.into(), obj.into());
-        Arc::make_mut(&mut self.graph).remove(&triple);
+        self.graph.remove(&triple);
         Ok(())
     }
 
@@ -1033,7 +1032,7 @@ impl BuildRDF for OxigraphInMemory {
         T: Into<Self::Term>,
     {
         let triple = OxTriple::new(node.into(), rdf_type(), type_.into());
-        Arc::make_mut(&mut self.graph).insert(&triple);
+        self.graph.insert(&triple);
         Ok(())
     }
 
@@ -1045,7 +1044,7 @@ impl BuildRDF for OxigraphInMemory {
     fn empty() -> Self {
         OxigraphInMemory {
             focus: None,
-            graph: Graph::new().into(),
+            graph: Graph::new(),
             pm: PrefixMap::new(),
             base: None,
             bnode_counter: 0,

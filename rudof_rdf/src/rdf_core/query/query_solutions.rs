@@ -100,9 +100,9 @@ impl<S: Rdf> QuerySolutions<S> {
     /// Returns an error if:
     /// - Writing to the output fails
     /// - Term conversion fails when processing solutions
-    pub fn write_table(
+    pub fn write_table<W: Write>(
         &self,
-        writer: &mut dyn Write,
+        writer: &mut W,
         output_format: &TableFormat,
         options: &TableOptions,
     ) -> Result<(), RDFError> {
@@ -152,9 +152,9 @@ impl<S: Rdf> IntoIterator for QuerySolutions<S> {
     }
 }
 
-fn write_csv_table<S: Rdf>(
+fn write_csv_table<S: Rdf, W: Write>(
     query_solutions: &QuerySolutions<S>,
-    writer: &mut dyn Write,
+    writer: &mut W,
     prefixmap: &PrefixMap,
 ) -> Result<(), RDFError> {
     if query_solutions.solutions.is_empty() {
@@ -199,9 +199,9 @@ fn write_csv_table<S: Rdf>(
     Ok(())
 }
 
-fn write_ascii_table<S: Rdf>(
+fn write_ascii_table<S: Rdf, W: Write>(
     query_solutions: &QuerySolutions<S>,
-    writer: &mut dyn Write,
+    writer: &mut W,
     options: &TableOptions,
     prefixmap: &PrefixMap,
 ) -> Result<(), RDFError> {

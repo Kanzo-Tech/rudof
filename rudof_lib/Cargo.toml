@@ -51,3 +51,14 @@ termtree.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 url.workspace = true
+
+# wasm: the curated `form` session façade builds on the same wasm-clean crates
+# the binding used to depend on directly (shacl without the `sparql` feature,
+# which runs the native engine and is wasm-buildable). No sparql_service/reqwest.
+[target.'cfg(target_family = "wasm")'.dependencies]
+oxrdf = { workspace = true }
+prefixmap = { workspace = true }
+rudof_iri = { workspace = true }
+rudof_rdf = { workspace = true }
+shacl = { path = "../shacl", default-features = false }
+thiserror = { workspace = true }

@@ -77,7 +77,7 @@ macro_rules! impl_validators_via_validate {
     ($ty:ty) => {
         impl<S> crate::validator::constraints::NativeValidator<S> for $ty
         where
-            S: rudof_rdf::rdf_core::NeighsRDF + std::fmt::Debug + 'static,
+            S: rudof_rdf::rdf_core::NeighsRDF + std::fmt::Debug,
         {
             fn validate_native<E: crate::validator::engine::Engine<S>>(
                 &self,
@@ -106,7 +106,7 @@ macro_rules! impl_validators_via_validate {
         #[cfg(feature = "sparql")]
         impl<S> crate::validator::constraints::BasicSparqlValidator<S> for $ty
         where
-            S: rudof_rdf::rdf_core::query::QueryRDF + rudof_rdf::rdf_core::NeighsRDF + std::fmt::Debug + 'static,
+            S: rudof_rdf::rdf_core::query::QueryRDF + rudof_rdf::rdf_core::NeighsRDF + std::fmt::Debug,
         {
             fn validate_sparql(
                 &self,
@@ -160,7 +160,7 @@ macro_rules! gen_native_dispatch {
     ($($V:ident),+ $(,)?) => {
         /// Native constraint dispatch: monomorphises a concrete
         /// `validate_native::<E>` per component — no trait object is created.
-        pub(crate) fn validate_native<S: NeighsRDF + Debug + 'static, E: Engine<S>>(
+        pub(crate) fn validate_native<S: NeighsRDF + Debug, E: Engine<S>>(
             component: &IRComponent,
             shape: &IRShape,
             store: &S,
@@ -186,7 +186,7 @@ macro_rules! gen_sparql_dispatch {
     ($($V:ident),+ $(,)?) => {
         /// SPARQL constraint dispatch (mirror of [`validate_native`], same
         /// component list). SPARQL needs no recursion engine.
-        pub(crate) fn validate_sparql<S: QueryRDF + NeighsRDF + Debug + 'static>(
+        pub(crate) fn validate_sparql<S: QueryRDF + NeighsRDF + Debug>(
             component: &IRComponent,
             shape: &IRShape,
             store: &S,

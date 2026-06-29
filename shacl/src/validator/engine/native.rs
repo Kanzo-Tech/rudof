@@ -34,7 +34,7 @@ impl<'e> NativeEngine<'e> {
     }
 }
 
-impl<RDF: NeighsRDF + Debug + 'static> Engine<RDF> for NativeEngine<'_> {
+impl<RDF: NeighsRDF + Debug> Engine<RDF> for NativeEngine<'_> {
     fn fork(&self) -> Self {
         // Copy the borrowed index ref; start with a fresh empty cache.
         NativeEngine {

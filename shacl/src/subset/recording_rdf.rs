@@ -2,6 +2,7 @@ use super::SubsetRecorder;
 use prefixmap::{PrefixMap, PrefixMapError};
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::{Matcher, NeighsRDF, Rdf};
+use std::fmt::{self, Debug};
 
 /// A non-owning decorator over a [`NeighsRDF`] store that records the triples a
 /// run actually touches.
@@ -37,6 +38,15 @@ impl<'a, R: NeighsRDF, Rec: SubsetRecorder<R>> RecordingRdf<'a, R, Rec> {
     /// recorded subgraph, for [`super::BuildRdfRecorder`]).
     pub fn into_recorder(self) -> Rec {
         self.rec
+    }
+}
+
+/// Forwards to the inner store so the wrapper satisfies the `S: Debug` bound the
+/// validator surface carries (`run`, `Engine<S>`, `Validate<RDF>`). The recorder
+/// is runtime state, not part of the store's identity, so it is omitted.
+impl<R: NeighsRDF + Debug, Rec: SubsetRecorder<R>> Debug for RecordingRdf<'_, R, Rec> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("RecordingRdf").field(&self.inner).finish()
     }
 }
 

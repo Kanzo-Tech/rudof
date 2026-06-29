@@ -18,7 +18,7 @@ use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 #[cfg(feature = "sparql")]
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + 'static> NativeValidator<S> for Class {
+impl<S: NeighsRDF> NativeValidator<S> for Class {
     fn validate_native<E: Engine<S>>(
         &self,
         component: &IRComponent,
@@ -62,7 +62,7 @@ impl<S: NeighsRDF + 'static> NativeValidator<S> for Class {
 }
 
 #[cfg(feature = "sparql")]
-impl<S: QueryRDF + Debug + 'static> BasicSparqlValidator<S> for Class {
+impl<S: QueryRDF + Debug> BasicSparqlValidator<S> for Class {
     fn validate_sparql(
         &self,
         component: &IRComponent,

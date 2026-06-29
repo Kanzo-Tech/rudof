@@ -1,7 +1,7 @@
 use super::in_memory_error::OxigraphInMemoryError;
 #[cfg(feature = "sparql")]
 use crate::rdf_core::query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions, VarName};
-use crate::rdf_core::{AsyncRDF, BuildRDF, FocusRDF, Matcher, NeighsRDF, RDFFormat, Rdf};
+use crate::rdf_core::{AsyncRDF, BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf};
 
 use crate::rdf_core::vocabs::RdfVocab;
 use colored::*;
@@ -41,9 +41,6 @@ use {
 /// an Oxigraph [`Store`].
 #[derive(Default, Clone)]
 pub struct OxigraphInMemory {
-    /// Optional focus term used by [`FocusRDF`] operations.
-    focus: Option<OxTerm>,
-
     /// Underlying RDF graph.
     graph: Graph,
 
@@ -901,31 +898,6 @@ impl AsyncRDF for OxigraphInMemory {
     }
 }
 
-/// Implementation of the `FocusRDF` trait for managing a focus term.
-///
-/// The focus term is used to track a specific RDF term of interest during graph operations.
-/// This can be useful for navigation, querying, or maintaining context during traversals.
-impl FocusRDF for OxigraphInMemory {
-    /// Sets the focus term for this graph.
-    ///
-    /// # Parameters
-    ///
-    /// * `focus` - The term to set as the current focus
-    fn set_focus(&mut self, focus: &Self::Term) {
-        self.focus = Some(focus.clone());
-    }
-
-    /// Returns the current focus term, if one is set.
-    ///
-    /// # Returns
-    ///
-    /// * `Some(&Term)` - If a focus term has been set
-    /// * `None` - If no focus term is currently set
-    fn get_focus(&self) -> Option<&Self::Term> {
-        self.focus.as_ref()
-    }
-}
-
 /// Implementation of the `BuildRDF` trait for constructing and modifying RDF graphs.
 ///
 /// This implementation provides methods to build RDF graphs programmatically by adding
@@ -1061,7 +1033,6 @@ impl BuildRDF for OxigraphInMemory {
     /// A new `OxigraphInMemory` with no triples, prefixes, or base IRI.
     fn empty() -> Self {
         OxigraphInMemory {
-            focus: None,
             graph: Graph::new(),
             pm: PrefixMap::new(),
             base: None,

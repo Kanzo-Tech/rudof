@@ -1,4 +1,4 @@
-use crate::rdf_core::{FocusRDF, RDFError, parser::rdf_node_parser::RDFNodeParse};
+use crate::rdf_core::{NeighsRDF, ParseCtx, RDFError, parser::rdf_node_parser::RDFNodeParse};
 use std::marker::PhantomData;
 
 /// Parser that chooses between two parsers based on a predicate.
@@ -29,14 +29,14 @@ where
 
 impl<RDF, A, B, P, Then, Else> RDFNodeParse<RDF> for IfThenElseParser<A, P, Then, Else>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: Fn(&A) -> bool,
     Then: RDFNodeParse<RDF, Output = B>,
     Else: RDFNodeParse<RDF, Output = B>,
 {
     type Output = B;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         if (self.predicate)(&self.value) {
             self.then_parser.parse_focused(rdf)
         } else {
@@ -68,12 +68,12 @@ where
 
 impl<RDF, A, F, O> RDFNodeParse<RDF> for ApplyParser<A, F, O>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     F: Fn(&A) -> Result<O, RDFError>,
 {
     type Output = O;
 
-    fn parse_focused(&self, _rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, _rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         (self.function)(&self.value)
     }
 }
@@ -93,8 +93,8 @@ pub struct ApplyRdfParser<RDF, F> {
 impl<RDF, F> ApplyRdfParser<RDF, F> {
     pub fn new<A>(function: F) -> Self
     where
-        RDF: FocusRDF,
-        F: Fn(&mut RDF) -> Result<A, RDFError>,
+        RDF: NeighsRDF,
+        F: Fn(&mut ParseCtx<'_, RDF>) -> Result<A, RDFError>,
     {
         Self {
             function,
@@ -105,12 +105,12 @@ impl<RDF, F> ApplyRdfParser<RDF, F> {
 
 impl<RDF, A, F> RDFNodeParse<RDF> for ApplyRdfParser<RDF, F>
 where
-    RDF: FocusRDF,
-    F: Fn(&mut RDF) -> Result<A, RDFError>,
+    RDF: NeighsRDF,
+    F: Fn(&mut ParseCtx<'_, RDF>) -> Result<A, RDFError>,
 {
     type Output = A;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         (self.function)(rdf)
     }
 }

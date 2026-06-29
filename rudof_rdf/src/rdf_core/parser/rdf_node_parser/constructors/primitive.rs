@@ -1,5 +1,5 @@
 use crate::rdf_core::{
-    FocusRDF, RDFError,
+    NeighsRDF, ParseCtx, RDFError,
     parser::rdf_node_parser::RDFNodeParse,
     term::{Iri, IriOrBlankNode, Object, literal::Literal},
 };
@@ -26,11 +26,11 @@ impl<RDF> Default for ObjectParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for ObjectParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Object;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match rdf.get_focus() {
             Some(focus) => {
                 let object: Object = focus.clone().try_into().map_err(|_| RDFError::ExpectedObjectError {
@@ -63,11 +63,11 @@ impl<RDF> Default for TermParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for TermParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = RDF::Term;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match rdf.get_focus() {
             Some(focus) => Ok(focus.clone()),
             None => Err(RDFError::NoFocusNodeError),
@@ -95,11 +95,11 @@ impl<RDF> Default for IriParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for IriParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = RDF::IRI;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match rdf.get_focus() {
             Some(focus) => {
                 let iri: RDF::IRI = RDF::term_as_iri(focus).map_err(|_| RDFError::ExpectedIRIError {
@@ -132,11 +132,11 @@ impl<RDF> LiteralParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for LiteralParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = RDF::Literal;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match rdf.get_focus() {
             Some(focus) => {
                 let lit: RDF::Literal = RDF::term_as_literal(focus).map_err(|_| RDFError::ExpectedLiteralError {
@@ -169,11 +169,11 @@ impl<RDF> BooleanParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for BooleanParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = bool;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let lit = LiteralParser::new().parse_focused(rdf)?;
         lit.to_bool()
             .ok_or_else(|| RDFError::ExpectedBooleanError { term: lit.to_string() })
@@ -200,11 +200,11 @@ impl<RDF> Default for IriOrBlankNodeParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for IriOrBlankNodeParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = IriOrBlankNode;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match rdf.get_focus() {
             Some(focus) => {
                 let subj: RDF::Subject =
@@ -233,7 +233,7 @@ where
 #[derive(Debug, Clone)]
 pub struct TermAsIri<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     term: RDF::Term,
     _marker: PhantomData<RDF>,
@@ -241,7 +241,7 @@ where
 
 impl<RDF> TermAsIri<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     pub fn new(term: RDF::Term) -> Self {
         TermAsIri {
@@ -253,11 +253,11 @@ where
 
 impl<RDF> RDFNodeParse<RDF> for TermAsIri<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = IriS;
 
-    fn parse_focused(&self, _rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, _rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let iri: RDF::IRI =
             <RDF::Term as TryInto<RDF::IRI>>::try_into(self.term.clone()).map_err(|_| RDFError::ExpectedIRIError {
                 term: self.term.to_string(),

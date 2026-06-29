@@ -16,7 +16,7 @@ use super::QleverGraphContainer;
 use super::{OxigraphInMemory, RdfBackendError};
 #[cfg(feature = "sparql")]
 use crate::rdf_core::query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions};
-use crate::rdf_core::{BuildRDF, FocusRDF, Matcher, NeighsRDF, RDFFormat, Rdf};
+use crate::rdf_core::{BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf};
 
 /// Strategy enum that owns one concrete RDF backend.
 #[derive(Debug, Clone)]
@@ -233,28 +233,6 @@ impl QueryRDF for RdfBackend {
             RdfBackend::Endpoint(b) => Ok(b.query_ask(query_str)?),
             #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
             RdfBackend::Qlever(b) => Ok(b.query_ask(query_str)?),
-        }
-    }
-}
-
-impl FocusRDF for RdfBackend {
-    fn set_focus(&mut self, focus: &Self::Term) {
-        match self {
-            RdfBackend::InMemory(b) => b.set_focus(focus),
-            #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
-            RdfBackend::Endpoint(_) => {},
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.set_focus(focus),
-        }
-    }
-
-    fn get_focus(&self) -> Option<&Self::Term> {
-        match self {
-            RdfBackend::InMemory(b) => b.get_focus(),
-            #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
-            RdfBackend::Endpoint(_) => None,
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.get_focus(),
         }
     }
 }

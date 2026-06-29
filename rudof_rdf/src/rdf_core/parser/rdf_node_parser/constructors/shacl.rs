@@ -1,6 +1,6 @@
 use crate::rdf_core::vocabs::ShaclVocab;
 use crate::rdf_core::{
-    FocusRDF, RDFError, SHACLPath,
+    NeighsRDF, ParseCtx, RDFError, SHACLPath,
     parser::rdf_node_parser::{
         RDFNodeParse,
         constructors::{ListParser, SingleValuePropertyParser},
@@ -13,14 +13,14 @@ use rudof_iri::IriS;
 #[derive(Debug, Clone)]
 pub struct ShaclPathParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     term: RDF::Term,
 }
 
 impl<RDF> ShaclPathParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     pub fn new(term: RDF::Term) -> Self {
         Self { term }
@@ -29,11 +29,11 @@ where
 
 impl<RDF> RDFNodeParse<RDF> for ShaclPathParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = SHACLPath;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         // Set focus to the term we want to parse as a path
         rdf.set_focus(&self.term);
 
@@ -59,9 +59,9 @@ where
 }
 
 /// Attempts to parse a complex SHACL path (blank node with path construct).
-fn try_parse_complex_path<RDF>(rdf: &mut RDF) -> Result<SHACLPath, RDFError>
+fn try_parse_complex_path<RDF>(rdf: &mut ParseCtx<'_, RDF>) -> Result<SHACLPath, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     // Try sequence path (RDF list at focus)
     if let Ok(path) = parse_sequence(rdf) {
@@ -102,9 +102,9 @@ where
 }
 
 /// Parses a SHACL sequence path from an RDF list at the current focus.
-fn parse_sequence<RDF>(rdf: &mut RDF) -> Result<SHACLPath, RDFError>
+fn parse_sequence<RDF>(rdf: &mut ParseCtx<'_, RDF>) -> Result<SHACLPath, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     // Parse the list structure at current focus
     let terms = ListParser::new().parse_focused(rdf)?;
@@ -120,9 +120,9 @@ where
 }
 
 /// Parses a SHACL alternative path using `sh:alternativePath`.
-fn parse_alternative<RDF>(rdf: &mut RDF) -> Result<SHACLPath, RDFError>
+fn parse_alternative<RDF>(rdf: &mut ParseCtx<'_, RDF>) -> Result<SHACLPath, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     // Get the list pointed to by sh:alternativePath
     let list_term = SingleValuePropertyParser::new(ShaclVocab::sh_alternative_path()).parse_focused(rdf)?;
@@ -142,9 +142,9 @@ where
 }
 
 /// Parses a SHACL zero-or-more path using `sh:zeroOrMorePath`.
-fn parse_zero_or_more<RDF>(rdf: &mut RDF) -> Result<SHACLPath, RDFError>
+fn parse_zero_or_more<RDF>(rdf: &mut ParseCtx<'_, RDF>) -> Result<SHACLPath, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     let term = SingleValuePropertyParser::new(ShaclVocab::sh_zero_or_more_path()).parse_focused(rdf)?;
     let sub_path = ShaclPathParser::new(term).parse_focused(rdf)?;
@@ -152,9 +152,9 @@ where
 }
 
 /// Parses a SHACL one-or-more path using `sh:oneOrMorePath`.
-fn parse_one_or_more<RDF>(rdf: &mut RDF) -> Result<SHACLPath, RDFError>
+fn parse_one_or_more<RDF>(rdf: &mut ParseCtx<'_, RDF>) -> Result<SHACLPath, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     let term = SingleValuePropertyParser::new(ShaclVocab::sh_one_or_more_path()).parse_focused(rdf)?;
     let sub_path = ShaclPathParser::new(term).parse_focused(rdf)?;
@@ -162,9 +162,9 @@ where
 }
 
 /// Parses a SHACL zero-or-one path using `sh:zeroOrOnePath`.
-fn parse_zero_or_one<RDF>(rdf: &mut RDF) -> Result<SHACLPath, RDFError>
+fn parse_zero_or_one<RDF>(rdf: &mut ParseCtx<'_, RDF>) -> Result<SHACLPath, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     let term = SingleValuePropertyParser::new(ShaclVocab::sh_zero_or_one_path()).parse_focused(rdf)?;
     let sub_path = ShaclPathParser::new(term).parse_focused(rdf)?;
@@ -172,9 +172,9 @@ where
 }
 
 /// Parses a SHACL inverse path using `sh:inversePath`.
-fn parse_inverse<RDF>(rdf: &mut RDF) -> Result<SHACLPath, RDFError>
+fn parse_inverse<RDF>(rdf: &mut ParseCtx<'_, RDF>) -> Result<SHACLPath, RDFError>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     let term = SingleValuePropertyParser::new(ShaclVocab::sh_inverse_path()).parse_focused(rdf)?;
     let sub_path = ShaclPathParser::new(term).parse_focused(rdf)?;

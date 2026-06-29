@@ -1,6 +1,6 @@
 use crate::rdf_core::vocabs::RdfVocab;
 use crate::rdf_core::{
-    FocusRDF, RDFError,
+    NeighsRDF, ParseCtx, RDFError,
     parser::rdf_node_parser::{RDFNodeParse, constructors::TypeParser},
     term::Iri,
 };
@@ -17,7 +17,7 @@ pub struct SatisfyParser<RDF, P> {
 
 impl<RDF, P> SatisfyParser<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: Fn(&RDF::Term) -> bool,
 {
     pub fn new(predicate: P, condition_name: impl Into<String>) -> Self {
@@ -31,12 +31,12 @@ where
 
 impl<RDF, P> RDFNodeParse<RDF> for SatisfyParser<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: Fn(&RDF::Term) -> bool,
 {
     type Output = ();
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let focus = rdf.get_focus().ok_or(RDFError::NoFocusNodeError)?;
 
         if (self.predicate)(focus) {
@@ -68,11 +68,11 @@ impl<RDF> IsIriParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for IsIriParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = ();
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let focus = rdf.get_focus().ok_or(RDFError::NoFocusNodeError)?;
 
         let iri: RDF::IRI = match <RDF::Term as TryInto<RDF::IRI>>::try_into(focus.clone()) {
@@ -118,11 +118,11 @@ impl<RDF> Default for NilParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for NilParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = ();
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let focus = rdf.get_focus().ok_or(RDFError::NoFocusNodeError)?;
 
         let is_nil = match TryInto::<RDF::IRI>::try_into(focus.clone()) {
@@ -158,11 +158,11 @@ impl<RDF> HasTypeParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for HasTypeParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = ();
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let actual_type = TypeParser::<RDF>::new().parse_focused(rdf)?;
         let expected_term: RDF::Term = self.expected.clone().into();
 
@@ -194,12 +194,12 @@ impl<A> SuccessParser<A> {
 
 impl<RDF, A> RDFNodeParse<RDF> for SuccessParser<A>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     A: Clone,
 {
     type Output = A;
 
-    fn parse_focused(&self, _rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, _rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         Ok(self.value.clone())
     }
 }
@@ -225,11 +225,11 @@ impl<A> FailureParser<A> {
 
 impl<RDF, A> RDFNodeParse<RDF> for FailureParser<A>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = A;
 
-    fn parse_focused(&self, _rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, _rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         Err(RDFError::ParseFailError { msg: self.msg.clone() })
     }
 }
@@ -257,12 +257,12 @@ where
 
 impl<RDF, A, P> RDFNodeParse<RDF> for CondParser<A, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: Fn(&A) -> bool,
 {
     type Output = ();
 
-    fn parse_focused(&self, _rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, _rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         if (self.predicate)(&self.value) {
             Ok(())
         } else {

@@ -1,4 +1,4 @@
-use crate::rdf_core::{FocusRDF, RDFError, parser::rdf_node_parser::RDFNodeParse};
+use crate::rdf_core::{NeighsRDF, ParseCtx, RDFError, parser::rdf_node_parser::RDFNodeParse};
 use std::marker::PhantomData;
 
 /// Parser that returns the current focus node as a term.
@@ -24,11 +24,11 @@ impl<RDF> Default for FocusParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for FocusParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = RDF::Term;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         rdf.get_focus().cloned().ok_or(RDFError::NoFocusNodeError)
     }
 }
@@ -41,14 +41,14 @@ where
 #[derive(Debug, Clone)]
 pub struct SetFocusParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     target: RDF::Term,
 }
 
 impl<RDF> SetFocusParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     pub fn new(target: RDF::Term) -> Self {
         Self { target }
@@ -57,11 +57,11 @@ where
 
 impl<RDF> RDFNodeParse<RDF> for SetFocusParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = ();
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         rdf.set_focus(&self.target);
         Ok(())
     }

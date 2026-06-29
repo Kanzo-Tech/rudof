@@ -1,6 +1,6 @@
 use crate::rdf_core::vocabs::RdfVocab;
 use crate::rdf_core::{
-    FocusRDF, RDFError,
+    NeighsRDF, ParseCtx, RDFError,
     parser::rdf_node_parser::{
         RDFNodeParse,
         constructors::{SingleValuePropertyParser, SubjectsWithValuePropertyParser},
@@ -30,11 +30,11 @@ impl<RDF> TypeParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for TypeParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = RDF::Term;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         SingleValuePropertyParser::new(RdfVocab::rdf_type()).parse_focused(rdf)
     }
 }
@@ -60,11 +60,11 @@ impl<RDF> SingleInstanceParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for SingleInstanceParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = RDF::Subject;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let instances = InstancesParser::new(self.expected.clone()).parse_focused(rdf)?;
 
         let mut iter = instances.into_iter();
@@ -106,12 +106,12 @@ impl<P> TypeDispatchParser<P> {
 
 impl<RDF, P, A> RDFNodeParse<RDF> for TypeDispatchParser<P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF, Output = A>,
 {
     type Output = A;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let type_term = TypeParser::<RDF>::new().parse_focused(rdf)?;
         let type_iri: RDF::IRI =
             <RDF::Term as TryInto<RDF::IRI>>::try_into(type_term.clone()).map_err(|_| RDFError::ExpectedIRIError {
@@ -146,11 +146,11 @@ impl<RDF> InstancesParser<RDF> {
 
 impl<RDF> RDFNodeParse<RDF> for InstancesParser<RDF>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<RDF::Subject>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let type_term: RDF::Term = self.expected_type.clone().into();
         let pred: RDF::IRI = RdfVocab::rdf_type().into();
 

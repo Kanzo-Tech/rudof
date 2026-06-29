@@ -1,7 +1,6 @@
 mod async_rdf;
 mod build_rdf;
 mod errors;
-mod focus_rdf;
 mod matcher;
 mod neighs_rdf;
 pub mod parser;
@@ -17,9 +16,9 @@ pub mod vocabs;
 pub use async_rdf::AsyncRDF;
 pub use build_rdf::BuildRDF;
 pub use errors::RDFError;
-pub use focus_rdf::FocusRDF;
 pub use matcher::{Any, Matcher};
 pub use neighs_rdf::NeighsRDF;
+pub use parser::{ParseCtx, RdfFocus};
 pub use rdf::Rdf;
 pub use rdf_data_config::{EndpointDescription, RdfDataConfig};
 pub use rdf_format::RDFFormat;

@@ -1,5 +1,5 @@
 use crate::rdf_core::{
-    FocusRDF, RDFError,
+    NeighsRDF, ParseCtx, RDFError,
     parser::rdf_node_parser::{RDFNodeParse, constructors::ValuesPropertyParser, utils::parse_list_recursive},
 };
 use rudof_iri::IriS;
@@ -32,7 +32,7 @@ impl<P> Optional<P> {
 
 impl<RDF, P, T> RDFNodeParse<RDF> for Optional<P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF, Output = T>,
 {
     type Output = Option<T>;
@@ -42,7 +42,7 @@ where
     /// # Errors
     ///
     /// Never returns an error.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match self.parser.parse_focused(rdf) {
             Ok(v) => Ok(Some(v)),
             Err(_) => Ok(None),
@@ -75,7 +75,7 @@ impl<P1, P2> Or<P1, P2> {
 
 impl<RDF, P1, P2, T> RDFNodeParse<RDF> for Or<P1, P2>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P1: RDFNodeParse<RDF, Output = T>,
     P2: RDFNodeParse<RDF, Output = T>,
 {
@@ -86,7 +86,7 @@ where
     /// # Errors
     ///
     /// Returns `RDFError::FailedOrError` containing both errors if both parsers fail.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match self.first.parse_focused(rdf) {
             Ok(v) => Ok(v),
             Err(err1) => self.second.parse_focused(rdf).map_err(|err2| RDFError::FailedOrError {
@@ -122,7 +122,7 @@ impl<P1, P2> And<P1, P2> {
 
 impl<RDF, P1, P2, T1, T2> RDFNodeParse<RDF> for And<P1, P2>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P1: RDFNodeParse<RDF, Output = T1>,
     P2: RDFNodeParse<RDF, Output = T2>,
 {
@@ -134,7 +134,7 @@ where
     ///
     /// Returns the error from the first parser if it fails,
     /// or the error from the second parser if it fails.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let v1 = self.first.parse_focused(rdf)?;
         let v2 = self.second.parse_focused(rdf)?;
         Ok((v1, v2))
@@ -163,7 +163,7 @@ impl<P> Not<P> {
 
 impl<RDF, P, T> RDFNodeParse<RDF> for Not<P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF, Output = T>,
     T: Debug,
 {
@@ -175,7 +175,7 @@ where
     ///
     /// Returns `RDFError::FailedNotError` if the underlying parser succeeds,
     /// containing the debug representation of the parsed value.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match self.parser.parse_focused(rdf) {
             Ok(v) => Err(RDFError::FailedNotError {
                 value: format!("{v:?}"),
@@ -210,7 +210,7 @@ impl<P1, P2> With<P1, P2> {
 
 impl<RDF, P1, P2, T1, T2> RDFNodeParse<RDF> for With<P1, P2>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P1: RDFNodeParse<RDF, Output = T1>,
     P2: RDFNodeParse<RDF, Output = T2>,
 {
@@ -222,7 +222,7 @@ where
     ///
     /// Returns an error immediately if the first parser fails,
     /// otherwise returns the error from the second parser if it fails.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let _ = self.first.parse_focused(rdf)?;
         self.second.parse_focused(rdf)
     }
@@ -255,7 +255,7 @@ impl<P, F> Map<P, F> {
 
 impl<RDF, A, B, P, F> RDFNodeParse<RDF> for Map<P, F>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF, Output = A>,
     F: Fn(A) -> B,
 {
@@ -266,7 +266,7 @@ where
     /// # Errors
     ///
     /// Propagates errors from the underlying parser without transformation.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match self.parser.parse_focused(rdf) {
             Ok(a) => Ok((self.function)(a)),
             Err(e) => Err(e),
@@ -299,7 +299,7 @@ impl<P, F> AndThen<P, F> {
 
 impl<RDF, P, F, O> RDFNodeParse<RDF> for AndThen<P, F>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF>,
     F: Fn(P::Output) -> Result<O, RDFError>,
 {
@@ -311,7 +311,7 @@ where
     ///
     /// Returns the error from the initial parser if it fails,
     /// or the error from the transformation function if it fails.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let value = self.parser.parse_focused(rdf)?;
         (self.function)(value)
     }
@@ -342,7 +342,7 @@ impl<P, F> FlatMap<P, F> {
 
 impl<RDF, P, F, O> RDFNodeParse<RDF> for FlatMap<P, F>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF>,
     F: Fn(P::Output) -> Result<O, RDFError>,
 {
@@ -354,7 +354,7 @@ where
     ///
     /// Returns the error from the initial parser if it fails,
     /// or the error from the transformation function if it fails.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let value = self.parser.parse_focused(rdf)?;
         (self.function)(value)
     }
@@ -386,7 +386,7 @@ impl<P, F> Then<P, F> {
 
 impl<RDF, P, F, N> RDFNodeParse<RDF> for Then<P, F>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF>,
     F: Fn(P::Output) -> N,
     N: RDFNodeParse<RDF>,
@@ -399,7 +399,7 @@ where
     ///
     /// Returns the error from the first parser if it fails,
     /// or the error from the second parser if it fails.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let value = self.parser.parse_focused(rdf)?;
         (self.function)(value).parse_focused(rdf)
     }
@@ -430,7 +430,7 @@ impl<P1, P2> Combine<P1, P2> {
 
 impl<RDF, P1, P2, A> RDFNodeParse<RDF> for Combine<P1, P2>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P1: RDFNodeParse<RDF, Output = Vec<A>>,
     P2: RDFNodeParse<RDF, Output = Vec<A>>,
 {
@@ -442,7 +442,7 @@ where
     ///
     /// Returns the error from the first parser if it fails,
     /// or the error from the second parser if it fails.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let vs1 = self.parser1.parse_focused(rdf)?;
         let vs2 = self.parser2.parse_focused(rdf)?;
         let mut result = vs1;
@@ -475,11 +475,11 @@ impl<RDF, A> CombineMany<RDF, A> {
 
 impl<RDF, A> RDFNodeParse<RDF> for CombineMany<RDF, A>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     type Output = Vec<A>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let mut result = Vec::new();
         for p in self.parsers.iter() {
             let vs = p.parse_focused(rdf)?;
@@ -501,7 +501,7 @@ where
 #[derive(Clone)]
 pub struct ForEach<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     /// The nodes to process as focus points.
     nodes: Vec<RDF::Term>,
@@ -511,7 +511,7 @@ where
 
 impl<RDF, P> ForEach<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     /// Creates a new foreach parser.
     pub fn new(nodes: Vec<RDF::Term>, parser: P) -> Self {
@@ -521,7 +521,7 @@ where
 
 impl<RDF, A, P> RDFNodeParse<RDF> for ForEach<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF, Output = A>,
 {
     type Output = Vec<A>;
@@ -531,7 +531,7 @@ where
     /// # Errors
     ///
     /// Returns immediately with the first parsing error encountered.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let mut results = Vec::new();
         for node in self.nodes.iter() {
             rdf.set_focus(node);
@@ -571,7 +571,7 @@ impl<RDF, P> List<RDF, P> {
 
 impl<RDF, P, A> RDFNodeParse<RDF> for List<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF, Output = A>,
 {
     type Output = Vec<A>;
@@ -582,7 +582,7 @@ where
     ///
     /// Returns `RDFError::NoFocusNodeError` if no focus is set,
     /// or errors from the list parsing utility or element parser.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let focus = rdf.get_focus().ok_or(RDFError::NoFocusNodeError)?.clone();
         let nodes = parse_list_recursive::<RDF>(vec![focus], rdf)?;
 
@@ -628,7 +628,7 @@ impl<RDF, P> MapPropertyValuesParser<RDF, P> {
 
 impl<RDF, P, A> RDFNodeParse<RDF> for MapPropertyValuesParser<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: RDFNodeParse<RDF, Output = A>,
 {
     type Output = Vec<A>;
@@ -638,7 +638,7 @@ where
     /// # Errors
     ///
     /// Returns errors from the value retrieval or element parsing.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let saved_focus = rdf.get_focus().cloned();
         let values = ValuesPropertyParser::new(self.property.clone()).parse_focused(rdf)?;
         let mut results = Vec::new();
@@ -677,7 +677,7 @@ pub struct Opaque<F, RDF, O>(RefCell<F>, PhantomData<fn(&mut RDF) -> O>);
 #[cfg(feature = "parser-erased")]
 impl<RDF, F, O> Opaque<F, RDF, O>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     F: FnMut(&mut dyn FnMut(&mut dyn RDFNodeParse<RDF, Output = O>)),
 {
     /// Creates a new opaque parser.
@@ -689,7 +689,7 @@ where
 #[cfg(feature = "parser-erased")]
 impl<RDF, F, O> RDFNodeParse<RDF> for Opaque<F, RDF, O>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF,
     F: FnMut(&mut dyn FnMut(&mut dyn RDFNodeParse<RDF, Output = O>)),
 {
     type Output = O;
@@ -700,7 +700,7 @@ where
     ///
     /// Returns `RDFError::DefaultError` if no parser is invoked via the callback,
     /// or propagates errors from the dynamically selected parser.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let mut result = Err(RDFError::DefaultError {
             msg: "Opaque parser failed".to_string(),
         });
@@ -737,7 +737,7 @@ pub struct SatisfyParser<RDF, P> {
 
 impl<RDF, P> SatisfyParser<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: Fn(&RDF::Term) -> bool,
 {
     /// Creates a new validation parser.
@@ -758,7 +758,7 @@ where
 
 impl<RDF, P> RDFNodeParse<RDF> for SatisfyParser<RDF, P>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
     P: Fn(&RDF::Term) -> bool,
 {
     type Output = ();
@@ -769,7 +769,7 @@ where
     ///
     /// Returns `RDFError::NoFocusNodeError` if no focus is set,
     /// or `RDFError::NodeDoesntSatisfyConditionError` if the predicate returns false.
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let focus = rdf.get_focus().ok_or(RDFError::NoFocusNodeError)?;
 
         if (self.predicate)(focus) {
@@ -793,7 +793,7 @@ where
 /// enabling method chaining for parser composition.
 pub trait ParserExt<RDF>: RDFNodeParse<RDF> + Sized
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     /// Transforms successful results using a function.
     fn map<F, B>(self, f: F) -> Map<Self, F>
@@ -923,6 +923,6 @@ where
 impl<RDF, T> ParserExt<RDF> for T
 where
     T: RDFNodeParse<RDF> + Sized,
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
 }

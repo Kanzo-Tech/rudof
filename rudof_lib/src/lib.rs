@@ -27,6 +27,12 @@ pub mod errors;
 #[cfg(not(target_family = "wasm"))]
 pub mod formats;
 
+/// Curated, wasm-capable form-session façade (graph/validate/project/serialize)
+/// built on rudof's wasm-clean SHACL/RDF stack. This is the surface the
+/// `rudof_wasm` binding routes through, so it depends on `rudof_lib` alone.
+#[cfg(target_family = "wasm")]
+pub mod form;
+
 #[cfg(not(target_family = "wasm"))]
 mod rudof;
 

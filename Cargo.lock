@@ -3607,13 +3607,9 @@ name = "rudof_wasm"
 version = "0.3.4"
 dependencies = [
  "console_error_panic_hook",
- "oxrdf",
- "prefixmap",
- "rudof_iri",
- "rudof_rdf",
+ "rudof_lib",
  "serde",
  "serde-wasm-bindgen",
- "shacl",
  "wasm-bindgen",
 ]
 

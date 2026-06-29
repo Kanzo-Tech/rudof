@@ -16,11 +16,9 @@ serde = { workspace = true, features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1"
 
-# rudof crates resolve to the sibling workspace members (single version, no
-# `[patch]`). `shacl`/`rudof_rdf` build without the `sparql` feature: that path
-# is wasm-clean and runs the native engine (see shacl::validator).
-oxrdf = { workspace = true }
-prefixmap = { workspace = true }
-rudof_iri = { workspace = true }
-rudof_rdf = { workspace = true }
-shacl = { path = "../shacl", default-features = false }
+# The binding routes every GRAPH / VALIDATE / PROJECT / SERIALIZE operation
+# through rudof's façade — it depends on `rudof_lib` alone (the wasm-capable
+# `rudof_lib::form` surface) plus the wasm-bindgen/serde glue. The façade pulls
+# in the wasm-clean SHACL/RDF stack (shacl without the `sparql` feature, which
+# runs the native engine) so the binding no longer reaches into those internals.
+rudof_lib = { path = "../rudof_lib" }

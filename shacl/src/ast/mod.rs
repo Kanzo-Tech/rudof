@@ -10,12 +10,14 @@ mod property_shape;
 mod reifier_info;
 mod schema;
 mod shape;
+mod visitor;
 
 use crate::error::ASTError;
 pub use component::ASTComponent;
 pub use node_shape::ASTNodeShape;
 pub use property_shape::ASTPropertyShape;
 pub use reifier_info::ReifierInfo;
+pub use visitor::ComponentVisitor;
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::term::Object;
 pub use schema::ASTSchema;

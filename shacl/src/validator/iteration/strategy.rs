@@ -9,7 +9,7 @@ pub(crate) trait IterationStrategy<RDF: Rdf> {
     fn iterate<'a>(
         &'a self,
         value_nodes: &'a ValueNodes<RDF>,
-    ) -> Box<dyn Iterator<Item = (&'a RDF::Term, &'a Self::Item)> + 'a>;
+    ) -> impl Iterator<Item = (&'a RDF::Term, &'a Self::Item)> + 'a;
 
     fn to_value(&self, item: &Self::Item) -> Option<RDF::Term>;
 

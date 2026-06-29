@@ -31,6 +31,9 @@ impl<S: NeighsRDF + Debug> Validator<S> for Datatype {
                 if let Ok(lit) = S::term_as_literal(vn) {
                     match TryInto::<ConcreteLiteral>::try_into(lit.clone()) {
                         Ok(ConcreteLiteral::WrongDatatypeLiteral { .. }) => true,
+                        // TODO(template-method): wire here -> ValidationError::MissingDatatypeIri.
+                        // `validate_with`'s evaluator returns `bool` today, so propagating the
+                        // error couples with the template-method rewrite happening elsewhere.
                         Ok(_) => lit.datatype().get_iri().unwrap().as_str() != self.datatype().as_str(),
                         Err(_) => true,
                     }

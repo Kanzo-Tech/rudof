@@ -10,8 +10,8 @@ impl<RDF: Rdf> IterationStrategy<RDF> for FocusNodeIteration {
     fn iterate<'a>(
         &'a self,
         value_nodes: &'a ValueNodes<RDF>,
-    ) -> Box<dyn Iterator<Item = (&'a RDF::Term, &'a Self::Item)> + 'a> {
-        Box::new(value_nodes.iter())
+    ) -> impl Iterator<Item = (&'a RDF::Term, &'a Self::Item)> + 'a {
+        value_nodes.iter()
     }
 
     fn to_value(&self, _: &Self::Item) -> Option<RDF::Term> {

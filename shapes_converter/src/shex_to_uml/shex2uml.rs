@@ -4,7 +4,7 @@ use std::io::Write;
 use either::Either;
 use prefixmap::error::PrefixMapError;
 use prefixmap::{IriRef, PrefixMap};
-use rudof_rdf::rdf_core::visualizer::uml_converter::{UmlConverter, UmlGenerationMode, errors::UmlConverterError};
+use rudof_rdf_viz::uml_converter::{UmlConverter, UmlGenerationMode, errors::UmlConverterError};
 use shex_ast::{
     Annotation, NodeKind, ObjectValue, Schema, Shape, ShapeExpr, ShapeExprLabel, ShapeExprWrapper, TripleExpr,
     ValueSetValue, XsFacet,

@@ -1,4 +1,4 @@
-use crate::rdf_core::visualizer::style::UmlColor;
+use crate::style::UmlColor;
 
 /// Represents the visual style of a UML stereotype in PlantUML.
 ///

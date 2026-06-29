@@ -1,4 +1,4 @@
-use crate::rdf_core::visualizer::style::{
+use crate::style::{
     ArrowStyle, DEFAULT_OBJECT_ARROW_STYLE, DEFAULT_PREDICATE_ARROW_STYLE, DEFAULT_SUBJECT_ARROW_STYLE, Style, UmlColor,
 };
 use serde::{Deserialize, Serialize};

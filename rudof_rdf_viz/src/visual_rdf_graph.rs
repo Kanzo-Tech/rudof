@@ -1,13 +1,10 @@
-use crate::rdf_core::{
-    NeighsRDF, RDFError,
-    term::Triple,
-    visualizer::{
-        RDFVisualizationConfig, VisualRDFEdge, VisualRDFNode,
-        errors::RdfVisualizerError,
-        uml_converter::{UmlConverter, UmlGenerationMode, errors::UmlConverterError},
-        utils::UsageCount,
-    },
+use crate::{
+    RDFVisualizationConfig, VisualRDFEdge, VisualRDFNode,
+    errors::RdfVisualizerError,
+    uml_converter::{UmlConverter, UmlGenerationMode, errors::UmlConverterError},
+    utils::UsageCount,
 };
+use rudof_rdf::rdf_core::{NeighsRDF, RDFError, term::Triple};
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;

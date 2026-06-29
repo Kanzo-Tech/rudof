@@ -1,4 +1,4 @@
-use crate::rdf_core::visualizer::{VisualRDFNode, uml_converter::errors::UmlConverterError};
+use crate::{VisualRDFNode, uml_converter::errors::UmlConverterError};
 use std::io;
 use thiserror::Error;
 

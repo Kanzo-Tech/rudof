@@ -1,8 +1,8 @@
-use crate::rdf_core::vocabs::RdfVocab;
-use crate::rdf_core::{
+use crate::{NodeId, VisualRDFGraph, errors::RdfVisualizerError};
+use rudof_rdf::rdf_core::vocabs::RdfVocab;
+use rudof_rdf::rdf_core::{
     NeighsRDF, RDFError, Rdf,
     term::{Iri, IriOrBlankNode, Object},
-    visualizer::{NodeId, VisualRDFGraph, errors::RdfVisualizerError},
 };
 use std::fmt::Display;
 

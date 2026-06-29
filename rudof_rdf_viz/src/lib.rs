@@ -1,3 +1,9 @@
+//! RDF visualization for `rudof_rdf`.
+//!
+//! This crate converts RDF graphs into a visual model ([`VisualRDFGraph`]) and
+//! renders them as PlantUML / UML diagrams. It was extracted out of the core
+//! `rudof_rdf` crate so that the core stays free of visualization concerns.
+
 pub mod errors;
 mod rdf_visualizer_config;
 pub mod style;

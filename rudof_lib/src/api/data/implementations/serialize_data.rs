@@ -1,6 +1,6 @@
 use crate::{Result, Rudof, errors::DataError, formats::ResultDataFormat};
-use rudof_rdf::rdf_core::visualizer::{
-    VisualRDFGraph,
+use rudof_rdf_viz::{
+    RDFVisualizationConfig, VisualRDFGraph,
     uml_converter::{UmlConverter, UmlGenerationMode},
 };
 use std::io;
@@ -65,7 +65,7 @@ fn serialize_rdf_data<W: io::Write>(
                 })
             })?;
     } else {
-        let visualization_config = rudof.config.rdf_data_config().rdf_visualization_config();
+        let visualization_config = RDFVisualizationConfig::default();
         let converter = VisualRDFGraph::from_rdf(data.unwrap_rdf_mut(), visualization_config).map_err(|e| {
             Box::new(DataError::FailedSerializingData {
                 format: result_data_format.to_string(),

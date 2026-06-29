@@ -5,10 +5,10 @@ use std::fmt::{Display, Formatter};
 
 /// Contains the set of focus nodes.
 ///
-/// The set is **owned** (no `Arc`): focus nodes are built once by the engine
-/// (`target_*`/`path`/value-node computation) and threaded by `&`. The previous
-/// `Arc<HashSet>` only existed to make `clone()` cheap; we keep an explicit
-/// `Clone` for the few save/restore sites but the container itself is plain.
+/// The set is **owned** (no `Arc`) and intentionally **not `Clone`**: focus
+/// nodes are built once by the engine (`target_*`/`path`/value-node
+/// computation) and threaded by `&`, so any accidental clone is a compile
+/// error. The previous `Arc<HashSet>` only existed to make `clone()` cheap.
 #[derive(Debug)]
 pub struct FocusNodes<RDF: Rdf> {
     set: HashSet<RDF::Term>,
@@ -36,14 +36,6 @@ impl<RDF: Rdf> FocusNodes<RDF> {
 
     pub fn iter(&self) -> impl Iterator<Item = &RDF::Term> {
         self.set.iter()
-    }
-}
-
-impl<RDF: Rdf> Clone for FocusNodes<RDF> {
-    fn clone(&self) -> Self {
-        Self {
-            set: self.set.clone(),
-        }
     }
 }
 

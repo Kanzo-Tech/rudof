@@ -13,12 +13,12 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 
 impl<S: NeighsRDF + Debug> Validator<S> for QualifiedValueShape {
-    fn validate(
+    fn validate<E: Engine<S>>(
         &self,
         _: &IRComponent,
         shape: &IRShape,
         store: &S,
-        engine: &mut dyn Engine<S>,
+        engine: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,

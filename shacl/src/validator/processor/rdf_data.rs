@@ -1,7 +1,10 @@
 use crate::error::ValidationError;
+use crate::ir::IRSchema;
 use crate::validator::ShaclValidationMode;
-use crate::validator::engine::{Engine, NativeEngine, SparqlEngine};
-use crate::validator::processor::ShaclProcessor;
+use crate::validator::engine::{NativeEngine, SparqlEngine};
+use crate::validator::index::ClassIndex;
+use crate::validator::processor::{ShaclProcessor, run};
+use crate::validator::report::ValidationResult;
 use sparql_service::RdfData;
 
 // TODO - move to validation::algorithms module
@@ -21,10 +24,21 @@ impl ShaclProcessor<RdfData> for DataValidation {
         &self.data
     }
 
-    fn runner(mode: &ShaclValidationMode) -> Box<dyn Engine<RdfData>> {
+    fn run_validation(
+        store: &RdfData,
+        shapes_graph: &IRSchema,
+        mode: &ShaclValidationMode,
+    ) -> Result<Vec<ValidationResult>, ValidationError> {
         match mode {
-            ShaclValidationMode::Native => Box::new(NativeEngine::new()),
-            ShaclValidationMode::Sparql => Box::new(SparqlEngine::new()),
+            ShaclValidationMode::Native => {
+                let index = ClassIndex::build(store)?;
+                let master = NativeEngine::new(Some(&index));
+                run(store, shapes_graph, &master)
+            },
+            ShaclValidationMode::Sparql => {
+                let master = SparqlEngine::new();
+                run(store, shapes_graph, &master)
+            },
         }
     }
 

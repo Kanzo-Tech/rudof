@@ -14,12 +14,12 @@ use std::fmt::Debug;
 /// impl. Kept always-compiled because the native validator dispatch covers every
 /// `IRComponent` variant, `BasicSparql` included.
 impl<RDF: NeighsRDF + Debug + 'static> NativeValidator<RDF> for BasicSparql {
-    fn validate_native(
+    fn validate_native<E: Engine<RDF>>(
         &self,
         _: &IRComponent,
         _: &IRShape,
         _: &RDF,
-        _: &mut dyn Engine<RDF>,
+        _: &mut E,
         _: &ValueNodes<RDF>,
         _: Option<&IRShape>,
         _: Option<&SHACLPath>,

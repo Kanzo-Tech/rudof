@@ -10,12 +10,12 @@ use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
 impl<S: NeighsRDF + Debug> Validator<S> for Closed {
-    fn validate(
+    fn validate<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         store: &S,
-        _: &mut dyn Engine<S>,
+        _: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         _: Option<&SHACLPath>,

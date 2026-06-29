@@ -44,10 +44,10 @@ pub trait IRComponentVisitor {
     }
 
     // cardinality
-    fn visit_min_count(&mut self, _count: usize) -> Result<Self::Output, Self::Error> {
+    fn visit_min_count(&mut self, _count: isize) -> Result<Self::Output, Self::Error> {
         self.default_component()
     }
-    fn visit_max_count(&mut self, _count: usize) -> Result<Self::Output, Self::Error> {
+    fn visit_max_count(&mut self, _count: isize) -> Result<Self::Output, Self::Error> {
         self.default_component()
     }
 
@@ -144,24 +144,24 @@ impl IRComponent {
     /// decomposition (the mirror of [`crate::ast::ASTComponent::accept`]).
     pub fn accept<V: IRComponentVisitor>(&self, visitor: &mut V) -> Result<V::Output, V::Error> {
         match self {
-            IRComponent::Class(c) => visitor.visit_class(c.class_rule()),
-            IRComponent::Datatype(d) => visitor.visit_datatype(d.datatype()),
-            IRComponent::NodeKind(nk) => visitor.visit_node_kind(nk.node_kind()),
-            IRComponent::MinCount(mc) => visitor.visit_min_count(mc.min_count()),
-            IRComponent::MaxCount(mc) => visitor.visit_max_count(mc.max_count()),
-            IRComponent::MinExclusive(me) => visitor.visit_min_exclusive(me.min_exclusive()),
-            IRComponent::MaxExclusive(me) => visitor.visit_max_exclusive(me.max_exclusive()),
-            IRComponent::MinInclusive(mi) => visitor.visit_min_inclusive(mi.min_inclusive()),
-            IRComponent::MaxInclusive(mi) => visitor.visit_max_inclusive(mi.max_inclusive()),
-            IRComponent::MinLength(ml) => visitor.visit_min_length(ml.min_length()),
-            IRComponent::MaxLength(ml) => visitor.visit_max_length(ml.max_length()),
+            IRComponent::Class(c) => visitor.visit_class(c),
+            IRComponent::Datatype(d) => visitor.visit_datatype(d),
+            IRComponent::NodeKind(nk) => visitor.visit_node_kind(nk),
+            IRComponent::MinCount(mc) => visitor.visit_min_count(*mc),
+            IRComponent::MaxCount(mc) => visitor.visit_max_count(*mc),
+            IRComponent::MinExclusive(me) => visitor.visit_min_exclusive(me),
+            IRComponent::MaxExclusive(me) => visitor.visit_max_exclusive(me),
+            IRComponent::MinInclusive(mi) => visitor.visit_min_inclusive(mi),
+            IRComponent::MaxInclusive(mi) => visitor.visit_max_inclusive(mi),
+            IRComponent::MinLength(ml) => visitor.visit_min_length(*ml),
+            IRComponent::MaxLength(ml) => visitor.visit_max_length(*ml),
             IRComponent::Pattern(p) => visitor.visit_pattern(p),
-            IRComponent::UniqueLang(ul) => visitor.visit_unique_lang(ul.unique_lang()),
-            IRComponent::LanguageIn(li) => visitor.visit_language_in(li.langs()),
-            IRComponent::Equals(e) => visitor.visit_equals(e.iri()),
-            IRComponent::Disjoint(d) => visitor.visit_disjoint(d.iri()),
-            IRComponent::LessThan(lt) => visitor.visit_less_than(lt.iri()),
-            IRComponent::LessThanOrEquals(lte) => visitor.visit_less_than_or_equals(lte.iri()),
+            IRComponent::UniqueLang(ul) => visitor.visit_unique_lang(*ul),
+            IRComponent::LanguageIn(langs) => visitor.visit_language_in(langs),
+            IRComponent::Equals(e) => visitor.visit_equals(e),
+            IRComponent::Disjoint(d) => visitor.visit_disjoint(d),
+            IRComponent::LessThan(lt) => visitor.visit_less_than(lt),
+            IRComponent::LessThanOrEquals(lte) => visitor.visit_less_than_or_equals(lte),
             IRComponent::Or(or) => visitor.visit_or(or.shapes()),
             IRComponent::And(and) => visitor.visit_and(and.shapes()),
             IRComponent::Not(not) => visitor.visit_not(*not.shape()),
@@ -169,9 +169,9 @@ impl IRComponent {
             IRComponent::Node(node) => visitor.visit_node(*node.shape()),
             IRComponent::QualifiedValueShape(qvs) => visitor.visit_qualified_value_shape(qvs),
             IRComponent::Closed(closed) => visitor.visit_closed(closed),
-            IRComponent::HasValue(hv) => visitor.visit_has_value(hv.value()),
-            IRComponent::In(i) => visitor.visit_in(i.values()),
-            IRComponent::Deactivated(d) => visitor.visit_deactivated(d.is_deactivated()),
+            IRComponent::HasValue(hv) => visitor.visit_has_value(hv),
+            IRComponent::In(values) => visitor.visit_in(values),
+            IRComponent::Deactivated(d) => visitor.visit_deactivated(*d),
             IRComponent::BasicSparql(s) => visitor.visit_basic_sparql(s),
         }
     }

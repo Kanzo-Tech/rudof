@@ -1,9 +1,5 @@
 use crate::ast::{ASTComponent, ASTSchema};
-use crate::ir::components::{
-    And, BasicSparql, Class, Closed, Datatype, Deactivated, Disjoint, Equals, HasValue, In, LanguageIn, LessThan,
-    LessThanOrEquals, MaxCount, MaxExclusive, MaxInclusive, MaxLength, MinCount, MinExclusive, MinInclusive, MinLength,
-    Node, Nodekind, Not, Or, Pattern, QualifiedValueShape, UniqueLang, Xone,
-};
+use crate::ir::components::{And, BasicSparql, Closed, Node, Not, Or, Pattern, QualifiedValueShape, Xone};
 use crate::ir::dg::{DependencyGraph, PosNeg};
 use crate::ir::error::IRError;
 use crate::ir::schema::IRSchema;
@@ -16,41 +12,49 @@ use itertools::Itertools;
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::BuildRDF;
 use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
+use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang};
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 
+/// A compiled SHACL constraint component.
+///
+/// Trivial components are stored INLINE as their scalar/term payload (the
+/// newtype-collapse: `MinCount(isize)`, `Datatype(IriS)`, …). Only the
+/// components that carry genuine compiled state keep a struct payload
+/// (`Pattern`, `Closed`, `BasicSparql`, `QualifiedValueShape`, and the
+/// logical/shape-based ones interning a [`ShapeLabelIdx`]). See
+/// [`crate::ir::components`].
 #[derive(Debug, Clone)]
 pub enum IRComponent {
-    Class(Class),
-    Datatype(Datatype),
-    NodeKind(Nodekind),
-    MinCount(MinCount),
-    MaxCount(MaxCount),
-    MinExclusive(MinExclusive),
-    MaxExclusive(MaxExclusive),
-    MinInclusive(MinInclusive),
-    MaxInclusive(MaxInclusive),
-    MinLength(MinLength),
-    MaxLength(MaxLength),
+    Class(Object),
+    Datatype(IriS),
+    NodeKind(NodeKind),
+    MinCount(isize),
+    MaxCount(isize),
+    MinExclusive(ConcreteLiteral),
+    MaxExclusive(ConcreteLiteral),
+    MinInclusive(ConcreteLiteral),
+    MaxInclusive(ConcreteLiteral),
+    MinLength(isize),
+    MaxLength(isize),
     Pattern(Pattern),
-    UniqueLang(UniqueLang),
-    LanguageIn(LanguageIn),
-    Equals(Equals),
-    Disjoint(Disjoint),
-    LessThan(LessThan),
-    LessThanOrEquals(LessThanOrEquals),
+    UniqueLang(bool),
+    LanguageIn(Vec<Lang>),
+    Equals(IriS),
+    Disjoint(IriS),
+    LessThan(IriS),
+    LessThanOrEquals(IriS),
     Or(Or),
     And(And),
     Not(Not),
     Xone(Xone),
     Node(Node),
-    HasValue(HasValue),
-    In(In),
+    HasValue(Object),
+    In(Vec<Object>),
     QualifiedValueShape(QualifiedValueShape),
     Closed(Closed),
-    Deactivated(Deactivated),
+    Deactivated(bool),
     BasicSparql(BasicSparql),
 }
 
@@ -63,29 +67,27 @@ impl IRComponent {
     // TODO - Update comment to match current behaviour
     pub fn compile(component: &ASTComponent, ast: &ASTSchema, ir: &mut IRSchema) -> Result<Self, IRError> {
         let result = match component.clone() {
-            ASTComponent::Class(object) => IRComponent::Class(Class::new(object)),
-            ASTComponent::Datatype(iri) => IRComponent::Datatype(Datatype::new(convert_iri_ref(iri)?)),
-            ASTComponent::NodeKind(nk) => IRComponent::NodeKind(Nodekind::new(nk)),
-            ASTComponent::MinCount(n) => IRComponent::MinCount(MinCount::new(n)?),
-            ASTComponent::MaxCount(n) => IRComponent::MaxCount(MaxCount::new(n)?),
-            ASTComponent::MinExclusive(lit) => IRComponent::MinExclusive(MinExclusive::new(lit)),
-            ASTComponent::MaxExclusive(lit) => IRComponent::MaxExclusive(MaxExclusive::new(lit)),
-            ASTComponent::MinInclusive(lit) => IRComponent::MinInclusive(MinInclusive::new(lit)),
-            ASTComponent::MaxInclusive(lit) => IRComponent::MaxInclusive(MaxInclusive::new(lit)),
-            ASTComponent::MinLength(l) => IRComponent::MinLength(MinLength::new(l)),
-            ASTComponent::MaxLength(l) => IRComponent::MaxLength(MaxLength::new(l)),
+            ASTComponent::Class(object) => IRComponent::Class(object),
+            ASTComponent::Datatype(iri) => IRComponent::Datatype(convert_iri_ref(iri)?),
+            ASTComponent::NodeKind(nk) => IRComponent::NodeKind(nk),
+            ASTComponent::MinCount(n) => IRComponent::MinCount(check_non_negative("sh:minCount", n)?),
+            ASTComponent::MaxCount(n) => IRComponent::MaxCount(check_non_negative("sh:maxCount", n)?),
+            ASTComponent::MinExclusive(lit) => IRComponent::MinExclusive(lit),
+            ASTComponent::MaxExclusive(lit) => IRComponent::MaxExclusive(lit),
+            ASTComponent::MinInclusive(lit) => IRComponent::MinInclusive(lit),
+            ASTComponent::MaxInclusive(lit) => IRComponent::MaxInclusive(lit),
+            ASTComponent::MinLength(l) => IRComponent::MinLength(l),
+            ASTComponent::MaxLength(l) => IRComponent::MaxLength(l),
             ASTComponent::Pattern { pattern, flags } => {
                 let pattern = Pattern::new(pattern, flags)?;
                 IRComponent::Pattern(pattern)
             },
-            ASTComponent::UniqueLang(lang) => IRComponent::UniqueLang(UniqueLang::new(lang)),
-            ASTComponent::LanguageIn(langs) => IRComponent::LanguageIn(LanguageIn::new(langs)),
-            ASTComponent::Equals(iri) => IRComponent::Equals(Equals::new(convert_iri_ref(iri)?)),
-            ASTComponent::Disjoint(iri) => IRComponent::Disjoint(Disjoint::new(convert_iri_ref(iri)?)),
-            ASTComponent::LessThan(iri) => IRComponent::LessThan(LessThan::new(convert_iri_ref(iri)?)),
-            ASTComponent::LessThanOrEquals(iri) => {
-                IRComponent::LessThanOrEquals(LessThanOrEquals::new(convert_iri_ref(iri)?))
-            },
+            ASTComponent::UniqueLang(lang) => IRComponent::UniqueLang(lang),
+            ASTComponent::LanguageIn(langs) => IRComponent::LanguageIn(langs),
+            ASTComponent::Equals(iri) => IRComponent::Equals(convert_iri_ref(iri)?),
+            ASTComponent::Disjoint(iri) => IRComponent::Disjoint(convert_iri_ref(iri)?),
+            ASTComponent::LessThan(iri) => IRComponent::LessThan(convert_iri_ref(iri)?),
+            ASTComponent::LessThanOrEquals(iri) => IRComponent::LessThanOrEquals(convert_iri_ref(iri)?),
             ASTComponent::Or(objs) => {
                 let idxs = ir.register_shapes(objs, ast)?;
                 IRComponent::Or(Or::new(idxs))
@@ -112,11 +114,11 @@ impl IRComponent {
             },
             ASTComponent::HasValue(val) => {
                 let term = convert_value(val)?;
-                IRComponent::HasValue(HasValue::new(term))
+                IRComponent::HasValue(term)
             },
             ASTComponent::In(vals) => {
                 let terms = vals.into_iter().map(convert_value).collect::<Result<Vec<_>, _>>()?;
-                IRComponent::In(In::new(terms))
+                IRComponent::In(terms)
             },
             ASTComponent::QualifiedValueShape {
                 shape,
@@ -138,7 +140,7 @@ impl IRComponent {
             },
             ASTComponent::Deactivated(d) => {
                 // TODO - Change for node expr
-                IRComponent::Deactivated(Deactivated::new(d))
+                IRComponent::Deactivated(d)
             },
             ASTComponent::BasicSparql {
                 select,
@@ -165,10 +167,10 @@ impl IRComponent {
         shape_map: &HashMap<ShapeLabelIdx, IRShape>,
     ) -> Result<(), IRError> {
         match self {
-            IRComponent::Class(c) => register_term(&c.class_rule().clone().into(), ShaclVocab::sh_class(), id, graph),
-            IRComponent::Datatype(iri) => register_iri(iri.datatype(), ShaclVocab::sh_datatype(), id, graph),
+            IRComponent::Class(c) => register_term(&c.clone().into(), ShaclVocab::sh_class(), id, graph),
+            IRComponent::Datatype(iri) => register_iri(iri, ShaclVocab::sh_datatype(), id, graph),
             IRComponent::NodeKind(nk) => {
-                let iri = match nk.node_kind() {
+                let iri = match nk {
                     NodeKind::Iri => ShaclVocab::sh_iri_ref(),
                     NodeKind::Lit => ShaclVocab::sh_literal_ref(),
                     NodeKind::BNode => ShaclVocab::sh_blank_node_ref(),
@@ -178,34 +180,22 @@ impl IRComponent {
                 };
                 register_iri(iri, ShaclVocab::sh_node_kind(), id, graph)
             },
-            IRComponent::MinCount(mc) => {
-                register_integer(mc.min_count() as isize, ShaclVocab::sh_min_count(), id, graph)
-            },
-            IRComponent::MaxCount(mc) => {
-                register_integer(mc.max_count() as isize, ShaclVocab::sh_max_count(), id, graph)
-            },
-            IRComponent::MinExclusive(me) => {
-                register_literal(me.min_exclusive(), ShaclVocab::sh_min_exclusive(), id, graph)
-            },
-            IRComponent::MaxExclusive(me) => {
-                register_literal(me.max_exclusive(), ShaclVocab::sh_max_exclusive(), id, graph)
-            },
-            IRComponent::MinInclusive(mi) => {
-                register_literal(mi.min_inclusive(), ShaclVocab::sh_min_inclusive(), id, graph)
-            },
-            IRComponent::MaxInclusive(mi) => {
-                register_literal(mi.max_inclusive(), ShaclVocab::sh_max_inclusive(), id, graph)
-            },
-            IRComponent::MinLength(ml) => register_integer(ml.min_length(), ShaclVocab::sh_min_length(), id, graph),
-            IRComponent::MaxLength(ml) => register_integer(ml.max_length(), ShaclVocab::sh_max_length(), id, graph),
+            IRComponent::MinCount(mc) => register_integer(*mc, ShaclVocab::sh_min_count(), id, graph),
+            IRComponent::MaxCount(mc) => register_integer(*mc, ShaclVocab::sh_max_count(), id, graph),
+            IRComponent::MinExclusive(me) => register_literal(me, ShaclVocab::sh_min_exclusive(), id, graph),
+            IRComponent::MaxExclusive(me) => register_literal(me, ShaclVocab::sh_max_exclusive(), id, graph),
+            IRComponent::MinInclusive(mi) => register_literal(mi, ShaclVocab::sh_min_inclusive(), id, graph),
+            IRComponent::MaxInclusive(mi) => register_literal(mi, ShaclVocab::sh_max_inclusive(), id, graph),
+            IRComponent::MinLength(ml) => register_integer(*ml, ShaclVocab::sh_min_length(), id, graph),
+            IRComponent::MaxLength(ml) => register_integer(*ml, ShaclVocab::sh_max_length(), id, graph),
             IRComponent::Pattern(p) => {
                 if let Some(flags) = p.flags() {
                     register_literal(&ConcreteLiteral::str(flags), ShaclVocab::sh_flags(), id, graph)?;
                 }
                 register_literal(&ConcreteLiteral::str(p.pattern()), ShaclVocab::sh_pattern(), id, graph)
             },
-            IRComponent::UniqueLang(ul) => register_boolean(ul.unique_lang(), ShaclVocab::sh_unique_lang(), id, graph),
-            IRComponent::LanguageIn(li) => li.langs().iter().try_for_each(|l| {
+            IRComponent::UniqueLang(ul) => register_boolean(*ul, ShaclVocab::sh_unique_lang(), id, graph),
+            IRComponent::LanguageIn(langs) => langs.iter().try_for_each(|l| {
                 register_literal(
                     &ConcreteLiteral::str(&l.to_string()),
                     ShaclVocab::sh_language_in(),
@@ -213,12 +203,10 @@ impl IRComponent {
                     graph,
                 )
             }),
-            IRComponent::Equals(eq) => register_iri(eq.iri(), ShaclVocab::sh_equals(), id, graph),
-            IRComponent::Disjoint(d) => register_iri(d.iri(), ShaclVocab::sh_disjoint(), id, graph),
-            IRComponent::LessThan(lt) => register_iri(lt.iri(), ShaclVocab::sh_less_than(), id, graph),
-            IRComponent::LessThanOrEquals(lte) => {
-                register_iri(lte.iri(), ShaclVocab::sh_less_than_or_equals(), id, graph)
-            },
+            IRComponent::Equals(eq) => register_iri(eq, ShaclVocab::sh_equals(), id, graph),
+            IRComponent::Disjoint(d) => register_iri(d, ShaclVocab::sh_disjoint(), id, graph),
+            IRComponent::LessThan(lt) => register_iri(lt, ShaclVocab::sh_less_than(), id, graph),
+            IRComponent::LessThanOrEquals(lte) => register_iri(lte, ShaclVocab::sh_less_than_or_equals(), id, graph),
             IRComponent::Or(or) => or.shapes().iter().try_for_each(|idx| {
                 let shape = shape_map.get(idx).ok_or(IRError::ShapeNotFound(*idx))?;
                 register_term(&shape.id().clone().into(), ShaclVocab::sh_or(), id, graph)
@@ -239,12 +227,12 @@ impl IRComponent {
                 let shape = shape_map.get(n.shape()).ok_or(IRError::ShapeNotFound(*n.shape()))?;
                 register_term(&shape.id().clone().into(), ShaclVocab::sh_node(), id, graph)
             },
-            IRComponent::HasValue(hv) => match hv.value() {
+            IRComponent::HasValue(hv) => match hv {
                 Object::Iri(iri) => register_iri(iri, ShaclVocab::sh_has_value(), id, graph),
                 Object::Literal(lit) => register_literal(lit, ShaclVocab::sh_has_value(), id, graph),
                 other => Err(IRError::UnexpectedValueTerm(Box::new(other.clone()))),
             },
-            IRComponent::In(i) => i.values().iter().try_for_each(|v| match v {
+            IRComponent::In(values) => values.iter().try_for_each(|v| match v {
                 Object::Iri(iri) => register_iri(iri, ShaclVocab::sh_in(), id, graph),
                 Object::Literal(lit) => register_literal(lit, ShaclVocab::sh_in(), id, graph),
                 other => Err(IRError::UnexpectedValueTerm(Box::new(other.clone()))),
@@ -282,7 +270,7 @@ impl IRComponent {
             },
             IRComponent::Deactivated(deactivated) => {
                 // TODO - Adapt for node expression
-                register_boolean(deactivated.is_deactivated(), ShaclVocab::sh_deactivated(), id, graph)
+                register_boolean(*deactivated, ShaclVocab::sh_deactivated(), id, graph)
             },
             IRComponent::BasicSparql(sparql) => {
                 // Create a blank node to hold the constraint properties
@@ -510,35 +498,52 @@ impl From<&IRComponent> for IriS {
 impl Display for IRComponent {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            IRComponent::Class(cls) => write!(f, " {cls}"),
-            IRComponent::Datatype(dt) => write!(f, " {dt}"),
-            IRComponent::NodeKind(nk) => write!(f, " {nk}"),
-            IRComponent::MinCount(n) => write!(f, " {n}"),
-            IRComponent::MaxCount(mn) => write!(f, " {mn}"),
-            IRComponent::MinExclusive(n) => write!(f, " {n}"),
-            IRComponent::MaxExclusive(n) => write!(f, " {n}"),
-            IRComponent::MinInclusive(n) => write!(f, " {n}"),
-            IRComponent::MaxInclusive(n) => write!(f, " {n}"),
-            IRComponent::MinLength(n) => write!(f, " {n}"),
-            IRComponent::MaxLength(n) => write!(f, " {n}"),
+            IRComponent::Class(cls) => write!(f, " Class: {cls}"),
+            IRComponent::Datatype(dt) => write!(f, " Datatype: {dt}"),
+            IRComponent::NodeKind(nk) => write!(f, " NodeKind: {nk:?}"),
+            IRComponent::MinCount(n) => write!(f, " MinCount: {n}"),
+            IRComponent::MaxCount(mn) => write!(f, " MaxCount: {mn}"),
+            IRComponent::MinExclusive(n) => write!(f, " MinExclusive: {n}"),
+            IRComponent::MaxExclusive(n) => write!(f, " MaxExclusive: {n}"),
+            IRComponent::MinInclusive(n) => write!(f, " MinInclusive: {n}"),
+            IRComponent::MaxInclusive(n) => write!(f, " MaxInclusive: {n}"),
+            IRComponent::MinLength(n) => write!(f, " MinLength: {n}"),
+            IRComponent::MaxLength(n) => write!(f, " MaxLength: {n}"),
             IRComponent::Pattern(pt) => write!(f, " {pt}"),
-            IRComponent::UniqueLang(ul) => write!(f, " {ul}"),
-            IRComponent::LanguageIn(l) => write!(f, " {l}"),
-            IRComponent::Equals(e) => write!(f, " {e}"),
-            IRComponent::Disjoint(p) => write!(f, " {p}"),
-            IRComponent::LessThan(p) => write!(f, " {p}"),
-            IRComponent::LessThanOrEquals(p) => write!(f, " {p}"),
+            IRComponent::UniqueLang(ul) => write!(f, " UniqueLang: {ul}"),
+            IRComponent::LanguageIn(langs) => {
+                let langs = langs.iter().map(|l| l.to_string()).collect::<Vec<_>>().join(", ");
+                write!(f, " LanguageIn: [{langs}]")
+            },
+            IRComponent::Equals(e) => write!(f, " Equals: {e}"),
+            IRComponent::Disjoint(p) => write!(f, " Disjoint: {p}"),
+            IRComponent::LessThan(p) => write!(f, " LessThan: {p}"),
+            IRComponent::LessThanOrEquals(p) => write!(f, " LessThanOrEquals: {p}"),
             IRComponent::Or(or) => write!(f, " {or}"),
             IRComponent::And(and) => write!(f, " {and}"),
             IRComponent::Not(not) => write!(f, " {not}"),
             IRComponent::Xone(xone) => write!(f, " {xone}"),
             IRComponent::Node(n) => write!(f, " {n}"),
-            IRComponent::HasValue(v) => write!(f, " HasValue({v})"),
-            IRComponent::In(vs) => write!(f, " {vs}"),
+            IRComponent::HasValue(v) => write!(f, " HasValue(HasValue: {v})"),
+            IRComponent::In(values) => {
+                let values = values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
+                write!(f, " In[{values}]")
+            },
             IRComponent::QualifiedValueShape(qvs) => write!(f, " {qvs}"),
             IRComponent::Closed(closed) => write!(f, "{closed}"),
-            IRComponent::Deactivated(deactivated) => write!(f, "{deactivated}"),
+            IRComponent::Deactivated(deactivated) => write!(f, "Deactivated: {deactivated}"),
             IRComponent::BasicSparql(sparql) => write!(f, " {sparql}"),
         }
+    }
+}
+
+/// Compiles a SHACL cardinality (`sh:minCount` / `sh:maxCount`) value, rejecting
+/// a negative `isize` instead of silently wrapping it. Mirrors the guard the
+/// collapsed `MinCount`/`MaxCount` newtypes used to enforce in their `new`.
+fn check_non_negative(component: &'static str, value: isize) -> Result<isize, IRError> {
+    if value < 0 {
+        Err(IRError::NegativeCardinality { component, value })
+    } else {
+        Ok(value)
     }
 }

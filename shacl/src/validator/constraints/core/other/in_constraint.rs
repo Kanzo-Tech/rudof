@@ -1,37 +1,28 @@
 use crate::error::ValidationError;
-use crate::ir::components::In;
-use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::{Validator, validate_with};
+use crate::ir::IRSchema;
+use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
-use crate::validator::nodes::ValueNodes;
-use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::rdf_core::NeighsRDF;
+use rudof_rdf::rdf_core::term::Object;
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug> Validator<S> for In {
-    fn validate<E: Engine<S>>(
-        &self,
-        component: &IRComponent,
-        shape: &IRShape,
-        _: &S,
-        _: &mut E,
-        value_nodes: &ValueNodes<S>,
-        _: Option<&IRShape>,
-        maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
-        validate_with(
-            component,
-            shape,
-            value_nodes,
-            ValueNodeIteration,
-            |vn| {
-                let values = self.values().iter().map(S::object_as_term).collect::<Vec<_>>();
-                !values.contains(vn)
-            },
-            &format!("In constraint not satisfied. Expected one of {:?}", self.values()),
-            maybe_path,
-        )
+/// `sh:in` — each value node is a member of the given list.
+pub(crate) struct In<'a>(pub &'a [Object]);
+
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for In<'_> {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn check<E: Engine<S>>(&self, vn: &S::Term, _cx: &mut CheckCtx<'_, S, E>) -> Result<Check, ValidationError> {
+        let values = self.0.iter().map(S::object_as_term).collect::<Vec<_>>();
+        Ok(if values.contains(vn) { Check::Hold } else { Check::Violate })
+    }
+
+    fn message(&self, _schema: &IRSchema) -> String {
+        format!("In constraint not satisfied. Expected one of {:?}", self.0)
     }
 }

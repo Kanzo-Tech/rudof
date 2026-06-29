@@ -2,6 +2,7 @@
 //! Represents [SHACL](https://www.w3.org/TR/shacl/) Abstract Syntax Tree.
 //! This project started as a re-implementation in Rust of [SHACL-s](https://github.com/weso/shacl-s).
 
+mod builder;
 mod component;
 pub(crate) mod error;
 mod node_expr;
@@ -13,6 +14,7 @@ mod shape;
 mod visitor;
 
 use crate::error::ASTError;
+pub use builder::{BuildError, NodeShapeBuilder, PropertyShapeBuilder, SchemaBuilder};
 pub use component::ASTComponent;
 pub use node_shape::ASTNodeShape;
 pub use property_shape::ASTPropertyShape;

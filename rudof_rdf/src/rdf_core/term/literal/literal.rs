@@ -915,22 +915,24 @@ impl Default for ConcreteLiteral {
     }
 }
 
-/// Partial ordering for literals following SPARQL comparison semantics.
-///
-/// Comparison rules:
-/// - String literals are compared lexicographically by their lexical form.
-/// - Datatype literals are comparable **only if** they share the same datatype,
-///   and are then compared by lexical form.
-/// - Numeric literals are compared by numeric value.
-/// - Boolean literals follow `true > false`.
-/// - Datetime literals are compared chronologically.
-///
-/// If two literals are not comparable under these rules, `None` is returned.
-///
-/// See: <https://www.w3.org/TR/sparql11-query/#OperatorMapping>
-#[allow(clippy::non_canonical_partial_ord_impl)]
-impl PartialOrd for ConcreteLiteral {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl ConcreteLiteral {
+    /// Compares two literals following SPARQL comparison semantics (a **partial** order).
+    ///
+    /// Comparison rules:
+    /// - String literals are compared lexicographically by their lexical form.
+    /// - Datatype literals are comparable **only if** they share the same datatype,
+    ///   and are then compared by lexical form.
+    /// - Numeric literals are compared by numeric value.
+    /// - Boolean literals follow `true > false`.
+    /// - Datetime literals are compared chronologically.
+    ///
+    /// Returns `None` when the two literals are not comparable under these rules
+    /// (e.g. different non-numeric datatypes, `NaN`, or wrong-datatype literals).
+    /// For a *total* order suitable for sorting use the [`Ord`]/[`PartialOrd`]
+    /// implementations instead.
+    ///
+    /// See: <https://www.w3.org/TR/sparql11-query/#OperatorMapping>
+    pub fn sparql_compare(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             // Chronological comparison for datetime literals
             (Self::DatetimeLiteral(dt1), Self::DatetimeLiteral(dt2)) => dt1.partial_cmp(dt2),
@@ -964,26 +966,37 @@ impl PartialOrd for ConcreteLiteral {
             _ => None,
         }
     }
+
+    /// Returns a stable rank for each variant, used to define a total order.
+    fn variant_rank(&self) -> u8 {
+        match self {
+            Self::StringLiteral { .. } => 0,
+            Self::DatatypeLiteral { .. } => 1,
+            Self::NumericLiteral(_) => 2,
+            Self::DatetimeLiteral(_) => 3,
+            Self::BooleanLiteral(_) => 4,
+            Self::WrongDatatypeLiteral { .. } => 5,
+        }
+    }
 }
 
 /// Total ordering for literals.
 ///
-/// # Panics
-///
-/// This implementation **panics** if two literals are not comparable, such as:
-/// - Literals with different datatypes
-/// - Numeric literals involving `NaN`
-///
-/// This is intended as a temporary solution to support sorting in validation
-/// workflows where such cases are not expected.
-///
-/// # TODO
-///
-/// Define a total ordering that is well-defined for *all* literals.
+/// This ordering is **total** and never panics: literals are ordered first by
+/// variant rank and then lexicographically by their lexical form. It does *not*
+/// implement SPARQL value semantics (e.g. it does not compare numbers by
+/// magnitude across datatypes); use [`ConcreteLiteral::sparql_compare`] for that.
 impl Ord for ConcreteLiteral {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other)
-            .unwrap_or_else(|| panic!("Cannot compare literals {self} and {other}"))
+        self.variant_rank()
+            .cmp(&other.variant_rank())
+            .then_with(|| self.lexical_form().cmp(&other.lexical_form()))
+    }
+}
+
+impl PartialOrd for ConcreteLiteral {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 

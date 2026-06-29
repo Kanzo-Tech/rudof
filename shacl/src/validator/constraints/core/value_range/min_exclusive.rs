@@ -33,7 +33,7 @@ impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for MinExclusive {
             value_nodes,
             ValueNodeIteration,
             |n| match S::term_as_sliteral(n) {
-                Ok(lit) => lit.partial_cmp(self.min_exclusive()).map(|o| o.is_le()).unwrap_or(true),
+                Ok(lit) => lit.sparql_compare(self.min_exclusive()).map(|o| o.is_le()).unwrap_or(true),
                 Err(_) => true,
             },
             &format!("MinExclusive({}) not satisfied", self.min_exclusive()),

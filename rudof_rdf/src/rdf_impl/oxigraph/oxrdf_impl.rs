@@ -148,11 +148,15 @@ impl Literal for OxLiteral {
 
     /// Attempts to convert this literal to a concrete typed value.
     ///
+    /// Maps the oxrdf literal's datatype IRI to the matching [`ConcreteLiteral`]
+    /// variant (plain/lang strings, numeric, boolean, datetime, or datatype
+    /// literals), reusing the [`TryFrom<oxrdf::Literal>`] mapping.
+    ///
     /// # Returns
     /// `Some(ConcreteLiteral)` if the literal can be parsed into a concrete type,
     /// `None` otherwise.
     fn to_concrete_literal(&self) -> Option<ConcreteLiteral> {
-        todo!()
+        ConcreteLiteral::try_from(self.clone()).ok()
     }
 }
 

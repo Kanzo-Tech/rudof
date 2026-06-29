@@ -41,7 +41,7 @@ impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for LessThan {
                         let node1 = S::term_as_object(triple.obj())?;
                         for value in nodes.iter() {
                             let node2 = S::term_as_object(value)?;
-                            let msg = match node2.partial_cmp(&node1) {
+                            let msg = match node2.sparql_compare(&node1) {
                                 None => Some(format!(
                                     "LessThan constraint violated: {node1} is not comparable to {node2}"
                                 )),

@@ -33,7 +33,7 @@ impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for MaxExclusive {
             value_nodes,
             ValueNodeIteration,
             |n| match S::term_as_sliteral(n) {
-                Ok(lit) => lit.partial_cmp(self.max_exclusive()).map(|o| o.is_ge()).unwrap_or(true),
+                Ok(lit) => lit.sparql_compare(self.max_exclusive()).map(|o| o.is_ge()).unwrap_or(true),
                 Err(_) => true,
             },
             &format!("MaxExclusive({}) not satisfied", self.max_exclusive()),

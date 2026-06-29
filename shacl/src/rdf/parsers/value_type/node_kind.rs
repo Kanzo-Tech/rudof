@@ -1,11 +1,11 @@
 use crate::ast::ASTComponent;
 use crate::rdf::error::ShaclParserError;
 use crate::types::NodeKind;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::ValuesPropertyParser;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::term::Iri;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{NeighsRDF, Rdf};
+use rudof_rdf::parser::rdf_node_parser::constructors::ValuesPropertyParser;
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::term::Iri;
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{NeighsRDF, Rdf};
 
 pub(crate) fn node_kind<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     ValuesPropertyParser::new(ShaclVocab::sh_node_kind()).flat_map(|ns| {

@@ -1,6 +1,6 @@
 use crate::validator::nodes::ValueNodes;
-use rudof_rdf::rdf_core::Rdf;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::Rdf;
+use rudof_rdf::term::Object;
 
 /// Abstraction over the possible iteration strategies when validating
 pub(crate) trait IterationStrategy<RDF: Rdf> {

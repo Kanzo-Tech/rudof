@@ -1,6 +1,6 @@
 use crate::validator::constraints::ConstraintComponent;
 use crate::validator::iteration::ValueNodeIteration;
-use rudof_rdf::rdf_core::NeighsRDF;
+use rudof_rdf::NeighsRDF;
 use std::fmt::Debug;
 
 /// `sh:deactivated` — a deactivated shape raises no results. If the shape were

@@ -1,4 +1,4 @@
-use rudof_rdf::rdf_core::query::QueryRDF;
+use rudof_rdf::query::QueryRDF;
 
 use crate::{
     Result, Rudof,

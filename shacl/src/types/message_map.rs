@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang};
+use rudof_rdf::term::literal::{ConcreteLiteral, Lang};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::hash_map::IntoIter;

@@ -20,15 +20,15 @@ use super::decompressor::strip_compression_suffix;
 use super::index_builder::{build_index, convert_to_native, fingerprint_inputs};
 use super::server::QleverServer;
 use super::{IndexHandle, InputFile, NativeFormat, QleverConfig, QleverError};
-use rudof_rdf::rdf_core::{
+use rudof_rdf::{
     Any, AsyncRDF, BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf,
     query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions},
 };
-use rudof_rdf::rdf_impl::OxigraphEndpoint;
+use rudof_rdf::backend::OxigraphEndpoint;
 
 /// An RDF graph served by a locally-launched QLever Docker container.
 ///
-/// From a caller's perspective this is interchangeable with [`OxigraphInMemory`](rudof_rdf::rdf_impl::OxigraphInMemory): it produces the same
+/// From a caller's perspective this is interchangeable with [`OxigraphInMemory`](rudof_rdf::backend::OxigraphInMemory): it produces the same
 /// `oxrdf` types and implements the same trait set, but the data lives in a QLever index on disk and is queried via the container's HTTP SPARQL
 /// endpoint.
 #[derive(Clone)]

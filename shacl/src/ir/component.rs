@@ -10,10 +10,10 @@ use crate::ir::{convert_iri_ref, convert_value};
 use crate::types::NodeKind;
 use itertools::Itertools;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::BuildRDF;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang};
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::BuildRDF;
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::{ConcreteLiteral, Lang};
+use rudof_rdf::vocab::ShaclVocab;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 

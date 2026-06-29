@@ -3,8 +3,8 @@ use crate::ir::IRSchema;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::term::literal::{Lang, Literal};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::term::literal::{Lang, Literal};
 use std::fmt::Debug;
 
 /// `sh:languageIn` — each literal value node uses one of the allowed languages.

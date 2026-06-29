@@ -4,8 +4,8 @@ use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::FocusNodeIteration;
 use crate::validator::nodes::FocusNodes;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::term::Object;
 use std::fmt::Debug;
 
 /// `sh:hasValue` — at least one value node equals the given term.

@@ -1,4 +1,4 @@
-use rudof_rdf::rdf_core::Rdf;
+use rudof_rdf::Rdf;
 use std::collections::HashSet;
 use std::collections::hash_set::IntoIter;
 use std::fmt::{Display, Formatter};

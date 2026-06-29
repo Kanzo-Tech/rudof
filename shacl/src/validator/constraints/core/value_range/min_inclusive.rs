@@ -3,8 +3,8 @@ use crate::ir::IRSchema;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::term::literal::ConcreteLiteral;
 use std::fmt::Debug;
 #[cfg(feature = "sparql")]
 use crate::ir::{IRComponent, IRShape};
@@ -17,9 +17,9 @@ use crate::validator::report::ValidationResult;
 #[cfg(feature = "sparql")]
 use indoc::formatdoc;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::SHACLPath;
+use rudof_rdf::SHACLPath;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::query::QueryRDF;
+use rudof_rdf::query::QueryRDF;
 
 /// `sh:MinInclusive` value-range constraint.
 pub(crate) struct MinInclusive<'a>(pub &'a ConcreteLiteral);

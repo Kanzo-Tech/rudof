@@ -1,4 +1,4 @@
-use rudof_rdf::rdf_core::query::{TableFormat, TableOptions};
+use rudof_rdf::query::{TableFormat, TableOptions};
 
 use crate::{
     Result, Rudof,

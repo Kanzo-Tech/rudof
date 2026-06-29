@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 

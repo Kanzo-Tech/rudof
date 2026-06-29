@@ -4,8 +4,8 @@ use oxigraph::sparql::{QueryEvaluationError, SparqlSyntaxError};
 use thiserror::Error;
 
 use rudof_rdf::{
-    rdf_core::RDFFormat,
-    rdf_impl::{OxigraphEndpointError, RdfBackendError},
+    RDFFormat,
+    backend::{OxigraphEndpointError, RdfBackendError},
 };
 
 #[derive(Debug, Error)]

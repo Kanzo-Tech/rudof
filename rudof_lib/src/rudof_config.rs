@@ -1,6 +1,6 @@
 use crate::errors::ConfigError;
 use dctap::TapConfig;
-use rudof_rdf::rdf_core::RdfDataConfig;
+use rudof_rdf::RdfDataConfig;
 use serde::{Deserialize, Serialize};
 use shapes_comparator::ComparatorConfig;
 use shapes_converter::{ShEx2HtmlConfig, ShEx2SparqlConfig, ShEx2UmlConfig, Shacl2ShExConfig, Tap2ShExConfig};

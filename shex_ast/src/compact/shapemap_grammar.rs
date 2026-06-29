@@ -15,7 +15,7 @@ use nom::{
     multi::many0,
 };
 use prefixmap::IriRef;
-use rudof_rdf::rdf_core::vocabs::RdfVocab;
+use rudof_rdf::vocab::RdfVocab;
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum ShapeMapStatement {

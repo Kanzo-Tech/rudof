@@ -5,7 +5,7 @@ use crate::{
     errors::QueryError,
     formats::{InputSpec, QueryType},
 };
-use rudof_rdf::rdf_core::query::SparqlQuery;
+use rudof_rdf::query::SparqlQuery;
 
 pub fn load_query(rudof: &mut Rudof, query: &InputSpec, _query_type: Option<&QueryType>) -> Result<()> {
     let mut query_reader = query

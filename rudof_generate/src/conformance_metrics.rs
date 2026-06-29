@@ -2,8 +2,8 @@ use crate::unified_constraints::{NodeKind, UnifiedConstraint, UnifiedConstraintM
 use crate::{DataGeneratorError, Result};
 use oxrdf::{NamedOrBlankNode, Term};
 use regex::Regex;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_impl::OxigraphInMemory;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::backend::OxigraphInMemory;
 use serde::Serialize;
 use std::collections::HashMap;
 

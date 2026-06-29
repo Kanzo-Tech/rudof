@@ -5,7 +5,7 @@ use crate::ir::components::BasicSparql;
 use crate::ir::IRSchema;
 use crate::validator::constraints::ConstraintComponent;
 use crate::validator::iteration::ValueNodeIteration;
-use rudof_rdf::rdf_core::NeighsRDF;
+use rudof_rdf::NeighsRDF;
 use std::fmt::Debug;
 #[cfg(feature = "sparql")]
 use crate::ir::{IRComponent, IRShape};
@@ -18,13 +18,13 @@ use crate::validator::nodes::ValueNodes;
 #[cfg(feature = "sparql")]
 use crate::validator::report::ValidationResult;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::SHACLPath;
+use rudof_rdf::SHACLPath;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::query::QueryRDF;
+use rudof_rdf::query::QueryRDF;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 #[cfg(feature = "sparql")]
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
+use rudof_rdf::term::literal::ConcreteLiteral;
 
 /// `sh:sparql` — a SPARQL-based constraint.
 ///

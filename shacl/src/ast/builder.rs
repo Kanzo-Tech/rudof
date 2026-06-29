@@ -9,9 +9,9 @@ use crate::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTSha
 use crate::types::{Presentation, Target, Value};
 use prefixmap::{IriRef, PrefixMap};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::SHACLPath;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::NumericLiteral;
+use rudof_rdf::SHACLPath;
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::NumericLiteral;
 use std::collections::HashMap;
 use thiserror::Error;
 

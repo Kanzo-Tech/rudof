@@ -2,7 +2,7 @@ use crate::error::ValidationError;
 use crate::ir::{IRNodeShape, IRPropertyShape, IRShape};
 use crate::validator::engine::Engine;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
-use rudof_rdf::rdf_core::NeighsRDF;
+use rudof_rdf::NeighsRDF;
 
 pub(crate) trait ValueNodesOps<RDF: NeighsRDF> {
     fn value_nodes<E: Engine<RDF>>(

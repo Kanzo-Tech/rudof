@@ -8,7 +8,7 @@ use crate::{
     void_property_partition, void_triples,
 };
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::{
+use rudof_rdf::{
     NeighsRDF, RDFError,
     parser::{
         RDFParse,

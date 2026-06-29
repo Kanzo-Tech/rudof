@@ -1,8 +1,8 @@
 use crate::config::OutputConfig;
 use crate::conformance_metrics::ConformanceMetrics;
 use crate::{DataGeneratorError, Result};
-use rudof_rdf::rdf_core::{BuildRDF, NeighsRDF, RDFFormat};
-use rudof_rdf::rdf_impl::OxigraphInMemory;
+use rudof_rdf::{BuildRDF, NeighsRDF, RDFFormat};
+use rudof_rdf::backend::OxigraphInMemory;
 use std::fs::File;
 use std::path::PathBuf;
 

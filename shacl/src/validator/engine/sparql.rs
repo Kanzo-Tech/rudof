@@ -7,9 +7,9 @@ use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
 use indoc::formatdoc;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::query::QueryRDF;
-use rudof_rdf::rdf_core::term::{Object, Term};
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::query::QueryRDF;
+use rudof_rdf::term::{Object, Term};
+use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
 /// SPARQL validation engine: dispatches constraints to their `validate_sparql`

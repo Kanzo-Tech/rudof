@@ -3,7 +3,7 @@ use crate::SchemaJsonError;
 use prefixmap::IriRef;
 use rbe::Value;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::{
+use rudof_rdf::{
     RDFError,
     term::{
         Object,

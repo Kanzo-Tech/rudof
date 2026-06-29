@@ -3,7 +3,7 @@ use crate::ir::error::IRError;
 use crate::ir::schema::IRSchema;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::SHACLPath;
+use rudof_rdf::SHACLPath;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]

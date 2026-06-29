@@ -1,6 +1,6 @@
 use prefixmap::error::{DerefError, PrefixMapError};
 use rudof_iri::error::IriSError;
-use rudof_rdf::rdf_core::RDFError;
+use rudof_rdf::RDFError;
 use std::{
     io,
     num::{ParseFloatError, ParseIntError},

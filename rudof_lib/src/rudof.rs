@@ -46,7 +46,7 @@ use crate::{
 use dctap::DCTap as DCTAP;
 use pgschema::{pgs::PropertyGraphSchema, type_map::TypeMap, validation_result::ValidationResult};
 use rdf_config::RdfConfigModel;
-use rudof_rdf::rdf_core::query::SparqlQuery;
+use rudof_rdf::query::SparqlQuery;
 use shacl::ir::IRSchema;
 use shacl::validator::report::ValidationReport;
 use shex_ast::ir::external_resolver::{

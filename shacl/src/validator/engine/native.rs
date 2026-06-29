@@ -7,9 +7,9 @@ use crate::validator::index::ClassIndex;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::{Object, Term, Triple};
-use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfsVocab};
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::term::{Object, Term, Triple};
+use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
+use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
 /// Native (in-memory) validation engine.

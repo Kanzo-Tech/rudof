@@ -1,8 +1,8 @@
 use crate::ir::error::IRError;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::BuildRDF;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfsVocab, ShaclVocab};
+use rudof_rdf::BuildRDF;
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::{RdfVocab, RdfsVocab, ShaclVocab};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 

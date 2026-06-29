@@ -1,7 +1,7 @@
 use crate::ast::shape::ASTShape;
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::hash_map::IntoIter;

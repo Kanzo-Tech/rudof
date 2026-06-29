@@ -18,8 +18,8 @@ use crate::ir::ShapeLabelIdx;
 use crate::ir::components::{BasicSparql, Closed, Pattern, QualifiedValueShape};
 use crate::types::NodeKind;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang};
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::{ConcreteLiteral, Lang};
 
 /// Fold over a single compiled SHACL component. Override the arms of interest;
 /// the rest fall through to [`IRComponentVisitor::default_component`].

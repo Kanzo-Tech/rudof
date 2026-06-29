@@ -7,11 +7,9 @@ use oxrdf::{
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
 use rudof_rdf::{
-    rdf_core::{
-        BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf, RdfDataConfig,
-        query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions},
-    },
-    rdf_impl::{OxigraphEndpoint, OxigraphInMemory, RdfBackend, ReaderMode},
+    BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf, RdfDataConfig,
+    backend::{OxigraphEndpoint, OxigraphInMemory, RdfBackend, ReaderMode},
+    query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions},
 };
 use serde::Serialize;
 use serde::ser::SerializeStruct;
@@ -92,7 +90,7 @@ impl RdfData {
     pub fn check_store(&mut self) -> Result<(), RdfDataError> {
         if let Some(g) = self.primary.as_in_memory_mut() {
             g.ensure_store().map_err(|e| RdfDataError::Backend {
-                err: Box::new(rudof_rdf::rdf_impl::RdfBackendError::from(e)),
+                err: Box::new(rudof_rdf::backend::RdfBackendError::from(e)),
             })?;
         }
         Ok(())
@@ -157,7 +155,7 @@ impl RdfData {
         graph
             .merge_from_reader(read, source_name, format, base, reader_mode)
             .map_err(|e| RdfDataError::Backend {
-                err: Box::new(rudof_rdf::rdf_impl::RdfBackendError::from(e)),
+                err: Box::new(rudof_rdf::backend::RdfBackendError::from(e)),
             })
     }
 

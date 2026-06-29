@@ -4,7 +4,7 @@ use crate::atom;
 use crate::engine::Engine;
 use crate::validator_error::*;
 use prefixmap::PrefixMap;
-use rudof_rdf::rdf_core::{NeighsRDF, query::QueryRDF};
+use rudof_rdf::{NeighsRDF, query::QueryRDF};
 use serde_json::Value;
 use shex_ast::Node;
 use shex_ast::ShapeExprLabel;

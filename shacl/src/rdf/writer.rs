@@ -1,6 +1,6 @@
 use crate::ir::IRSchema;
 use crate::rdf::error::ShaclWriterError;
-use rudof_rdf::rdf_core::{BuildRDF, RDFFormat};
+use rudof_rdf::{BuildRDF, RDFFormat};
 use std::io::Write;
 
 pub struct ShaclWriter<RDF: BuildRDF> {

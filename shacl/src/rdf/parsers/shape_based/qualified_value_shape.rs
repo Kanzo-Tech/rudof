@@ -1,12 +1,12 @@
 use crate::ast::ASTComponent;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{
+use rudof_rdf::parser::rdf_node_parser::constructors::{
     ObjectsPropertyParser, SingleBoolPropertyParser, SingleIntegerPropertyParser,
 };
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{NeighsRDF, ParseCtx, RDFError, SHACLPath};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::ConcreteLiteral;
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{NeighsRDF, ParseCtx, RDFError, SHACLPath};
 use std::collections::HashSet;
 use std::marker::PhantomData;
 

@@ -8,10 +8,10 @@ use crate::ir::shape::IRShape;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
 use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, NumericLiteral};
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{BuildRDF, SHACLPath};
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::{ConcreteLiteral, NumericLiteral};
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{BuildRDF, SHACLPath};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]

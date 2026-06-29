@@ -1,4 +1,4 @@
-use rudof_rdf::rdf_core::RdfDataConfig;
+use rudof_rdf::RdfDataConfig;
 use serde::{Deserialize, Serialize};
 // File-based config loading is not available on wasm.
 #[cfg(not(target_family = "wasm"))]

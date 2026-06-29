@@ -1,6 +1,6 @@
 use crate::validator::iteration::IterationStrategy;
 use crate::validator::nodes::ValueNodes;
-use rudof_rdf::rdf_core::Rdf;
+use rudof_rdf::Rdf;
 
 pub(crate) struct ValueNodeIteration;
 

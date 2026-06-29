@@ -3,13 +3,13 @@ use crate::rdf::State;
 use crate::rdf::error::ShaclParserError;
 use crate::rdf::parsers::{node_shape, property_shape};
 use itertools::Itertools;
-use rudof_rdf::rdf_core::parser::RDFParse;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{ListParser, SuccessParser};
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::Triple;
-use rudof_rdf::rdf_core::vocabs::{RdfVocab, ShaclVocab};
-use rudof_rdf::rdf_core::{Any, NeighsRDF, Matcher};
+use rudof_rdf::parser::RDFParse;
+use rudof_rdf::parser::rdf_node_parser::constructors::{ListParser, SuccessParser};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::term::Object;
+use rudof_rdf::term::Triple;
+use rudof_rdf::vocab::{RdfVocab, ShaclVocab};
+use rudof_rdf::{Any, NeighsRDF, Matcher};
 use std::collections::{HashMap, HashSet};
 
 pub struct ShaclParser<RDF: NeighsRDF> {

@@ -1,5 +1,5 @@
 use rudof_iri::error::IriSError;
-use rudof_rdf::{rdf_core::RDFError, rdf_impl::OxigraphInMemoryError};
+use rudof_rdf::{RDFError, backend::OxigraphInMemoryError};
 use shex_ast::compact::ParseError;
 use shex_ast::ir::external_resolver::ExternalResolverError;
 use shex_ast::shapemap::ValidationStatus;

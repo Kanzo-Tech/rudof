@@ -1,5 +1,5 @@
-use rudof_rdf::rdf_core::vocabs::RdfVocab;
-use rudof_rdf::rdf_core::{Rdf, term::Iri};
+use rudof_rdf::vocab::RdfVocab;
+use rudof_rdf::{Rdf, term::Iri};
 use std::fmt::Display;
 
 /// Represents an edge in a visual RDF graph.

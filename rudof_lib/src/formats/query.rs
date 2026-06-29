@@ -1,4 +1,4 @@
-use rudof_rdf::rdf_core::query::QueryResultFormat;
+use rudof_rdf::query::QueryResultFormat;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 

@@ -26,10 +26,10 @@
 pub use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 pub use prefixmap::IriRef;
 pub use rudof_iri::IriS;
-pub use rudof_rdf::rdf_core::term::Object;
-pub use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
-pub use rudof_rdf::rdf_core::{BuildRDF, RDFFormat, SHACLPath};
-pub use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
+pub use rudof_rdf::term::Object;
+pub use rudof_rdf::term::literal::ConcreteLiteral;
+pub use rudof_rdf::{BuildRDF, RDFFormat, SHACLPath};
+pub use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 pub use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 pub use shacl::types::{NodeKind, Severity, Target, Value};
 pub use shacl::validator::report::ValidationResult;

@@ -1,3 +1,4 @@
+use crate::ir::error::IRError;
 use std::fmt::{Display, Formatter};
 
 /// sh:maxCount specifies the maximum number of value nodes that satisfy the
@@ -12,10 +13,14 @@ pub struct MaxCount {
 }
 
 impl MaxCount {
-    pub fn new(max_count: isize) -> Self {
-        MaxCount {
-            max_count: max_count as usize,
-        }
+    /// Validates `max_count >= 0` instead of silently wrapping a negative
+    /// `isize` into a huge `usize`.
+    pub fn new(max_count: isize) -> Result<Self, IRError> {
+        let max_count = usize::try_from(max_count).map_err(|_| IRError::NegativeCardinality {
+            component: "sh:maxCount",
+            value: max_count,
+        })?;
+        Ok(MaxCount { max_count })
     }
 
     pub fn max_count(&self) -> usize {

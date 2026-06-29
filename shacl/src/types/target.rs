@@ -1,3 +1,4 @@
+use crate::ir::error::IRError;
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::BuildRDF;
 use rudof_rdf::rdf_core::term::Object;
@@ -24,22 +25,30 @@ pub enum Target {
 }
 
 impl Target {
-    pub fn register<RDF: BuildRDF>(&self, id: &Object, graph: &mut RDF) -> Result<(), RDF::Err> {
-        let node: RDF::Subject = id.clone().try_into().map_err(|_| unreachable!())?;
+    pub fn register<RDF: BuildRDF>(&self, id: &Object, graph: &mut RDF) -> Result<(), IRError> {
+        let node: RDF::Subject = id
+            .clone()
+            .try_into()
+            .map_err(|_| IRError::InvalidShapeId(Box::new(id.clone())))?;
 
-        match self {
-            Target::Node(n) => graph.add_triple(node, ShaclVocab::sh_target_node(), n.clone()),
-            Target::Class(c) => graph.add_triple(node, ShaclVocab::sh_target_class(), c.clone()),
+        // The malformed `Wrong*` targets serialize like their well-formed
+        // counterparts (they exist only to round-trip and to raise violations).
+        let result = match self {
+            Target::Node(n) | Target::WrongNode(n) => graph.add_triple(node, ShaclVocab::sh_target_node(), n.clone()),
+            Target::Class(c) | Target::WrongClass(c) => {
+                graph.add_triple(node, ShaclVocab::sh_target_class(), c.clone())
+            },
             Target::SubjectsOf(s) => graph.add_triple(node, ShaclVocab::sh_target_subjects_of(), s.clone()),
+            Target::WrongSubjectsOf(s) => graph.add_triple(node, ShaclVocab::sh_target_subjects_of(), s.clone()),
             Target::ObjectsOf(o) => graph.add_triple(node, ShaclVocab::sh_target_objects_of(), o.clone()),
-            // TODO - Review this code and in SHACL 1.2, add sh_shape_class ?
-            Target::ImplicitClass(_) => graph.add_triple(node, RdfVocab::rdf_type().clone(), RdfsVocab::rdfs_class()),
-            Target::WrongNode(_) => todo!(),
-            Target::WrongClass(_) => todo!(),
-            Target::WrongSubjectsOf(_) => todo!(),
-            Target::WrongObjectsOf(_) => todo!(),
-            Target::WrongImplicitClass(_) => todo!(),
-        }
+            Target::WrongObjectsOf(o) => graph.add_triple(node, ShaclVocab::sh_target_objects_of(), o.clone()),
+            // TODO - In SHACL 1.2, add sh_shape_class ?
+            Target::ImplicitClass(_) | Target::WrongImplicitClass(_) => {
+                graph.add_triple(node, RdfVocab::rdf_type().clone(), RdfsVocab::rdfs_class())
+            },
+        };
+
+        result.map_err(|e| IRError::from_rdf_err::<RDF>("add target", e))
     }
 }
 

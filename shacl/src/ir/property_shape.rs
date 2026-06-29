@@ -9,7 +9,7 @@ use crate::ir::shape_label_idx::ShapeLabelIdx;
 use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target};
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::NumericLiteral;
+use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, NumericLiteral};
 use rudof_rdf::rdf_core::vocabs::ShaclVocab;
 use rudof_rdf::rdf_core::{BuildRDF, SHACLPath};
 use std::collections::{HashMap, HashSet};
@@ -225,7 +225,11 @@ impl IRPropertyShape {
         graph: &mut RDF,
         shapes_map: &HashMap<ShapeLabelIdx, IRShape>,
     ) -> Result<(), IRError> {
-        let id: RDF::Subject = self.id.clone().try_into().unwrap_or_else(|_| unreachable!());
+        let id: RDF::Subject = self
+            .id
+            .clone()
+            .try_into()
+            .map_err(|_| IRError::InvalidShapeId(Box::new(self.id.clone())))?;
         graph
             .add_type(id.clone(), ShaclVocab::sh_property_shape())
             .map_err(|e| IRError::from_rdf_err::<RDF>("add type", e))?;
@@ -243,24 +247,9 @@ impl IRPropertyShape {
         })?;
 
         if let Some(order) = &self.order {
-            let lit: RDF::Literal = match order {
-                NumericLiteral::Integer(i) => (*i).into(),
-                NumericLiteral::Byte(_) => todo!(),
-                NumericLiteral::Short(_) => todo!(),
-                NumericLiteral::NonNegativeInteger(_) => todo!(),
-                NumericLiteral::UnsignedLong(_) => todo!(),
-                NumericLiteral::UnsignedInt(_) => todo!(),
-                NumericLiteral::UnsignedShort(_) => todo!(),
-                NumericLiteral::UnsignedByte(_) => todo!(),
-                NumericLiteral::PositiveInteger(_) => todo!(),
-                NumericLiteral::NegativeInteger(_) => todo!(),
-                NumericLiteral::NonPositiveInteger(_) => todo!(),
-                NumericLiteral::Long(_) => todo!(),
-                NumericLiteral::Decimal(_) => todo!(),
-                NumericLiteral::Double(f) => (*f).into(),
-                NumericLiteral::Float(f) => f.to_string().into(),
-            };
-
+            // One typed conversion for every NumericLiteral variant: ConcreteLiteral
+            // carries the lexical form + xsd datatype, and RDF::Literal: From<ConcreteLiteral>.
+            let lit: RDF::Literal = ConcreteLiteral::NumericLiteral(order.clone()).into();
             graph
                 .add_triple(id.clone(), ShaclVocab::sh_order(), lit)
                 .map_err(IRError::add_triple::<RDF>)?;
@@ -277,7 +266,9 @@ impl IRPropertyShape {
                 .add_triple(id.clone(), ShaclVocab::sh_path(), pred.clone())
                 .map_err(IRError::add_triple::<RDF>)?;
         } else {
-            unimplemented!()
+            // Complex paths (sequence/alternative/inverse/…) need an RDF list
+            // encoding that is not yet emitted; fail loudly instead of panicking.
+            return Err(IRError::UnsupportedPathSerialization(Box::new(self.path.clone())));
         }
 
         self.components
@@ -286,8 +277,7 @@ impl IRPropertyShape {
 
         self.targets
             .iter()
-            .try_for_each(|target| target.register(&self.id, graph))
-            .map_err(|e| IRError::from_rdf_err::<RDF>("add target to graph", e))?;
+            .try_for_each(|target| target.register(&self.id, graph))?;
 
         if self.deactivated {
             let lit: RDF::Literal = "true".to_string().into();

@@ -9,6 +9,7 @@ use crate::ir::error::IRError;
 use crate::ir::schema::IRSchema;
 use crate::ir::shape::IRShape;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
+use crate::ir::visitor::IRComponentVisitor;
 use crate::ir::{convert_iri_ref, convert_value};
 use crate::types::NodeKind;
 use itertools::Itertools;
@@ -332,93 +333,90 @@ impl IRComponent {
         ir: &IRSchema,
         cache: &mut HashSet<ShapeLabelIdx>,
     ) {
-        match self {
-            IRComponent::Class(_) => {},
-            IRComponent::Datatype(_) => {},
-            IRComponent::NodeKind(_) => {},
-            IRComponent::MinCount(_) => {},
-            IRComponent::MaxCount(_) => {},
-            IRComponent::MinExclusive(_) => {},
-            IRComponent::MaxExclusive(_) => {},
-            IRComponent::MinInclusive(_) => {},
-            IRComponent::MaxInclusive(_) => {},
-            IRComponent::MinLength(_) => {},
-            IRComponent::MaxLength(_) => {},
-            IRComponent::Pattern(_) => {},
-            IRComponent::UniqueLang(_) => {},
-            IRComponent::LanguageIn(_) => {},
-            IRComponent::Equals(_) => {},
-            IRComponent::Disjoint(_) => {},
-            IRComponent::LessThan(_) => {},
-            IRComponent::LessThanOrEquals(_) => {},
-            IRComponent::Or(or) => {
-                for shape_idx in or.shapes() {
-                    if let Some(shape) = ir.get_shape_from_idx(shape_idx) {
-                        dg.add_edge(idx, *shape_idx, posneg);
-                        if cache.contains(shape_idx) {
-                            continue;
-                        }
-                        cache.insert(*shape_idx);
-                        shape.add_edges(*shape_idx, dg, posneg, ir, cache);
-                    }
-                }
-            },
-            IRComponent::And(and) => {
-                for shape_idx in and.shapes() {
-                    if let Some(shape) = ir.get_shape_from_idx(shape_idx) {
-                        dg.add_edge(idx, *shape_idx, posneg);
-                        if cache.contains(shape_idx) {
-                            continue;
-                        }
-                        cache.insert(*shape_idx);
-                        shape.add_edges(*shape_idx, dg, posneg, ir, cache);
-                    }
-                }
-            },
-            IRComponent::Not(not) => {
-                let shape_idx = not.shape();
-                if let Some(shape) = ir.get_shape_from_idx(shape_idx) {
-                    dg.add_edge(idx, *shape_idx, posneg.change());
-                    if !cache.contains(shape_idx) {
-                        cache.insert(*shape_idx);
-                        shape.add_edges(*shape_idx, dg, posneg.change(), ir, cache);
-                    }
-                }
-            },
-            IRComponent::Xone(xone) => {
-                for shape_idx in xone.shapes() {
-                    if let Some(shape) = ir.get_shape_from_idx(shape_idx) {
-                        dg.add_edge(idx, *shape_idx, posneg);
-                        if cache.contains(shape_idx) {
-                            continue;
-                        }
-                        cache.insert(*shape_idx);
-                        shape.add_edges(*shape_idx, dg, posneg, ir, cache);
-                    }
-                }
-            },
-            IRComponent::Node(node) => {
-                let shape_idx = node.shape();
-                if let Some(shape) = ir.get_shape_from_idx(shape_idx) {
-                    dg.add_edge(idx, *shape_idx, posneg);
-                    if !cache.contains(shape_idx) {
-                        cache.insert(*shape_idx);
-                        shape.add_edges(*shape_idx, dg, posneg, ir, cache);
-                    }
-                }
-            },
-            IRComponent::HasValue(_) => {},
-            IRComponent::In(_) => {},
-            IRComponent::QualifiedValueShape(qvs) => {
-                dg.add_edge(idx, *qvs.shape(), posneg);
-                // for sibling in qvs.siblings() {
-                //     dg.add_edge(idx, *sibling, posneg);
-                // }
-            },
-            IRComponent::Closed(_) => {},
-            IRComponent::Deactivated(_) => {},
-            IRComponent::BasicSparql(_) => {},
+        // Only the logical/shape-based components contribute dependency edges;
+        // every other arm falls through to `default_component` (a no-op). This
+        // is the canonical use of [`IRComponentVisitor`]: a handful of overrides
+        // over a no-op default.
+        let mut visitor = AddEdgesVisitor {
+            idx,
+            dg,
+            posneg,
+            ir,
+            cache,
+        };
+        let Ok(()) = self.accept(&mut visitor);
+    }
+}
+
+/// Walks the interned shape indices of the logical/shape-based components to
+/// build the dependency-graph edges. See [`IRComponent::add_edges`].
+struct AddEdgesVisitor<'a> {
+    idx: ShapeLabelIdx,
+    dg: &'a mut DependencyGraph,
+    posneg: PosNeg,
+    ir: &'a IRSchema,
+    cache: &'a mut HashSet<ShapeLabelIdx>,
+}
+
+impl AddEdgesVisitor<'_> {
+    /// Edge + recursion shared by `sh:or` / `sh:and` / `sh:xone` (positive
+    /// polarity) and `sh:node` (single child, same polarity).
+    fn walk(&mut self, shape_idx: &ShapeLabelIdx, posneg: PosNeg) {
+        if let Some(shape) = self.ir.get_shape_from_idx(shape_idx) {
+            self.dg.add_edge(self.idx, *shape_idx, posneg);
+            if self.cache.contains(shape_idx) {
+                return;
+            }
+            self.cache.insert(*shape_idx);
+            shape.add_edges(*shape_idx, self.dg, posneg, self.ir, self.cache);
         }
+    }
+}
+
+impl IRComponentVisitor for AddEdgesVisitor<'_> {
+    type Output = ();
+    type Error = std::convert::Infallible;
+
+    fn default_component(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn visit_or(&mut self, shapes: &[ShapeLabelIdx]) -> Result<(), Self::Error> {
+        for shape_idx in shapes {
+            self.walk(shape_idx, self.posneg);
+        }
+        Ok(())
+    }
+
+    fn visit_and(&mut self, shapes: &[ShapeLabelIdx]) -> Result<(), Self::Error> {
+        for shape_idx in shapes {
+            self.walk(shape_idx, self.posneg);
+        }
+        Ok(())
+    }
+
+    fn visit_xone(&mut self, shapes: &[ShapeLabelIdx]) -> Result<(), Self::Error> {
+        for shape_idx in shapes {
+            self.walk(shape_idx, self.posneg);
+        }
+        Ok(())
+    }
+
+    fn visit_not(&mut self, shape: ShapeLabelIdx) -> Result<(), Self::Error> {
+        // `sh:not` flips polarity for both the edge and the recursion.
+        self.walk(&shape, self.posneg.change());
+        Ok(())
+    }
+
+    fn visit_node(&mut self, shape: ShapeLabelIdx) -> Result<(), Self::Error> {
+        self.walk(&shape, self.posneg);
+        Ok(())
+    }
+
+    fn visit_qualified_value_shape(&mut self, qvs: &QualifiedValueShape) -> Result<(), Self::Error> {
+        self.dg.add_edge(self.idx, *qvs.shape(), self.posneg);
+        // Siblings intentionally do not add edges (preserved from the prior impl).
+        Ok(())
     }
 }
 

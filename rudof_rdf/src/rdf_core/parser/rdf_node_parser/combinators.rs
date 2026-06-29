@@ -3,7 +3,9 @@ use crate::rdf_core::{
     parser::rdf_node_parser::{RDFNodeParse, constructors::ValuesPropertyParser, utils::parse_list_recursive},
 };
 use rudof_iri::IriS;
-use std::{cell::RefCell, fmt::Debug, marker::PhantomData};
+#[cfg(feature = "parser-erased")]
+use std::cell::RefCell;
+use std::{fmt::Debug, marker::PhantomData};
 
 // ============================================================================
 // OPERATORS
@@ -452,6 +454,13 @@ where
 /// Concatenates results from multiple vector-producing parsers using dynamic dispatch.
 ///
 /// Executes parsers sequentially, accumulating all results into a single vector.
+///
+/// NOTE: this is the one runtime-list (`Vec<Box<dyn RDFNodeParse>>`) combinator kept in the
+/// core. It is retained — rather than replaced by a static fold — because consumers
+/// (`shacl::rdf::parsers::components`/`targets`) compose a heterogeneous list of ~28 parsers
+/// whose only common shape is `dyn RDFNodeParse<_, Output = Vec<_>>`; there is no
+/// `combine_parsers!` static-fold macro, and hand-nesting `Combine<A, Combine<B, …>>` for 28
+/// arms is exactly the compile-time blow-up case the project avoids. Kept and documented.
 pub struct CombineMany<RDF, A> {
     /// The collection of boxed parsers to execute.
     parsers: Vec<Box<dyn RDFNodeParse<RDF, Output = Vec<A>>>>,
@@ -659,8 +668,13 @@ where
 ///
 /// * `F` - The closure type that performs dynamic dispatch.
 /// * `O` - The output type of the dynamically selected parser.
+///
+/// Type-erased: gated behind the opt-in `parser-erased` feature so the default core parser
+/// stays 100% generic / monomorphized.
+#[cfg(feature = "parser-erased")]
 pub struct Opaque<F, RDF, O>(RefCell<F>, PhantomData<fn(&mut RDF) -> O>);
 
+#[cfg(feature = "parser-erased")]
 impl<RDF, F, O> Opaque<F, RDF, O>
 where
     RDF: FocusRDF,
@@ -672,6 +686,7 @@ where
     }
 }
 
+#[cfg(feature = "parser-erased")]
 impl<RDF, F, O> RDFNodeParse<RDF> for Opaque<F, RDF, O>
 where
     RDF: FocusRDF + 'static,
@@ -888,6 +903,7 @@ where
     }
 
     /// Wraps dynamic parser dispatch for runtime parser selection.
+    #[cfg(feature = "parser-erased")]
     fn opaque<F>(f: F) -> Opaque<F, RDF, Self::Output>
     where
         F: FnMut(&mut dyn FnMut(&mut dyn RDFNodeParse<RDF, Output = Self::Output>)),

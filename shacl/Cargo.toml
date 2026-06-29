@@ -36,3 +36,4 @@ rayon.workspace = true
 
 [dev-dependencies]
 oxrdf = { workspace = true, features = [ "oxsdatatypes" ] }
+serde_json.workspace = true

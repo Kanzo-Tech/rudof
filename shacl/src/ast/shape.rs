@@ -1,8 +1,11 @@
 use crate::ast::node_shape::ASTNodeShape;
 use crate::ast::property_shape::ASTPropertyShape;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
+// `Clone`/`PartialEq` stay hand-written (below) to keep the boxed-variant
+// semantics; serde derives coexist with them.
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ASTShape {
     NodeShape(Box<ASTNodeShape>),
     PropertyShape(Box<ASTPropertyShape>),

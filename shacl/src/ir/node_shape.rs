@@ -176,7 +176,11 @@ impl IRNodeShape {
         graph: &mut RDF,
         shapes_map: &HashMap<ShapeLabelIdx, IRShape>,
     ) -> Result<(), IRError> {
-        let id: RDF::Subject = self.id.clone().try_into().unwrap_or_else(|_| unreachable!());
+        let id: RDF::Subject = self
+            .id
+            .clone()
+            .try_into()
+            .map_err(|_| IRError::InvalidShapeId(Box::new(self.id.clone())))?;
         graph
             .add_type(id.clone(), ShaclVocab::sh_node_shape())
             .map_err(|e| IRError::from_rdf_err::<RDF>("add type", e))?;
@@ -197,10 +201,7 @@ impl IRNodeShape {
             .iter()
             .try_for_each(|c| c.register(&self.id, graph, shapes_map))?;
 
-        self.targets
-            .iter()
-            .try_for_each(|t| t.register(&self.id, graph))
-            .map_err(|e| IRError::from_rdf_err::<RDF>("add target to graph", e))?;
+        self.targets.iter().try_for_each(|t| t.register(&self.id, graph))?;
 
         self.property_shapes.iter().try_for_each(|idx| {
             let ps = shapes_map.get(idx).ok_or(IRError::ShapeNotFound(*idx))?;

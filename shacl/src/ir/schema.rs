@@ -97,14 +97,14 @@ impl IRSchema {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Object, &IRShape)> {
-        self.labels_idx_map.iter().map(move |(node, label_idx)| {
-            let shape = self.shapes.get(label_idx).unwrap_or_else(|| {
-                panic!(
-                    "Internal error: Shape label index {label_idx} for node {node} not found in shapes map: {:?}",
-                    self.shapes
-                )
-            });
-            (node, shape)
+        self.labels_idx_map.iter().filter_map(move |(node, label_idx)| match self.shapes.get(label_idx) {
+            Some(shape) => Some((node, shape)),
+            None => {
+                // Arena invariant: every interned label has a shape. If it is ever
+                // violated, skip the orphan entry instead of crashing the iterator.
+                warn!("Internal invariant: shape label index {label_idx} for node {node} missing from shapes map; skipping");
+                None
+            },
         })
     }
 

@@ -38,6 +38,18 @@ pub enum IRError {
 
     #[error(transparent)]
     RDFError(#[from] Box<RDFError>),
+
+    #[error("Shape id {0} cannot be used as an RDF subject (expected an IRI or blank node)")]
+    InvalidShapeId(Box<Object>),
+
+    #[error("Unexpected term {0} in a value constraint (expected an IRI or literal)")]
+    UnexpectedValueTerm(Box<Object>),
+
+    #[error("Cannot serialize the non-predicate property path to RDF: {0}")]
+    UnsupportedPathSerialization(Box<SHACLPath>),
+
+    #[error("{component} cardinality must be >= 0, got {value}")]
+    NegativeCardinality { component: &'static str, value: isize },
 }
 
 impl IRError {

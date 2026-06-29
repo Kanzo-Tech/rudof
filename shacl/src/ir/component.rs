@@ -65,8 +65,8 @@ impl IRComponent {
             ASTComponent::Class(object) => IRComponent::Class(Class::new(object)),
             ASTComponent::Datatype(iri) => IRComponent::Datatype(Datatype::new(convert_iri_ref(iri)?)),
             ASTComponent::NodeKind(nk) => IRComponent::NodeKind(Nodekind::new(nk)),
-            ASTComponent::MinCount(n) => IRComponent::MinCount(MinCount::new(n)),
-            ASTComponent::MaxCount(n) => IRComponent::MaxCount(MaxCount::new(n)),
+            ASTComponent::MinCount(n) => IRComponent::MinCount(MinCount::new(n)?),
+            ASTComponent::MaxCount(n) => IRComponent::MaxCount(MaxCount::new(n)?),
             ASTComponent::MinExclusive(lit) => IRComponent::MinExclusive(MinExclusive::new(lit)),
             ASTComponent::MaxExclusive(lit) => IRComponent::MaxExclusive(MaxExclusive::new(lit)),
             ASTComponent::MinInclusive(lit) => IRComponent::MinInclusive(MinInclusive::new(lit)),
@@ -169,9 +169,13 @@ impl IRComponent {
             IRComponent::NodeKind(nk) => {
                 let iri = match nk.node_kind() {
                     NodeKind::Iri => ShaclVocab::sh_iri_ref(),
-                    _ => unimplemented!(),
+                    NodeKind::Lit => ShaclVocab::sh_literal_ref(),
+                    NodeKind::BNode => ShaclVocab::sh_blank_node_ref(),
+                    NodeKind::BNodeOrIri => ShaclVocab::sh_blank_node_or_iri_ref(),
+                    NodeKind::BNodeOrLit => ShaclVocab::sh_blank_node_or_literal_ref(),
+                    NodeKind::IriOrLit => ShaclVocab::sh_iri_or_literal_ref(),
                 };
-                register_iri(iri, ShaclVocab::sh_datatype(), id, graph)
+                register_iri(iri, ShaclVocab::sh_node_kind(), id, graph)
             },
             IRComponent::MinCount(mc) => {
                 register_integer(mc.min_count() as isize, ShaclVocab::sh_min_count(), id, graph)
@@ -214,54 +218,36 @@ impl IRComponent {
             IRComponent::LessThanOrEquals(lte) => {
                 register_iri(lte.iri(), ShaclVocab::sh_less_than_or_equals(), id, graph)
             },
-            IRComponent::Or(or) => {
-                or.shapes().iter().try_for_each(|idx| {
-                    // TODO - Throw error instead of unwrap
-                    let shape = shape_map.get(idx).unwrap();
-                    register_term(&shape.id().clone().into(), ShaclVocab::sh_or(), id, graph)
-                })
+            IRComponent::Or(or) => or.shapes().iter().try_for_each(|idx| {
+                let shape = shape_map.get(idx).ok_or(IRError::ShapeNotFound(*idx))?;
+                register_term(&shape.id().clone().into(), ShaclVocab::sh_or(), id, graph)
+            }),
+            IRComponent::And(and) => and.shapes().iter().try_for_each(|idx| {
+                let shape = shape_map.get(idx).ok_or(IRError::ShapeNotFound(*idx))?;
+                register_term(&shape.id().clone().into(), ShaclVocab::sh_and(), id, graph)
+            }),
+            IRComponent::Not(not) => {
+                let shape = shape_map.get(not.shape()).ok_or(IRError::ShapeNotFound(*not.shape()))?;
+                register_term(&shape.id().clone().into(), ShaclVocab::sh_not(), id, graph)
             },
-            IRComponent::And(and) => {
-                and.shapes().iter().try_for_each(|idx| {
-                    // TODO - Throw error instead of unwrap
-                    let shape = shape_map.get(idx).unwrap();
-                    register_term(&shape.id().clone().into(), ShaclVocab::sh_and(), id, graph)
-                })
+            IRComponent::Xone(xone) => xone.shapes().iter().try_for_each(|idx| {
+                let shape = shape_map.get(idx).ok_or(IRError::ShapeNotFound(*idx))?;
+                register_term(&shape.id().clone().into(), ShaclVocab::sh_xone(), id, graph)
+            }),
+            IRComponent::Node(n) => {
+                let shape = shape_map.get(n.shape()).ok_or(IRError::ShapeNotFound(*n.shape()))?;
+                register_term(&shape.id().clone().into(), ShaclVocab::sh_node(), id, graph)
             },
-            IRComponent::Not(not) => register_term(
-                // TODO - Throw error instead of unwrap
-                &shape_map.get(not.shape()).unwrap().id().clone().into(),
-                ShaclVocab::sh_not(),
-                id,
-                graph,
-            ),
-            IRComponent::Xone(xone) => {
-                xone.shapes().iter().try_for_each(|idx| {
-                    // TODO - Throw error instead of unwrap
-                    let shape = shape_map.get(idx).unwrap();
-                    register_term(&shape.id().clone().into(), ShaclVocab::sh_xone(), id, graph)
-                })
-            },
-            IRComponent::Node(n) => register_term(
-                // TODO - Throw error instead of unwrap
-                &shape_map.get(n.shape()).unwrap().id().clone().into(),
-                ShaclVocab::sh_node(),
-                id,
-                graph,
-            ),
             IRComponent::HasValue(hv) => match hv.value() {
                 Object::Iri(iri) => register_iri(iri, ShaclVocab::sh_has_value(), id, graph),
                 Object::Literal(lit) => register_literal(lit, ShaclVocab::sh_has_value(), id, graph),
-                _ => unreachable!(),
+                other => Err(IRError::UnexpectedValueTerm(Box::new(other.clone()))),
             },
-            IRComponent::In(i) => {
-                // TODO - Review this code
-                i.values().iter().try_for_each(|v| match v {
-                    Object::Iri(iri) => register_iri(iri, ShaclVocab::sh_in(), id, graph),
-                    Object::Literal(lit) => register_literal(lit, ShaclVocab::sh_in(), id, graph),
-                    _ => unreachable!(),
-                })
-            },
+            IRComponent::In(i) => i.values().iter().try_for_each(|v| match v {
+                Object::Iri(iri) => register_iri(iri, ShaclVocab::sh_in(), id, graph),
+                Object::Literal(lit) => register_literal(lit, ShaclVocab::sh_in(), id, graph),
+                other => Err(IRError::UnexpectedValueTerm(Box::new(other.clone()))),
+            }),
             IRComponent::QualifiedValueShape(qvs) => {
                 if let Some(value) = qvs.qualified_min_count() {
                     register_integer(value, ShaclVocab::sh_qualified_min_count(), id, graph)?;
@@ -442,7 +428,8 @@ fn register_integer<RDF: BuildRDF>(
     node: &Object,
     graph: &mut RDF,
 ) -> Result<(), IRError> {
-    let value: i128 = value.try_into().unwrap();
+    // isize -> i128 is always a widening (lossless) cast.
+    let value = value as i128;
     let literal: RDF::Literal = value.into();
     register_term(&literal.into(), predicate, node, graph)
 }
@@ -477,9 +464,12 @@ fn register_term<RDF: BuildRDF>(
     node: &Object,
     graph: &mut RDF,
 ) -> Result<(), IRError> {
-    let node: RDF::Subject = node.clone().try_into().unwrap_or_else(|_| unreachable!());
+    let subject: RDF::Subject = node
+        .clone()
+        .try_into()
+        .map_err(|_| IRError::InvalidShapeId(Box::new(node.clone())))?;
     graph
-        .add_triple(node, predicate, value.clone())
+        .add_triple(subject, predicate, value.clone())
         .map_err(|e| IRError::from_rdf_err::<RDF>("add triple", e))
 }
 

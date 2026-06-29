@@ -1,12 +1,13 @@
 use crate::ast::error::ASTError;
 use crate::ast::{ASTComponent, ASTSchema, defined_properties_for};
-use crate::types::{ClosedInfo, MessageMap, Severity, Target};
+use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target};
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::term::Object;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ASTNodeShape {
     id: Object,
     components: Vec<ASTComponent>,
@@ -20,6 +21,9 @@ pub struct ASTNodeShape {
     description: MessageMap,
     group: Option<Object>,
     // source_iri: Option<IriRef>,
+    // SHACL-UI presentation hints (shui:editor/viewer). Empty by default.
+    #[serde(default)]
+    presentation: Presentation,
 }
 
 impl ASTNodeShape {
@@ -34,6 +38,7 @@ impl ASTNodeShape {
             name: MessageMap::new(),
             description: MessageMap::new(),
             group: None,
+            presentation: Presentation::default(),
         }
     }
 
@@ -132,6 +137,15 @@ impl ASTNodeShape {
 
     pub fn group(&self) -> Option<&Object> {
         self.group.as_ref()
+    }
+
+    pub fn with_presentation(mut self, presentation: Presentation) -> Self {
+        self.presentation = presentation;
+        self
+    }
+
+    pub fn presentation(&self) -> &Presentation {
+        &self.presentation
     }
 }
 

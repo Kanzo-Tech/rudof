@@ -265,6 +265,8 @@ fn apply<S: Rdf, I: IterationStrategy<S>>(
             if let Some(m) = shape.message() {
                 msg = msg.merge(m.to_owned(), true);
             }
+            // TODO(template-method): wire here -> `?`-propagate evaluator errors
+            // as ValidationError::PathError instead of dropping them silently.
             if let Ok(condition) = evaluator(item)
                 && condition
             {
@@ -309,6 +311,8 @@ fn apply_with_focus<S: Rdf, I: IterationStrategy<S>>(
                         .with_value(value),
                 ),
                 Ok(false) => None,
+                // TODO(template-method): wire here -> `?`-propagate as
+                // ValidationError::PathError instead of dropping the error.
                 Err(_) => None,
             }
         })

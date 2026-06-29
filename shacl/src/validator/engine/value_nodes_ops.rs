@@ -46,6 +46,8 @@ impl<RDF: NeighsRDF> ValueNodesOps<RDF> for IRPropertyShape {
         focus_nodes: &FocusNodes<RDF>,
         runner: &dyn Engine<RDF>,
     ) -> Result<ValueNodes<RDF>, ValidationError> {
+        // TODO(template-method): wire here -> `?`-propagate as
+        // ValidationError::PathError instead of silently dropping path failures.
         let value_nodes = focus_nodes.iter().filter_map(|n| {
             match runner.path(store, self, n) {
                 Ok(ts) => Some((n.clone(), ts)),

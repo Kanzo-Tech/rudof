@@ -57,6 +57,7 @@ pub trait Engine<S: NeighsRDF>: Send {
                 Target::SubjectsOf(p) => self.target_subject_of(store, p),
                 Target::ObjectsOf(p) => self.target_object_of(store, p),
                 Target::ImplicitClass(n) => self.implicit_target_class(store, n),
+                // TODO(template-method): wire here -> ValidationError::MalformedTarget
                 Target::WrongNode(_) => todo!(),
                 Target::WrongClass(_) => todo!(),
                 Target::WrongSubjectsOf(_) => todo!(),

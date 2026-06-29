@@ -9,9 +9,12 @@
 //! over both the inner store and the recorder, so the recording path
 //! monomorphizes away entirely when the [`NullRecorder`] is used.
 //!
-//! This is a **compiling prototype**: it type-checks against today's
-//! `NeighsRDF` and is unit-tested, but it is not yet wired into the processor —
-//! that hook waits on the generic validation engine (Capa-2/Capa-3 spine).
+//! This is wired through the now-generic validator spine: the public entry point
+//! [`validate_with_subset`](crate::validator::processor::validate_with_subset)
+//! wraps the store in a `RecordingRdf<&S, BuildRdfRecorder<S>>` and runs the same
+//! generic `run_sequential::<S, E>` driver, returning the validation report
+//! alongside the recorded SHACL subgraph. The normal validation path never wraps
+//! the store, so it stays zero-cost.
 
 mod recording_rdf;
 

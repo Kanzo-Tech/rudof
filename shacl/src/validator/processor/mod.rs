@@ -6,9 +6,12 @@ mod rdf_data;
 
 use crate::error::ValidationError;
 use crate::ir::IRSchema;
+use crate::subset::{BuildRdfRecorder, RecordingRdf};
 use crate::validator::ShaclValidationMode;
-use crate::validator::engine::{Engine, Validate};
+use crate::validator::engine::{Engine, NativeEngine, Validate};
+use crate::validator::index::ClassIndex;
 use crate::validator::report::{ValidationReport, ValidationResult};
+use rudof_rdf::rdf_core::{BuildRDF, Rdf};
 #[cfg(feature = "sparql")]
 pub use endpoint::EndpointValidation;
 pub use graph::GraphValidation;
@@ -121,15 +124,86 @@ where
 
     #[cfg(target_family = "wasm")]
     {
-        // One engine threaded through everything → full memoization, zero sync.
-        let mut engine = master.fork();
-        let mut all_results = Vec::new();
-        for level in &levels {
-            for idx in level {
-                let shape = shapes_graph.get_shape_from_idx_e(idx)?;
-                all_results.extend(shape.validate(store, &mut engine, None, Some(shape), shapes_graph)?);
-            }
-        }
-        Ok(all_results)
+        let _ = &levels;
+        run_sequential(store, shapes_graph, master)
     }
+}
+
+/// Sequential, single-engine validation driver — the same topological-level walk
+/// as the wasm branch of [`run`], but **without** the `S: Sync`/`E: Sync` bounds.
+///
+/// One engine is threaded through every level in identical order, so it keeps
+/// full cross-shape memoization and a deterministic report. Dropping `Sync` is
+/// what lets a `!Sync` store be validated here — notably a
+/// [`RecordingRdf`](crate::subset::RecordingRdf) wrapping a
+/// [`BuildRdfRecorder`](crate::subset::BuildRdfRecorder), whose interior-mutable
+/// `RefCell` sink is `!Sync` by design. Subset recording is inherently a
+/// serialization point, so the sequential path is its natural home.
+pub(crate) fn run_sequential<S, E>(
+    store: &S,
+    shapes_graph: &IRSchema,
+    master: &E,
+) -> Result<Vec<ValidationResult>, ValidationError>
+where
+    S: NeighsRDF + Debug,
+    E: Engine<S>,
+{
+    let levels = shapes_graph.shapes_with_targets_by_level();
+    let mut engine = master.fork();
+    let mut all_results = Vec::new();
+    for level in &levels {
+        for idx in level {
+            let shape = shapes_graph.get_shape_from_idx_e(idx)?;
+            all_results.extend(shape.validate(store, &mut engine, None, Some(shape), shapes_graph)?);
+        }
+    }
+    Ok(all_results)
+}
+
+/// Validates `store` against `shapes_graph` **while recording the SHACL-relevant
+/// subgraph** — the "slurp" of triples the validation actually touches.
+///
+/// The design's key insight is that every read the native validator performs
+/// funnels through the single primitive [`NeighsRDF::triples_matching`]
+/// (`objects_for`, `objects_for_shacl_path`, `shacl_instances_of`, … are all
+/// defaults over it). So wrapping the store in a
+/// [`RecordingRdf`]`<&S, `[`BuildRdfRecorder`]`<S>>` transparently captures that
+/// visited frontier into `sink` alongside the report, running the **same**
+/// generic [`run_sequential`] driver — the engine is none the wiser. Returns the
+/// [`ValidationReport`] plus the populated subgraph.
+///
+/// This is the native, sequential path: the recorder's `RefCell` sink is `!Sync`,
+/// so it cannot ride the parallel [`run`]. That is by design — recording is a
+/// serialization point. The normal [`ShaclProcessor::validate`] path never wraps
+/// the store, so it stays zero-cost.
+///
+/// `sink` is typically an empty graph of the same backend as `store` (e.g.
+/// `OxigraphInMemory::empty()`); the recorded triples are written into it and it
+/// is returned.
+pub fn validate_with_subset<S>(
+    store: &S,
+    shapes_graph: &IRSchema,
+    sink: S,
+) -> Result<(ValidationReport, S), ValidationError>
+where
+    S: NeighsRDF + BuildRDF + Debug,
+{
+    let recording = RecordingRdf::new(store, BuildRdfRecorder::new(sink));
+
+    // The class index is built from `triples()` (a distinct primitive that the
+    // decorator forwards unrecorded), so building it does not pollute the slurp;
+    // only `triples_matching`-driven reads during validation are captured.
+    let index = ClassIndex::build(&recording)?;
+    let master = NativeEngine::new(Some(&index));
+
+    let results = run_sequential(&recording, shapes_graph, &master)?;
+
+    let mut pm = shapes_graph.prefix_map().clone();
+    if let Some(store_pm) = recording.prefixmap() {
+        pm.merge(store_pm);
+    }
+    let report = ValidationReport::new().with_results(results).with_prefixmap(pm);
+
+    let subgraph = recording.into_recorder().into_inner();
+    Ok((report, subgraph))
 }

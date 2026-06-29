@@ -183,13 +183,38 @@ impl Session {
     }
 
     /// Validate the current data graph against the loaded shapes (native engine).
-    /// `shape_id` scoping is not yet applied — the whole graph is validated.
-    pub fn validate(&self, _shape_id: Option<String>) -> Result<JsValue, JsError> {
+    ///
+    /// * `shape_id == None`     → validate the whole graph against every shape.
+    /// * `shape_id == Some(id)` → validate only that shape (and its nested
+    ///   property shapes) against its own targets — shape-scoped.
+    pub fn validate(&self, shape_id: Option<String>) -> Result<JsValue, JsError> {
         let ast = self
             .shapes_ast
             .as_ref()
             .ok_or_else(|| JsError::new("no shapes loaded; call loadShapes first"))?;
-        let report = validate::validate(&self.data, ast).map_err(|e| JsError::new(&e))?;
+        let report = match shape_id {
+            Some(id) => validate::validate_shape(&self.data, ast, &id),
+            None => validate::validate(&self.data, ast),
+        }
+        .map_err(|e| JsError::new(&e))?;
+        to_js(&report)
+    }
+
+    /// Validate a single focus node against a single shape (scoped). This is the
+    /// per-field / per-keystroke revalidation path used by the React form: it
+    /// validates just `focus` against `shape_id`, not the whole graph.
+    ///
+    /// `focus` is a `TermValue` (the same `{ termType, value, datatype?,
+    /// language? }` shape used everywhere else on this ABI), normally a
+    /// `NamedNode`/`BlankNode` resource.
+    #[wasm_bindgen(js_name = validateFocus)]
+    pub fn validate_focus(&self, focus: JsValue, shape_id: String) -> Result<JsValue, JsError> {
+        let focus: TermValue = from_js(focus)?;
+        let ast = self
+            .shapes_ast
+            .as_ref()
+            .ok_or_else(|| JsError::new("no shapes loaded; call loadShapes first"))?;
+        let report = validate::validate_focus(&self.data, ast, &shape_id, &focus).map_err(|e| JsError::new(&e))?;
         to_js(&report)
     }
 }

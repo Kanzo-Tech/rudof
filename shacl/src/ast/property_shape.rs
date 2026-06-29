@@ -1,7 +1,7 @@
 use crate::ast::error::ASTError;
 use crate::ast::reifier_info::ReifierInfo;
 use crate::ast::{ASTComponent, ASTSchema, defined_properties_for};
-use crate::types::{ClosedInfo, MessageMap, Severity, Target};
+use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target, Value};
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::SHACLPath;
 use rudof_rdf::rdf_core::term::Object;
@@ -33,9 +33,15 @@ pub struct ASTPropertyShape {
     // source_iri: Option<IriRef>,
     // annotations: Vec<(IriRef, RDFNode)>
 
-    // TODO - For node expr
-    // default_value: Option<NodeExpr<RDF>>, // ONLY WHEN PATH IS PREDICATE PATH
-    // values: Option<NodeExpr<RDF>> // ONLY WHEN PATH IS PREDICATE PATH
+    // SHACL 1.2 Core: `sh:defaultValue` is a single constant RDF term (same
+    // shape as `sh:hasValue`), only meaningful on predicate paths. Modelled as
+    // `Value` (not `NodeExpr`) to stay serde-able and keep SHACL-AF out of Core.
+    #[serde(default)]
+    default_value: Option<Value>,
+    // SHACL-UI presentation hints (shui:editor/viewer). Empty by default.
+    #[serde(default)]
+    presentation: Presentation,
+    // values: Option<NodeExpr<RDF>> // ONLY WHEN PATH IS PREDICATE PATH (SHACL-AF)
 }
 
 impl ASTPropertyShape {
@@ -55,9 +61,8 @@ impl ASTPropertyShape {
             order: None,
             group: None,
             reifier_info: None,
-            // TODO - For NodeExpr, do not delete
-            // default_value: None,
-            // values: None,
+            default_value: None,
+            presentation: Presentation::default(),
         }
     }
 
@@ -120,25 +125,23 @@ impl ASTPropertyShape {
         self
     }
 
-    // TODO - For NodeExpr, do not delete
-    // pub fn with_values(mut self, values: Option<NodeExpr<RDF>>) -> Self {
-    //     self.values = values;
-    //     self
-    // }
-    //
-    // pub fn with_default_value(mut self, default_value: Option<NodeExpr<RDF>>) -> Self {
-    //     self.default_value = default_value;
-    //     self
-    // }
+    pub fn with_default_value(mut self, default_value: Option<Value>) -> Self {
+        self.default_value = default_value;
+        self
+    }
 
-    // TODO - For NodeExpr, do not delete
-    // pub fn values(&self) -> Option<&NodeExpr<RDF>> {
-    //     self.values.as_ref()
-    // }
-    //
-    // pub fn default_value(&self) -> Option<&NodeExpr<RDF>> {
-    //     self.default_value.as_ref()
-    // }
+    pub fn default_value(&self) -> Option<&Value> {
+        self.default_value.as_ref()
+    }
+
+    pub fn with_presentation(mut self, presentation: Presentation) -> Self {
+        self.presentation = presentation;
+        self
+    }
+
+    pub fn presentation(&self) -> &Presentation {
+        &self.presentation
+    }
 
     pub fn id(&self) -> &Object {
         &self.id

@@ -6,7 +6,7 @@ use crate::ir::error::IRError;
 use crate::ir::schema::IRSchema;
 use crate::ir::shape::IRShape;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
-use crate::types::{ClosedInfo, MessageMap, Severity, Target};
+use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target};
 use rudof_iri::IriS;
 use rudof_rdf::rdf_core::term::Object;
 use rudof_rdf::rdf_core::term::literal::NumericLiteral;
@@ -32,6 +32,10 @@ pub struct IRPropertyShape {
     description: MessageMap,
     order: Option<NumericLiteral>,
     group: Option<Object>,
+    // SHACL 1.2: `sh:defaultValue` resolved to a concrete term (via convert_value).
+    default_value: Option<Object>,
+    // SHACL-UI presentation hints, carried through from the AST.
+    presentation: Presentation,
     // source_iri: Option<S::IRI>,
     // annotations: Vec<(S::IRI, S::Term)>,
 }
@@ -53,6 +57,8 @@ impl IRPropertyShape {
             description: MessageMap::new(),
             order: None,
             group: None,
+            default_value: None,
+            presentation: Presentation::default(),
         }
     }
 
@@ -102,6 +108,24 @@ impl IRPropertyShape {
     pub fn with_message(mut self, message: Option<MessageMap>) -> Self {
         self.message = message;
         self
+    }
+
+    pub fn with_default_value(mut self, default_value: Option<Object>) -> Self {
+        self.default_value = default_value;
+        self
+    }
+
+    pub fn with_presentation(mut self, presentation: Presentation) -> Self {
+        self.presentation = presentation;
+        self
+    }
+
+    pub fn default_value(&self) -> Option<&Object> {
+        self.default_value.as_ref()
+    }
+
+    pub fn presentation(&self) -> &Presentation {
+        &self.presentation
     }
 
     pub fn id(&self) -> &Object {
@@ -170,6 +194,12 @@ impl IRPropertyShape {
 
         let reifier_info = ReifierInfo::get_reifier_info(shape, ast, ir)?;
 
+        let default_value = shape
+            .default_value()
+            .cloned()
+            .map(super::convert_value)
+            .transpose()?;
+
         let compiled_prop_shape = IRPropertyShape::new(shape.id().clone(), shape.path().to_owned(), closed_info)
             .with_components(compiled_components)
             .with_targets(shape.targets().to_owned())
@@ -181,7 +211,9 @@ impl IRPropertyShape {
             .with_description(shape.description().to_owned())
             .with_order(shape.order().cloned())
             .with_group(shape.group().cloned())
-            .with_message(shape.message().cloned());
+            .with_message(shape.message().cloned())
+            .with_default_value(default_value)
+            .with_presentation(shape.presentation().clone());
 
         Ok(compiled_prop_shape)
     }

@@ -146,10 +146,14 @@ impl OxigraphInMemory {
                 self.parse_rdfxml(reader, reader_mode)?;
             },
             RDFFormat::TriG => {
-                todo!();
+                return Err(OxigraphInMemoryError::UnsupportedFormat {
+                    format: "TriG".to_string(),
+                });
             },
             RDFFormat::N3 => {
-                todo!();
+                return Err(OxigraphInMemoryError::UnsupportedFormat {
+                    format: "N3".to_string(),
+                });
             },
             RDFFormat::NQuads => {
                 self.parse_nquads(reader, reader_mode)?;
@@ -204,15 +208,16 @@ impl OxigraphInMemory {
             };
             let triple_ref = triple.as_ref();
             if let Err(e) = validate_triple_iris(triple_ref) {
-                match handle_parse_error(Err::<(), _>(e), reader_mode, |e| {
+                // In strict mode `?` propagates the typed `TurtleParseError`; in lax
+                // mode `handle_parse_error` yields `Ok(None)` and we skip this triple.
+                // (`Err` input can never produce `Ok(Some(_))`, so there is no success arm.)
+                handle_parse_error(Err::<(), _>(e), reader_mode, |e| {
                     OxigraphInMemoryError::TurtleParseError {
                         source_name: source_name.to_string(),
                         error: format!("Invalid IRI in triple: {e}"),
                     }
-                })? {
-                    Some(_) => unreachable!(),
-                    None => continue,
-                }
+                })?;
+                continue;
             }
             graph.insert(triple_ref);
         }
@@ -646,8 +651,14 @@ impl Rdf for OxigraphInMemory {
     ///
     /// A string representation, either prefixed or full IRI.
     fn qualify_iri(&self, node: &Self::IRI) -> String {
-        let iri = IriS::from_str(node.as_str()).expect("OxNamedNode should always contain valid IRI");
-        self.pm.qualify(&iri)
+        // `Rdf::qualify_iri` is infallible (display helper). An `OxNamedNode`
+        // already guarantees a syntactically valid IRI, so `from_str` should not
+        // fail; if it ever does we degrade gracefully to the raw IRI string
+        // instead of panicking.
+        match IriS::from_str(node.as_str()) {
+            Ok(iri) => self.pm.qualify(&iri),
+            Err(_) => node.as_str().to_string(),
+        }
     }
 
     /// Converts a subject (named node or blank node) to a qualified string.
@@ -689,7 +700,14 @@ impl Rdf for OxigraphInMemory {
             OxTerm::BlankNode(bn) => self.show_blanknode(bn),
             OxTerm::Literal(lit) => self.show_literal(lit),
             OxTerm::NamedNode(n) => self.qualify_iri(n),
-            OxTerm::Triple(_) => unimplemented!("RDF-star triples not yet supported"),
+            // RDF-star: render the embedded triple recursively rather than
+            // panicking. `Rdf::qualify_term` is an infallible display helper.
+            OxTerm::Triple(t) => format!(
+                "<<{} {} {}>>",
+                self.qualify_subject(&t.subject),
+                self.qualify_iri(&t.predicate),
+                self.qualify_term(&t.object),
+            ),
         }
     }
 

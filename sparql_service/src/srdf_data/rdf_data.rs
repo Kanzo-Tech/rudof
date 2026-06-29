@@ -6,8 +6,6 @@ use oxrdf::{
 };
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
-#[cfg(feature = "qlever")]
-use rudof_rdf::rdf_impl::QleverGraphContainer;
 use rudof_rdf::{
     rdf_core::{
         BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf, RdfDataConfig,
@@ -64,13 +62,6 @@ impl RdfData {
     /// Replace the primary backend.
     pub fn set_backend(&mut self, backend: RdfBackend) {
         self.primary = backend;
-    }
-
-    /// Replace the QLever-backed primary. Provided for ergonomic parity with
-    /// `set_backend(RdfBackend::Qlever(g))`.
-    #[cfg(feature = "qlever")]
-    pub fn set_qlever(&mut self, graph: QleverGraphContainer) {
-        self.primary = RdfBackend::Qlever(graph);
     }
 
     pub fn reset(&mut self) {
@@ -159,8 +150,6 @@ impl RdfData {
             RdfBackend::InMemory(_) => "in-memory",
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => "sparql-endpoint",
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => "qlever",
         };
         let RdfBackend::InMemory(graph) = &mut self.primary else {
             return Err(RdfDataError::NotInMemoryBackend { backend: backend_name });

@@ -7,8 +7,6 @@ use thiserror::Error;
 #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
 use super::OxigraphEndpointError;
 use super::OxigraphInMemoryError;
-#[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-use super::QleverError;
 
 #[derive(Debug, Error)]
 pub enum RdfBackendError {
@@ -18,10 +16,6 @@ pub enum RdfBackendError {
     #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
     #[error(transparent)]
     Endpoint(#[from] Box<OxigraphEndpointError>),
-
-    #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-    #[error(transparent)]
-    Qlever(#[from] Box<QleverError>),
 
     #[error("backend {backend} does not support operation `{op}` (read-only)")]
     ReadOnly { op: &'static str, backend: &'static str },
@@ -37,12 +31,5 @@ impl From<OxigraphInMemoryError> for RdfBackendError {
 impl From<OxigraphEndpointError> for RdfBackendError {
     fn from(e: OxigraphEndpointError) -> Self {
         RdfBackendError::Endpoint(Box::new(e))
-    }
-}
-
-#[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-impl From<QleverError> for RdfBackendError {
-    fn from(e: QleverError) -> Self {
-        RdfBackendError::Qlever(Box::new(e))
     }
 }

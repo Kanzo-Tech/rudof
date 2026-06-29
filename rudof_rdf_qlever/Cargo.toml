@@ -1,0 +1,36 @@
+[package]
+name = "rudof_rdf_qlever"
+version.workspace = true
+authors.workspace = true
+description = "QLever (Docker) RDF backend for rudof_rdf"
+documentation = "https://docs.rs/rudof_rdf_qlever"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+rudof_rdf = { workspace = true, features = ["sparql"] }
+rudof_iri.workspace = true
+prefixmap.workspace = true
+colored.workspace = true
+oxiri.workspace = true
+oxrdf.workspace = true
+oxrdfio.workspace = true
+sparesults.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+url.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tokio-util.workspace = true
+tracing.workspace = true
+futures.workspace = true
+testcontainers.workspace = true
+bollard.workspace = true
+nix.workspace = true
+
+[features]
+# Docker-dependent integration tests (need a running Docker daemon).
+docker-tests = []

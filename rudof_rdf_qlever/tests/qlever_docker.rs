@@ -1,12 +1,13 @@
 //! Docker-dependent integration tests for the QLever backend.
 //!
-//! Gated behind the `qlever-docker-tests` feature so plain `cargo test` runs in environments without Docker. Enable with:
+//! Gated behind the `docker-tests` feature so plain `cargo test` runs in environments without Docker. Enable with:
 //!
 //! ```bash
-//! cargo test -p rudof_rdf --features qlever-docker-tests --lib rdf_impl::tests::qlever_docker -- --nocapture
+//! cargo test -p rudof_rdf_qlever --features docker-tests -- --nocapture
 //! ```
+#![cfg(feature = "docker-tests")]
 
-use crate::rdf_impl::{CliKind, Compression, QleverConfig, QleverGraphContainer, decompressor_probe, qlever_probe_cli};
+use rudof_rdf_qlever::{CliKind, Compression, QleverConfig, QleverGraphContainer, decompressor_probe, qlever_probe_cli};
 use std::path::PathBuf;
 use std::time::Duration;
 

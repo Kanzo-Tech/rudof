@@ -11,8 +11,6 @@ use rudof_iri::IriS;
 
 #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
 use super::OxigraphEndpoint;
-#[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-use super::QleverGraphContainer;
 use super::{OxigraphInMemory, RdfBackendError};
 #[cfg(feature = "sparql")]
 use crate::rdf_core::query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions};
@@ -24,8 +22,6 @@ pub enum RdfBackend {
     InMemory(OxigraphInMemory),
     #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
     Endpoint(OxigraphEndpoint),
-    #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-    Qlever(QleverGraphContainer),
 }
 
 impl RdfBackend {
@@ -40,8 +36,6 @@ impl RdfBackend {
             RdfBackend::InMemory(g) => Some(g),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => None,
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => None,
         }
     }
 
@@ -51,8 +45,6 @@ impl RdfBackend {
             RdfBackend::InMemory(g) => Some(g),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => None,
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => None,
         }
     }
 
@@ -62,8 +54,6 @@ impl RdfBackend {
             RdfBackend::InMemory(_) => false,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => true,
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => true,
         }
     }
 
@@ -73,8 +63,6 @@ impl RdfBackend {
             RdfBackend::InMemory(_) => "in-memory",
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => "sparql-endpoint",
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => "qlever",
         }
     }
 }
@@ -99,8 +87,6 @@ impl Rdf for RdfBackend {
             RdfBackend::InMemory(b) => <OxigraphInMemory as Rdf>::prefixmap(b),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => <OxigraphEndpoint as Rdf>::prefixmap(b),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => <QleverGraphContainer as Rdf>::prefixmap(b),
         }
     }
 
@@ -109,8 +95,6 @@ impl Rdf for RdfBackend {
             RdfBackend::InMemory(b) => b.qualify_iri(node),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => b.qualify_iri(node),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.qualify_iri(node),
         }
     }
 
@@ -119,8 +103,6 @@ impl Rdf for RdfBackend {
             RdfBackend::InMemory(b) => b.qualify_subject(subj),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => b.qualify_subject(subj),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.qualify_subject(subj),
         }
     }
 
@@ -129,8 +111,6 @@ impl Rdf for RdfBackend {
             RdfBackend::InMemory(b) => b.qualify_term(term),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => b.qualify_term(term),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.qualify_term(term),
         }
     }
 
@@ -139,8 +119,6 @@ impl Rdf for RdfBackend {
             RdfBackend::InMemory(b) => b.resolve_prefix_local(prefix, local),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => b.resolve_prefix_local(prefix, local),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.resolve_prefix_local(prefix, local),
         }
     }
 }
@@ -151,11 +129,6 @@ impl NeighsRDF for RdfBackend {
             RdfBackend::InMemory(b) => Box::new(b.triples()?),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => Box::new(b.triples()?),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => {
-                let v: Vec<OxTriple> = b.triples()?.collect();
-                Box::new(v.into_iter())
-            },
         };
         Ok(iter)
     }
@@ -175,11 +148,6 @@ impl NeighsRDF for RdfBackend {
             RdfBackend::InMemory(b) => Box::new(b.triples_matching(subject, predicate, object)?),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => Box::new(b.triples_matching(subject, predicate, object)?),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => {
-                let v: Vec<OxTriple> = b.triples_matching(subject, predicate, object)?.collect();
-                Box::new(v.into_iter())
-            },
         };
         Ok(iter)
     }
@@ -203,12 +171,6 @@ impl QueryRDF for RdfBackend {
                 let pm = b.prefixmap().clone();
                 (s.iter().map(|x| x.convert(|t| t.clone())).collect(), pm)
             },
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => {
-                let s = b.query_select(query_str)?;
-                let pm = <QleverGraphContainer as Rdf>::prefixmap(b).unwrap_or_default();
-                (s.iter().map(|x| x.convert(|t| t.clone())).collect(), pm)
-            },
         };
         Ok(QuerySolutions::new(raw, pm))
     }
@@ -221,8 +183,6 @@ impl QueryRDF for RdfBackend {
             RdfBackend::InMemory(b) => Ok(b.query_construct(query_str, format)?),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => Ok(b.query_construct(query_str, format)?),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => Ok(b.query_construct(query_str, format)?),
         }
     }
 
@@ -231,8 +191,6 @@ impl QueryRDF for RdfBackend {
             RdfBackend::InMemory(b) => Ok(b.query_ask(query_str)?),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => Ok(b.query_ask(query_str)?),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => Ok(b.query_ask(query_str)?),
         }
     }
 }
@@ -247,8 +205,6 @@ impl BuildRDF for RdfBackend {
             RdfBackend::InMemory(b) => b.add_base(base)?,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => {},
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.add_base(base)?,
         }
         Ok(())
     }
@@ -258,8 +214,6 @@ impl BuildRDF for RdfBackend {
             RdfBackend::InMemory(b) => b.add_prefix(alias, iri)?,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => {},
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.add_prefix(alias, iri)?,
         }
         Ok(())
     }
@@ -269,8 +223,6 @@ impl BuildRDF for RdfBackend {
             RdfBackend::InMemory(b) => b.set_prefix_map(prefix_map)?,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => {},
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.set_prefix_map(prefix_map)?,
         }
         Ok(())
     }
@@ -280,8 +232,6 @@ impl BuildRDF for RdfBackend {
             RdfBackend::InMemory(b) => b.merge_prefixes(prefix_map)?,
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => {},
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => b.merge_prefixes(prefix_map)?,
         }
         Ok(())
     }
@@ -293,11 +243,6 @@ impl BuildRDF for RdfBackend {
             RdfBackend::Endpoint(_) => Err(RdfBackendError::ReadOnly {
                 op: "add_bnode",
                 backend: self.variant_name(),
-            }),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => Err(RdfBackendError::ReadOnly {
-                op: "add_bnode",
-                backend: "qlever",
             }),
         }
     }
@@ -315,11 +260,6 @@ impl BuildRDF for RdfBackend {
                 op: "add_triple",
                 backend: "sparql-endpoint",
             }),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => Err(RdfBackendError::ReadOnly {
-                op: "add_triple",
-                backend: "qlever",
-            }),
         }
     }
 
@@ -336,11 +276,6 @@ impl BuildRDF for RdfBackend {
                 op: "remove_triple",
                 backend: "sparql-endpoint",
             }),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => Err(RdfBackendError::ReadOnly {
-                op: "remove_triple",
-                backend: "qlever",
-            }),
         }
     }
 
@@ -356,11 +291,6 @@ impl BuildRDF for RdfBackend {
                 op: "add_type",
                 backend: "sparql-endpoint",
             }),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => Err(RdfBackendError::ReadOnly {
-                op: "add_type",
-                backend: "qlever",
-            }),
         }
     }
 
@@ -372,8 +302,6 @@ impl BuildRDF for RdfBackend {
                 op: "serialize",
                 backend: "sparql-endpoint",
             }),
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(b) => Ok(BuildRDF::serialize(b, format, writer)?),
         }
     }
 }

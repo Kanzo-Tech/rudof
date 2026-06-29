@@ -413,8 +413,14 @@ impl Rdf for OxigraphEndpoint {
     ///
     /// Converts full IRIs to their prefixed form (e.g., `rdf:type`).
     fn qualify_iri(&self, node: &OxNamedNode) -> String {
-        let iri = IriS::from_str(node.as_str()).unwrap();
-        self.prefixmap.qualify(&iri)
+        // `Rdf::qualify_iri` is infallible (display helper). An `OxNamedNode`
+        // already guarantees a syntactically valid IRI, so `from_str` should not
+        // fail; if it ever does we degrade gracefully to the raw IRI string
+        // instead of panicking.
+        match IriS::from_str(node.as_str()) {
+            Ok(iri) => self.prefixmap.qualify(&iri),
+            Err(_) => node.as_str().to_string(),
+        }
     }
 
     /// Qualifies a subject (named node or blank node) for display.
@@ -431,7 +437,14 @@ impl Rdf for OxigraphEndpoint {
             OxTerm::BlankNode(bn) => self.show_blanknode(bn),
             OxTerm::Literal(lit) => self.show_literal(lit),
             OxTerm::NamedNode(n) => self.qualify_iri(n),
-            OxTerm::Triple(_) => unimplemented!("Triple terms not yet supported"),
+            // RDF-star: render the embedded triple recursively rather than
+            // panicking. `Rdf::qualify_term` is an infallible display helper.
+            OxTerm::Triple(t) => format!(
+                "<<{} {} {}>>",
+                self.qualify_subject(&t.subject),
+                self.qualify_iri(&t.predicate),
+                self.qualify_term(&t.object),
+            ),
         }
     }
 

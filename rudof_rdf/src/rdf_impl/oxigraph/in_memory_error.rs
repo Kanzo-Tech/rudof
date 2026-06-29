@@ -47,6 +47,13 @@ pub enum OxigraphInMemoryError {
     #[error("Error parsing Turtle data from {source_name}: {error}")]
     TurtleParseError { source_name: String, error: String },
 
+    /// Error when an RDF serialization format is not supported by this backend.
+    ///
+    /// # Fields
+    /// - `format`: The name of the unsupported serialization format
+    #[error("Unsupported RDF serialization format: {format}")]
+    UnsupportedFormat { format: String },
+
     /// Error parsing a base IRI.
     ///
     /// # Fields

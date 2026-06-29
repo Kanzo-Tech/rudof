@@ -21,37 +21,44 @@ use rudof_rdf::rdf_core::query::QueryRDF;
 use rudof_rdf::rdf_core::term::Object;
 use rudof_rdf::rdf_core::{NeighsRDF, Rdf, SHACLPath};
 use std::fmt::Debug;
-use std::marker::PhantomData;
 
-// TODO - Move to crate::validator
+/// Components whose native and SPARQL logic are identical implement this single
+/// trait; the [`impl_validators_via_validate!`] macro derives both
+/// [`NativeValidator`] and [`BasicSparqlValidator`] from it.
+///
+/// The engine flows as a **generic `E`**, never `&mut dyn Engine`, so the
+/// shape-based components (`sh:node`, `sh:or`, …) recurse statically.
 pub trait Validator<RDF: NeighsRDF + Debug> {
-    fn validate(
+    fn validate<E: Engine<RDF>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         store: &RDF,
-        engine: &mut dyn Engine<RDF>,
+        engine: &mut E,
         value_nodes: &ValueNodes<RDF>,
         source_shape: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError>;
 }
-// TODO - Move to crate::validator
+
+/// Native validation of a single component. The method is **generic over the
+/// engine** (so it is not object-safe — and it never needs to be, since the
+/// [`validate_native`] dispatcher calls it on the concrete component value).
 pub trait NativeValidator<RDF: NeighsRDF> {
-    fn validate_native(
+    fn validate_native<E: Engine<RDF>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         store: &RDF,
-        engine: &mut dyn Engine<RDF>,
+        engine: &mut E,
         value_nodes: &ValueNodes<RDF>,
         source_shape: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError>;
 }
-// TODO - Move to crate::validator
+
 #[cfg(feature = "sparql")]
 pub trait BasicSparqlValidator<RDF: QueryRDF + Debug> {
     fn validate_sparql(
@@ -72,18 +79,18 @@ macro_rules! impl_validators_via_validate {
         where
             S: rudof_rdf::rdf_core::NeighsRDF + std::fmt::Debug + 'static,
         {
-            fn validate_native(
+            fn validate_native<E: crate::validator::engine::Engine<S>>(
                 &self,
                 component: &crate::ir::IRComponent,
                 shape: &crate::ir::IRShape,
                 store: &S,
-                engine: &mut dyn crate::validator::engine::Engine<S>,
+                engine: &mut E,
                 value_nodes: &crate::validator::nodes::ValueNodes<S>,
                 source_shape: Option<&crate::ir::IRShape>,
                 maybe_path: Option<&rudof_rdf::rdf_core::SHACLPath>,
                 shapes_graph: &crate::ir::IRSchema,
             ) -> Result<Vec<crate::validator::report::ValidationResult>, crate::validator::error::ValidationError> {
-                self.validate(
+                self.validate::<E>(
                     component,
                     shape,
                     store,
@@ -111,7 +118,7 @@ macro_rules! impl_validators_via_validate {
                 maybe_path: Option<&rudof_rdf::rdf_core::SHACLPath>,
                 shapes_graph: &crate::ir::IRSchema,
             ) -> Result<Vec<crate::validator::report::ValidationResult>, crate::validator::error::ValidationError> {
-                self.validate(
+                self.validate::<crate::validator::engine::SparqlEngine>(
                     component,
                     shape,
                     store,
@@ -126,8 +133,7 @@ macro_rules! impl_validators_via_validate {
     };
 }
 
-// TODO - Maybe this can be replaced with blanket implementation
-// TODO - If the remaining constraint are equal for native and sparql
+// Components whose native and sparql logic coincide.
 impl_validators_via_validate!(MinCount);
 impl_validators_via_validate!(MaxCount);
 impl_validators_via_validate!(Or);
@@ -144,105 +150,78 @@ impl_validators_via_validate!(LanguageIn);
 impl_validators_via_validate!(UniqueLang);
 impl_validators_via_validate!(Datatype);
 
-// TODO - move to crate::shacl_component
-pub(crate) struct ShaclComponent<'a, S> {
-    component: &'a IRComponent,
-    _marker: PhantomData<S>,
-}
+// ---------------------------------------------------------------------------
+// Static dispatch — the `IRComponent` enum match *is* the dispatch. A single
+// component list drives both the native and (cfg-gated) sparql dispatchers from
+// one place, so they cannot desync. No `&dyn NativeValidator`, no `ValidatorDeref`.
+// ---------------------------------------------------------------------------
 
-// TODO - move to crate::shacl_component
-impl<'a, S> ShaclComponent<'a, S> {
-    pub fn new(component: &'a IRComponent) -> Self {
-        Self {
-            component,
-            _marker: PhantomData,
+macro_rules! gen_native_dispatch {
+    ($($V:ident),+ $(,)?) => {
+        /// Native constraint dispatch: monomorphises a concrete
+        /// `validate_native::<E>` per component — no trait object is created.
+        pub(crate) fn validate_native<S: NeighsRDF + Debug + 'static, E: Engine<S>>(
+            component: &IRComponent,
+            shape: &IRShape,
+            store: &S,
+            engine: &mut E,
+            value_nodes: &ValueNodes<S>,
+            source_shape: Option<&IRShape>,
+            maybe_path: Option<&SHACLPath>,
+            shapes_graph: &IRSchema,
+        ) -> Result<Vec<ValidationResult>, ValidationError> {
+            match component {
+                $(
+                    IRComponent::$V(c) => NativeValidator::validate_native::<E>(
+                        c, component, shape, store, engine, value_nodes, source_shape, maybe_path, shapes_graph,
+                    ),
+                )+
+            }
         }
-    }
-
-    pub fn component(&self) -> &'a IRComponent {
-        self.component
-    }
-}
-
-// TODO - Move to crate::deref
-pub(crate) trait ValidatorDeref<'a, V: ?Sized + 'a> {
-    fn deref(&self) -> &'a V;
-}
-
-impl<'a, S: NeighsRDF + Debug + 'static> ValidatorDeref<'a, dyn NativeValidator<S> + 'a> for ShaclComponent<'a, S> {
-    fn deref(&self) -> &'a dyn NativeValidator<S> {
-        match self.component() {
-            IRComponent::Class(inner) => inner,
-            IRComponent::Datatype(inner) => inner,
-            IRComponent::NodeKind(inner) => inner,
-            IRComponent::MinCount(inner) => inner,
-            IRComponent::MaxCount(inner) => inner,
-            IRComponent::MinExclusive(inner) => inner,
-            IRComponent::MaxExclusive(inner) => inner,
-            IRComponent::MinInclusive(inner) => inner,
-            IRComponent::MaxInclusive(inner) => inner,
-            IRComponent::MinLength(inner) => inner,
-            IRComponent::MaxLength(inner) => inner,
-            IRComponent::Pattern(inner) => inner,
-            IRComponent::UniqueLang(inner) => inner,
-            IRComponent::LanguageIn(inner) => inner,
-            IRComponent::Equals(inner) => inner,
-            IRComponent::Disjoint(inner) => inner,
-            IRComponent::LessThan(inner) => inner,
-            IRComponent::LessThanOrEquals(inner) => inner,
-            IRComponent::Or(inner) => inner,
-            IRComponent::And(inner) => inner,
-            IRComponent::Not(inner) => inner,
-            IRComponent::Xone(inner) => inner,
-            IRComponent::Node(inner) => inner,
-            IRComponent::HasValue(inner) => inner,
-            IRComponent::In(inner) => inner,
-            IRComponent::QualifiedValueShape(inner) => inner,
-            IRComponent::Closed(inner) => inner,
-            IRComponent::Deactivated(inner) => inner,
-            IRComponent::BasicSparql(inner) => inner,
-        }
-    }
+    };
 }
 
 #[cfg(feature = "sparql")]
-impl<'a, S: QueryRDF + NeighsRDF + Debug + 'static> ValidatorDeref<'a, dyn BasicSparqlValidator<S> + 'a>
-    for ShaclComponent<'a, S>
-{
-    fn deref(&self) -> &'a dyn BasicSparqlValidator<S> {
-        match self.component() {
-            IRComponent::Class(inner) => inner,
-            IRComponent::Datatype(inner) => inner,
-            IRComponent::NodeKind(inner) => inner,
-            IRComponent::MinCount(inner) => inner,
-            IRComponent::MaxCount(inner) => inner,
-            IRComponent::MinExclusive(inner) => inner,
-            IRComponent::MaxExclusive(inner) => inner,
-            IRComponent::MinInclusive(inner) => inner,
-            IRComponent::MaxInclusive(inner) => inner,
-            IRComponent::MinLength(inner) => inner,
-            IRComponent::MaxLength(inner) => inner,
-            IRComponent::Pattern(inner) => inner,
-            IRComponent::UniqueLang(inner) => inner,
-            IRComponent::LanguageIn(inner) => inner,
-            IRComponent::Equals(inner) => inner,
-            IRComponent::Disjoint(inner) => inner,
-            IRComponent::LessThan(inner) => inner,
-            IRComponent::LessThanOrEquals(inner) => inner,
-            IRComponent::Or(inner) => inner,
-            IRComponent::And(inner) => inner,
-            IRComponent::Not(inner) => inner,
-            IRComponent::Xone(inner) => inner,
-            IRComponent::Node(inner) => inner,
-            IRComponent::HasValue(inner) => inner,
-            IRComponent::In(inner) => inner,
-            IRComponent::QualifiedValueShape(inner) => inner,
-            IRComponent::Closed(inner) => inner,
-            IRComponent::Deactivated(inner) => inner,
-            IRComponent::BasicSparql(inner) => inner,
+macro_rules! gen_sparql_dispatch {
+    ($($V:ident),+ $(,)?) => {
+        /// SPARQL constraint dispatch (mirror of [`validate_native`], same
+        /// component list). SPARQL needs no recursion engine.
+        pub(crate) fn validate_sparql<S: QueryRDF + NeighsRDF + Debug + 'static>(
+            component: &IRComponent,
+            shape: &IRShape,
+            store: &S,
+            value_nodes: &ValueNodes<S>,
+            source_shape: Option<&IRShape>,
+            maybe_path: Option<&SHACLPath>,
+            shapes_graph: &IRSchema,
+        ) -> Result<Vec<ValidationResult>, ValidationError> {
+            match component {
+                $(
+                    IRComponent::$V(c) => BasicSparqlValidator::validate_sparql(
+                        c, component, shape, store, value_nodes, source_shape, maybe_path, shapes_graph,
+                    ),
+                )+
+            }
         }
-    }
+    };
 }
+
+gen_native_dispatch!(
+    Class, Datatype, NodeKind, MinCount, MaxCount, MinExclusive, MaxExclusive, MinInclusive, MaxInclusive, MinLength,
+    MaxLength, Pattern, UniqueLang, LanguageIn, Equals, Disjoint, LessThan, LessThanOrEquals, Or, And, Not, Xone, Node,
+    HasValue, In, QualifiedValueShape, Closed, Deactivated, BasicSparql,
+);
+
+#[cfg(feature = "sparql")]
+gen_sparql_dispatch!(
+    Class, Datatype, NodeKind, MinCount, MaxCount, MinExclusive, MaxExclusive, MinInclusive, MaxInclusive, MinLength,
+    MaxLength, Pattern, UniqueLang, LanguageIn, Equals, Disjoint, LessThan, LessThanOrEquals, Or, And, Not, Xone, Node,
+    HasValue, In, QualifiedValueShape, Closed, Deactivated, BasicSparql,
+);
+
+// ---------------------------------------------------------------------------
+// Shared evaluation skeletons for the per-value / per-focus components.
+// ---------------------------------------------------------------------------
 
 fn apply<S: Rdf, I: IterationStrategy<S>>(
     component: &IRComponent,
@@ -253,38 +232,31 @@ fn apply<S: Rdf, I: IterationStrategy<S>>(
     msg: &str,
     maybe_path: Option<&SHACLPath>,
 ) -> Result<Vec<ValidationResult>, ValidationError> {
-    let results = strategy
-        .iterate(value_nodes)
-        .flat_map(|(focus_node, item)| {
-            let focus = S::term_as_object(focus_node).ok()?;
+    let mut results = Vec::new();
+    for (focus_node, item) in strategy.iterate(value_nodes) {
+        let Ok(focus) = S::term_as_object(focus_node) else {
+            continue;
+        };
+        // Propagate evaluator errors as a typed ValidationError (no silent drop).
+        if evaluator(item)? {
             let component = Object::iri(component.into());
-            let shape_id = shape.id();
-            let source = Some(shape_id);
             let value = strategy.to_object(item);
             let mut msg = MessageMap::from(msg);
             if let Some(m) = shape.message() {
                 msg = msg.merge(m.to_owned(), true);
             }
-            // TODO(template-method): wire here -> `?`-propagate evaluator errors
-            // as ValidationError::PathError instead of dropping them silently.
-            if let Ok(condition) = evaluator(item)
-                && condition
-            {
-                return Some(
-                    ValidationResult::new(focus, component, shape.severity().clone())
-                        .with_source(source.cloned())
-                        .with_message(msg)
-                        .with_path(maybe_path.cloned())
-                        .with_value(value),
-                );
-            }
-            None
-        })
-        .collect();
+            results.push(
+                ValidationResult::new(focus, component, shape.severity().clone())
+                    .with_source(Some(shape.id().clone()))
+                    .with_message(msg)
+                    .with_path(maybe_path.cloned())
+                    .with_value(value),
+            );
+        }
+    }
     Ok(results)
 }
 
-// TODO - Extract common logic with above fn?
 fn apply_with_focus<S: Rdf, I: IterationStrategy<S>>(
     component: &IRComponent,
     shape: &IRShape,
@@ -294,30 +266,24 @@ fn apply_with_focus<S: Rdf, I: IterationStrategy<S>>(
     msg: &str,
     maybe_path: Option<&SHACLPath>,
 ) -> Result<Vec<ValidationResult>, ValidationError> {
-    let results = strategy
-        .iterate(value_nodes)
-        .flat_map(|(focus_node, item)| {
-            let focus = S::term_as_object(focus_node).ok()?;
+    let mut results = Vec::new();
+    for (focus_node, item) in strategy.iterate(value_nodes) {
+        let Ok(focus) = S::term_as_object(focus_node) else {
+            continue;
+        };
+        // Propagate evaluator errors instead of dropping them.
+        if evaluator(focus_node, item)? {
             let component = Object::iri(component.into());
-            let shape_id = shape.id();
-            let source = Some(shape_id);
             let value = strategy.to_object(item);
-            match evaluator(focus_node, item) {
-                Ok(true) => Some(
-                    ValidationResult::new(focus, component, shape.severity().clone())
-                        .with_source(source.cloned())
-                        .with_message(MessageMap::from(msg))
-                        .with_path(maybe_path.cloned())
-                        .with_value(value),
-                ),
-                Ok(false) => None,
-                // TODO(template-method): wire here -> `?`-propagate as
-                // ValidationError::PathError instead of dropping the error.
-                Err(_) => None,
-            }
-        })
-        .collect();
-
+            results.push(
+                ValidationResult::new(focus, component, shape.severity().clone())
+                    .with_source(Some(shape.id().clone()))
+                    .with_message(MessageMap::from(msg))
+                    .with_path(maybe_path.cloned())
+                    .with_value(value),
+            );
+        }
+    }
     Ok(results)
 }
 

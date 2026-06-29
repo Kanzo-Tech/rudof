@@ -16,12 +16,12 @@ use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
 impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for MaxInclusive {
-    fn validate_native(
+    fn validate_native<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         _: &S,
-        _: &mut dyn Engine<S>,
+        _: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,

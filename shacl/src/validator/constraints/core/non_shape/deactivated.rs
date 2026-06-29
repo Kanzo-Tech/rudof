@@ -9,12 +9,12 @@ use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
 impl<S: NeighsRDF + Debug> Validator<S> for Deactivated {
-    fn validate(
+    fn validate<E: Engine<S>>(
         &self,
         _: &IRComponent,
         _: &IRShape,
         _: &S,
-        _: &mut dyn Engine<S>,
+        _: &mut E,
         _: &ValueNodes<S>,
         _: Option<&IRShape>,
         _: Option<&SHACLPath>,

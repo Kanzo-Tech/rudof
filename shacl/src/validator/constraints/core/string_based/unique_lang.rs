@@ -13,12 +13,12 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 impl<S: NeighsRDF + Debug> Validator<S> for UniqueLang {
-    fn validate(
+    fn validate<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         _: &S,
-        _: &mut dyn Engine<S>,
+        _: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,

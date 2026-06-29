@@ -8,7 +8,7 @@ use crate::error::ValidationError;
 use crate::ir::IRSchema;
 use crate::validator::ShaclValidationMode;
 use crate::validator::engine::{Engine, Validate};
-use crate::validator::report::ValidationReport;
+use crate::validator::report::{ValidationReport, ValidationResult};
 #[cfg(feature = "sparql")]
 pub use endpoint::EndpointValidation;
 pub use graph::GraphValidation;
@@ -26,10 +26,18 @@ use std::fmt::Debug;
 /// Validation algorithm. For this, first, the validation report is initiliazed
 /// to empty, and, for each shape in the schema, the target nodes are
 /// selected, and then, each validator for each constraint is applied.
-pub trait ShaclProcessor<S: NeighsRDF + Debug + Send + Sync> {
+pub trait ShaclProcessor<S: NeighsRDF + Debug + Sync> {
     fn store(&self) -> &S;
 
-    fn runner(mode: &ShaclValidationMode) -> Box<dyn Engine<S>>;
+    /// Runs the validation with the concrete engine(s) appropriate for this
+    /// processor and `mode`. Each impl builds its read-only context (e.g. the
+    /// class index) on the stack and lends it to the generic [`run`] driver —
+    /// no `Box<dyn Engine>`.
+    fn run_validation(
+        store: &S,
+        shapes_graph: &IRSchema,
+        mode: &ShaclValidationMode,
+    ) -> Result<Vec<ValidationResult>, ValidationError>;
 
     /// Called once before validation begins. Implementations that need lazy
     /// initialization (e.g. building an in-memory SPARQL store from a graph)
@@ -60,47 +68,7 @@ pub trait ShaclProcessor<S: NeighsRDF + Debug + Send + Sync> {
         self.prepare_store()?;
         let store = self.store();
 
-        // Build shared indexes once. Forked engines share
-        // the data, avoiding redundant scans.
-        let mut master_runner = Self::runner(mode);
-        master_runner.build_indexes(store)?;
-
-        // Group shapes-with-targets by topological level so that dependencies
-        // are always validated before the shapes that reference them.
-        let levels = shapes_graph.shapes_with_targets_by_level();
-
-        let mut all_results = Vec::new();
-
-        for level in levels {
-            // Fork one engine per shape in this level. Each fork shares the
-            // pre-built class index and cache.
-            let mut forked_runners: Vec<Box<dyn Engine<S>>> = level.iter().map(|_| master_runner.fork()).collect();
-
-            // Validate all shapes in the level in parallel (sequentially on wasm).
-            #[cfg(not(target_family = "wasm"))]
-            let level_results: Vec<Result<Vec<_>, ValidationError>> = forked_runners
-                .par_iter_mut()
-                .zip(level.par_iter())
-                .map(|(runner, idx)| {
-                    let shape = shapes_graph.get_shape_from_idx_e(idx)?;
-                    shape.validate(store, runner.as_mut(), None, Some(shape), shapes_graph)
-                })
-                .collect();
-
-            #[cfg(target_family = "wasm")]
-            let level_results: Vec<Result<Vec<_>, ValidationError>> = forked_runners
-                .iter_mut()
-                .zip(level.iter())
-                .map(|(runner, idx)| {
-                    let shape = shapes_graph.get_shape_from_idx_e(idx)?;
-                    shape.validate(store, runner.as_mut(), None, Some(shape), shapes_graph)
-                })
-                .collect();
-
-            for result in level_results {
-                all_results.extend(result?);
-            }
-        }
+        let all_results = Self::run_validation(store, shapes_graph, mode)?;
 
         let mut pm = shapes_graph.prefix_map().clone();
         if let Some(store_pm) = store.prefixmap() {
@@ -108,5 +76,60 @@ pub trait ShaclProcessor<S: NeighsRDF + Debug + Send + Sync> {
         }
 
         Ok(ValidationReport::new().with_results(all_results).with_prefixmap(pm))
+    }
+}
+
+/// The generic, engine-agnostic validation driver shared by all processors.
+///
+/// Shapes are grouped by topological level so that a shape only depends on
+/// strictly-lower levels. Off wasm, each level is validated in parallel: rayon
+/// **borrows** `&store`/`&schema`/`&master` (all `Sync`) and every task **forks
+/// its own owned engine inside the closure**, so the engine never crosses a
+/// thread boundary (which is why `Engine` need not be `Send`) and there is no
+/// `Arc`. On wasm a single engine is threaded through every level in identical
+/// order — deterministic reports and full cross-shape memoization.
+pub(crate) fn run<S, E>(
+    store: &S,
+    shapes_graph: &IRSchema,
+    master: &E,
+) -> Result<Vec<ValidationResult>, ValidationError>
+where
+    S: NeighsRDF + Debug + Sync,
+    E: Engine<S> + Sync,
+{
+    let levels = shapes_graph.shapes_with_targets_by_level();
+
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let mut all_results = Vec::new();
+        for level in &levels {
+            let level_results: Vec<ValidationResult> = level
+                .par_iter()
+                .map(|idx| -> Result<Vec<ValidationResult>, ValidationError> {
+                    let mut engine = master.fork(); // owned, per-task cache
+                    let shape = shapes_graph.get_shape_from_idx_e(idx)?;
+                    shape.validate(store, &mut engine, None, Some(shape), shapes_graph)
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect();
+            all_results.extend(level_results); // level barrier: deterministic order
+        }
+        Ok(all_results)
+    }
+
+    #[cfg(target_family = "wasm")]
+    {
+        // One engine threaded through everything → full memoization, zero sync.
+        let mut engine = master.fork();
+        let mut all_results = Vec::new();
+        for level in &levels {
+            for idx in level {
+                let shape = shapes_graph.get_shape_from_idx_e(idx)?;
+                all_results.extend(shape.validate(store, &mut engine, None, Some(shape), shapes_graph)?);
+            }
+        }
+        Ok(all_results)
     }
 }

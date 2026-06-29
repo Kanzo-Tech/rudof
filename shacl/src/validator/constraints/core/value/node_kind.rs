@@ -19,12 +19,12 @@ use std::fmt::Debug;
 use std::ops::Not;
 
 impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for Nodekind {
-    fn validate_native(
+    fn validate_native<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         _: &S,
-        _: &mut dyn Engine<S>,
+        _: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,

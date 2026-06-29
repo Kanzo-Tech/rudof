@@ -1,7 +1,7 @@
 use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape, ShapeLabelIdx};
-use crate::validator::cache::{SharedValidationCache, ValidationCache};
-use crate::validator::constraints::{NativeValidator, ShaclComponent, ValidatorDeref};
+use crate::validator::cache::ValidationCache;
+use crate::validator::constraints::validate_native;
 use crate::validator::engine::Engine;
 use crate::validator::index::ClassIndex;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
@@ -11,35 +11,36 @@ use rudof_rdf::rdf_core::term::{Object, Term, Triple};
 use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfsVocab};
 use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
-use std::sync::Arc;
 
-pub struct NativeEngine {
-    /// Shared, thread-safe validation cache.
-    cache: SharedValidationCache,
-    /// Pre-built inverted index mapping classes to their instances and subclasses.
-    class_index: Option<Arc<ClassIndex>>,
+/// Native (in-memory) validation engine.
+///
+/// Borrows a shared, read-only `ClassIndex` (`Sync`, no `Arc`) and owns its
+/// validation cache (a plain `HashMap`, mutated via `&mut self`). It contains
+/// no `Arc` and no interior mutability, so `&NativeEngine` is `Sync` and can be
+/// shared across rayon threads while each task forks its own owned engine.
+pub struct NativeEngine<'e> {
+    /// Borrowed inverted index mapping classes to instances/subclasses.
+    class_index: Option<&'e ClassIndex>,
+    /// Owned per-engine validation cache.
+    cache: ValidationCache,
 }
 
-impl NativeEngine {
-    pub fn new() -> Self {
+impl<'e> NativeEngine<'e> {
+    pub(crate) fn new(class_index: Option<&'e ClassIndex>) -> Self {
         Self {
-            cache: SharedValidationCache::new(),
-            class_index: None,
+            class_index,
+            cache: ValidationCache::default(),
         }
     }
 }
 
-impl<RDF: NeighsRDF + Debug + 'static> Engine<RDF> for NativeEngine {
-    fn build_indexes(&mut self, store: &RDF) -> Result<(), ValidationError> {
-        self.class_index = Some(Arc::new(ClassIndex::build(store)?));
-        Ok(())
-    }
-
-    fn fork(&self) -> Box<dyn Engine<RDF>> {
-        Box::new(NativeEngine {
-            cache: self.cache.clone(),
-            class_index: self.class_index.clone(),
-        })
+impl<RDF: NeighsRDF + Debug + 'static> Engine<RDF> for NativeEngine<'_> {
+    fn fork(&self) -> Self {
+        // Copy the borrowed index ref; start with a fresh empty cache.
+        NativeEngine {
+            class_index: self.class_index,
+            cache: ValidationCache::default(),
+        }
     }
 
     fn evaluate(
@@ -52,10 +53,8 @@ impl<RDF: NeighsRDF + Debug + 'static> Engine<RDF> for NativeEngine {
         maybe_path: Option<&SHACLPath>,
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
-        let shacl_component = ShaclComponent::new(component);
-        let validator: &dyn NativeValidator<RDF> = shacl_component.deref();
-
-        validator.validate_native(
+        // Static dispatch over the IRComponent enum — no trait object.
+        validate_native::<RDF, Self>(
             component,
             shape,
             store,
@@ -79,7 +78,7 @@ impl<RDF: NeighsRDF + Debug + 'static> Engine<RDF> for NativeEngine {
 
     fn target_class(&self, store: &RDF, class: &Object) -> Result<FocusNodes<RDF>, ValidationError> {
         // use the pre-built class index (O(1) lookup)
-        if let Some(index) = &self.class_index {
+        if let Some(index) = self.class_index {
             let focus_nodes = index.instances_of(class).map(|obj| -> RDF::Term { obj.clone().into() });
             return Ok(FocusNodes::from_iter(focus_nodes));
         }
@@ -115,7 +114,7 @@ impl<RDF: NeighsRDF + Debug + 'static> Engine<RDF> for NativeEngine {
 
     fn implicit_target_class(&self, store: &RDF, shape: &Object) -> Result<FocusNodes<RDF>, ValidationError> {
         // use the pre-built class index (O(1) lookup)
-        if let Some(index) = &self.class_index {
+        if let Some(index) = self.class_index {
             let instances = index.instances_of_with_subclasses(shape);
             let focus_nodes = instances.into_iter().map(|obj| -> RDF::Term { obj.clone().into() });
             return Ok(FocusNodes::from_iter(focus_nodes));
@@ -146,13 +145,7 @@ impl<RDF: NeighsRDF + Debug + 'static> Engine<RDF> for NativeEngine {
         self.cache.has_validated(node, shape_idx)
     }
 
-    fn get_cached_results(&self, node: &Object, shape_idx: ShapeLabelIdx) -> Option<Vec<ValidationResult>> {
+    fn get_cached_results(&self, node: &Object, shape_idx: ShapeLabelIdx) -> Option<&[ValidationResult]> {
         self.cache.get_results(node, shape_idx)
-    }
-}
-
-impl Default for NativeEngine {
-    fn default() -> Self {
-        Self::new()
     }
 }

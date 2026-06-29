@@ -18,6 +18,7 @@ mod schema;
 mod shape;
 mod shape_label_idx;
 mod test;
+pub mod visitor;
 
 pub use component::IRComponent;
 pub use node_shape::IRNodeShape;

@@ -1,11 +1,12 @@
-// Only `from_path` (not available on wasm) surfaces a `ValidationError` here.
-#[cfg(not(target_family = "wasm"))]
 use crate::error::ValidationError;
+use crate::ir::IRSchema;
 use crate::validator::ShaclValidationMode;
-use crate::validator::engine::{Engine, NativeEngine};
 #[cfg(feature = "sparql")]
 use crate::validator::engine::SparqlEngine;
-use crate::validator::processor::ShaclProcessor;
+use crate::validator::engine::NativeEngine;
+use crate::validator::index::ClassIndex;
+use crate::validator::processor::{ShaclProcessor, run};
+use crate::validator::report::ValidationResult;
 use crate::validator::store::{Graph, Store};
 #[cfg(not(target_family = "wasm"))]
 use rudof_rdf::rdf_core::RDFFormat;
@@ -65,10 +66,21 @@ impl ShaclProcessor<RdfData> for GraphValidation {
         self.store.store()
     }
 
-    fn runner(mode: &ShaclValidationMode) -> Box<dyn Engine<RdfData>> {
+    fn run_validation(
+        store: &RdfData,
+        shapes_graph: &IRSchema,
+        mode: &ShaclValidationMode,
+    ) -> Result<Vec<ValidationResult>, ValidationError> {
         match mode {
-            ShaclValidationMode::Native => Box::new(NativeEngine::new()),
-            ShaclValidationMode::Sparql => Box::new(SparqlEngine::new()),
+            ShaclValidationMode::Native => {
+                let index = ClassIndex::build(store)?;
+                let master = NativeEngine::new(Some(&index));
+                run(store, shapes_graph, &master)
+            },
+            ShaclValidationMode::Sparql => {
+                let master = SparqlEngine::new();
+                run(store, shapes_graph, &master)
+            },
         }
     }
 }
@@ -81,8 +93,15 @@ impl ShaclProcessor<OxigraphInMemory> for GraphValidation {
         self.store.store()
     }
 
-    fn runner(_mode: &ShaclValidationMode) -> Box<dyn Engine<OxigraphInMemory>> {
-        Box::new(NativeEngine::new())
+    fn run_validation(
+        store: &OxigraphInMemory,
+        shapes_graph: &IRSchema,
+        _mode: &ShaclValidationMode,
+    ) -> Result<Vec<ValidationResult>, ValidationError> {
+        // Without the `sparql` feature only the native engine is available.
+        let index = ClassIndex::build(store)?;
+        let master = NativeEngine::new(Some(&index));
+        run(store, shapes_graph, &master)
     }
 }
 

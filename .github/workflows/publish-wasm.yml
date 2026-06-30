@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # OIDC token for npm Trusted Publishing (no long-lived NPM_TOKEN needed).
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -47,14 +49,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
+
+      # Trusted Publishing (OIDC) requires npm >= 11.5.1; ensure the CLI is recent.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
 
       - name: Build pkg
         run: PKG_NAME="@kanzo-tech/rudof-wasm" PKG_VERSION="${{ steps.ver.outputs.version }}" bash rudof_wasm/build.sh
 
+      # No NODE_AUTH_TOKEN: auth + provenance come from the OIDC id-token above,
+      # via the Trusted Publisher configured for this package on npmjs.com.
       - name: Publish to npm
         run: npm publish --access public
         working-directory: rudof_wasm/pkg
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -19,7 +19,7 @@ use crate::{BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf};
 /// Strategy enum that owns one concrete RDF backend.
 #[derive(Debug, Clone)]
 pub enum RdfBackend {
-    InMemory(OxigraphInMemory),
+    InMemory(Box<OxigraphInMemory>),
     #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
     Endpoint(OxigraphEndpoint),
 }
@@ -27,13 +27,13 @@ pub enum RdfBackend {
 impl RdfBackend {
     /// Convenience constructor for the default empty in-memory backend.
     pub fn in_memory() -> Self {
-        RdfBackend::InMemory(OxigraphInMemory::new())
+        RdfBackend::InMemory(Box::new(OxigraphInMemory::new()))
     }
 
     /// Return the wrapped in-memory backend if this variant is `InMemory`.
     pub fn as_in_memory(&self) -> Option<&OxigraphInMemory> {
         match self {
-            RdfBackend::InMemory(g) => Some(g),
+            RdfBackend::InMemory(g) => Some(&**g),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => None,
         }
@@ -42,7 +42,7 @@ impl RdfBackend {
     /// Mutable accessor
     pub fn as_in_memory_mut(&mut self) -> Option<&mut OxigraphInMemory> {
         match self {
-            RdfBackend::InMemory(g) => Some(g),
+            RdfBackend::InMemory(g) => Some(&mut **g),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => None,
         }
@@ -84,7 +84,7 @@ impl Rdf for RdfBackend {
 
     fn prefixmap(&self) -> Option<PrefixMap> {
         match self {
-            RdfBackend::InMemory(b) => <OxigraphInMemory as Rdf>::prefixmap(b),
+            RdfBackend::InMemory(b) => <OxigraphInMemory as Rdf>::prefixmap(&**b),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(b) => <OxigraphEndpoint as Rdf>::prefixmap(b),
         }
@@ -296,7 +296,7 @@ impl BuildRDF for RdfBackend {
 
     fn serialize<W: io::Write>(&self, format: &RDFFormat, writer: &mut W) -> Result<(), Self::Err> {
         match self {
-            RdfBackend::InMemory(b) => Ok(BuildRDF::serialize(b, format, writer)?),
+            RdfBackend::InMemory(b) => Ok(BuildRDF::serialize(&**b, format, writer)?),
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => Err(RdfBackendError::ReadOnly {
                 op: "serialize",

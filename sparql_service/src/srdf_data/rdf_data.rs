@@ -99,7 +99,7 @@ impl RdfData {
     /// Creates an RdfData from an in-memory RDF graph.
     pub fn from_graph(graph: OxigraphInMemory) -> Result<RdfData, RdfDataError> {
         Ok(RdfData {
-            primary: RdfBackend::InMemory(graph),
+            primary: RdfBackend::InMemory(Box::new(graph)),
             endpoints: HashMap::new(),
             use_endpoints: HashMap::new(),
         })

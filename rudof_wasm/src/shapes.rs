@@ -8,6 +8,7 @@ use rudof_lib::form::{
     ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape, BlankNode, ConcreteLiteral, IriRef, NamedNode,
     NamedOrBlankNode, NodeKind, Object, OxigraphInMemory, SHACLPath, Target, Term as OxTerm, Value,
 };
+use rudof_lib::form::shui::editors;
 use std::collections::HashMap;
 
 use crate::dto::*;
@@ -29,44 +30,40 @@ const NUMERIC: &[&str] = &[
     "unsignedLong", "unsignedInt", "unsignedShort", "unsignedByte",
 ];
 
-fn shui_editor(local: &str) -> String {
-    format!("{SHUI}{local}")
-}
-
 /// Resolve an editor IRI from a property's own type facts (no fallbacks),
-/// mirroring the SHACL-UI default-editor rules. Emits `shui:` editor class IRIs
-/// (recognised by the downstream `Editors` table); the IRI→widget interpretation
+/// mirroring the SHACL-UI default-editor rules. Returns a `shui:` editor class
+/// IRI from the canonical `shui::editors` table; the IRI→widget interpretation
 /// stays in the UI consumer — rudof never knows about widgets.
-fn editor_from_facts(value: &ValueConstraints, node: &Option<String>) -> Option<String> {
+fn editor_from_facts(value: &ValueConstraints, node: &Option<String>) -> Option<&'static str> {
     if node.is_some() {
-        return Some(shui_editor("DetailsEditor"));
+        return Some(editors::DETAILS);
     }
     if value.in_values.as_ref().is_some_and(|v| !v.is_empty()) {
-        return Some(shui_editor("EnumSelectEditor"));
+        return Some(editors::ENUM_SELECT);
     }
     if let Some(dt) = value.datatype.as_deref() {
         if dt == RDF_HTML {
-            return Some(shui_editor("RichTextEditor"));
+            return Some(editors::RICH_TEXT);
         }
         if dt == RDF_LANGSTRING {
-            return Some(shui_editor("TextFieldWithLangEditor"));
+            return Some(editors::TEXT_FIELD_WITH_LANG);
         }
         if let Some(local) = dt.strip_prefix(XSD) {
             match local {
-                "boolean" => return Some(shui_editor("BooleanEditor")),
-                "date" => return Some(shui_editor("DatePickerEditor")),
-                "dateTime" => return Some(shui_editor("DateTimePickerEditor")),
-                _ if NUMERIC.contains(&local) => return Some(shui_editor("NumberFieldEditor")),
+                "boolean" => return Some(editors::BOOLEAN),
+                "date" => return Some(editors::DATE_PICKER),
+                "dateTime" => return Some(editors::DATE_TIME_PICKER),
+                _ if NUMERIC.contains(&local) => return Some(editors::NUMBER_FIELD),
                 _ => {}
             }
         }
     }
     if value.class_iri.is_some() {
-        return Some(shui_editor("AutoCompleteEditor"));
+        return Some(editors::AUTO_COMPLETE);
     }
     let is_any_uri = value.datatype.as_deref() == Some("http://www.w3.org/2001/XMLSchema#anyURI");
     if value.node_kind.as_deref() == Some(SH_IRI) || is_any_uri {
-        return Some(shui_editor("IRIEditor"));
+        return Some(editors::IRI);
     }
     None
 }
@@ -74,13 +71,14 @@ fn editor_from_facts(value: &ValueConstraints, node: &Option<String>) -> Option<
 /// The full default-editor resolution: own facts, else the first `sh:or`/`sh:xone`
 /// branch's facts, else a plain text field. Mirrors the downstream default rules
 /// so the UI can drop its own inference and just map the emitted IRI to a widget.
-fn resolve_default_editor(value: &ValueConstraints, node: &Option<String>, logical: &LogicalConstraints) -> String {
+fn resolve_default_editor(value: &ValueConstraints, node: &Option<String>, logical: &LogicalConstraints) -> &'static str {
     if let Some(editor) = editor_from_facts(value, node) {
         return editor;
     }
     // or-branch fallback: a property stating no own type facts derives its editor
-    // from its first sh:or / sh:xone branch.
-    let stateless = value.datatype.is_none() && value.node_kind.is_none() && value.class_iri.is_none() && node.is_none();
+    // from its first sh:or / sh:xone branch. (A class_iri or sh:node already
+    // resolves an editor above, so only datatype + nodeKind gate "stateless".)
+    let stateless = value.datatype.is_none() && value.node_kind.is_none();
     if stateless {
         if let Some(branch) = logical.or.as_ref().or(logical.xone.as_ref()).and_then(|b| b.first()) {
             if let Some(editor) = editor_from_facts(&branch.value, &branch.node) {
@@ -88,7 +86,7 @@ fn resolve_default_editor(value: &ValueConstraints, node: &Option<String>, logic
             }
         }
     }
-    shui_editor("TextFieldEditor")
+    editors::TEXT_FIELD
 }
 
 /// rudof's SHACL parser is validation-focused and does not populate the
@@ -189,7 +187,7 @@ fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInM
     // shui:editor wins; otherwise pick a default from the property's facts.
     let mut presentation = presentation(graph, ps.id());
     if presentation.editor.is_none() {
-        presentation.editor = Some(resolve_default_editor(&value, &node, &logical));
+        presentation.editor = Some(resolve_default_editor(&value, &node, &logical).to_string());
     }
 
     PropertyShapeIR {

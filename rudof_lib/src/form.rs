@@ -32,6 +32,7 @@ pub use rudof_rdf::{BuildRDF, RDFFormat, SHACLPath};
 pub use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 pub use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 pub use shacl::types::{NodeKind, Severity, Target, Value};
+pub use shacl::vocab::shui;
 pub use shacl::validator::report::ValidationResult;
 
 use shacl::ir::{IRSchema, ShapeLabelIdx};
@@ -159,15 +160,13 @@ impl FormEngine {
         let mut sub = OxigraphInMemory::new();
         sub.merge_prefixes(self.data.prefixmap().clone()).map_err(|e| FormError::Graph(e.to_string()))?;
 
-        let mut seen: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<NamedOrBlankNode> = std::collections::HashSet::new();
         let mut stack: Vec<Term> = vec![focus.clone()];
         while let Some(node) = stack.pop() {
             let Some(subj) = as_subject(&node) else { continue };
-            let key = format!("{node}");
-            if seen.contains(&key) {
+            if !seen.insert(subj.clone()) {
                 continue;
             }
-            seen.push(key);
             for q in self.data.quads().filter(|q| q.subject == subj) {
                 if matches!(q.object, Term::NamedNode(_) | Term::BlankNode(_)) {
                     stack.push(q.object.clone());

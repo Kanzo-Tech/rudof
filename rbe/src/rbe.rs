@@ -108,11 +108,9 @@ where
                 let n = Max::IntMax(card.min.value);
                 Interval::new(card.max.div_up(&wa), n.div_down(&wa))
             },
-            Rbe::And { values } => {
-                values
-                    .iter()
-                    .fold(Interval::zero_any(), |acc, v| acc.intersection(&v.interval(bag)))
-            },
+            Rbe::And { values } => values
+                .iter()
+                .fold(Interval::zero_any(), |acc, v| acc.intersection(&v.interval(bag))),
             Rbe::Or { values } => {
                 // Minkowski sum: every branch must have a valid scale factor.
                 // If any branch interval is empty the whole Or is unsatisfiable.

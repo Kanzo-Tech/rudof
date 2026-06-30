@@ -682,8 +682,8 @@ pub async fn convert_to_native(
     source_format: &rudof_rdf::RDFFormat,
     dest_dir: &Path,
 ) -> Result<(PathBuf, NativeFormat), QleverError> {
-    use rudof_rdf::RDFFormat;
     use oxrdfio::{RdfFormat as OxRdfFormat, RdfParser, RdfSerializer};
+    use rudof_rdf::RDFFormat;
     use tokio::io::AsyncReadExt;
 
     std::fs::create_dir_all(dest_dir).map_err(|error| QleverError::IndexDirIo {
@@ -737,8 +737,8 @@ pub async fn convert_to_native(
 }
 
 pub(super) fn rdf_format_to_oxrdfio(f: &rudof_rdf::RDFFormat) -> oxrdfio::RdfFormat {
-    use rudof_rdf::RDFFormat;
     use oxrdfio::RdfFormat as Ox;
+    use rudof_rdf::RDFFormat;
     match f {
         RDFFormat::Turtle => Ox::Turtle,
         RDFFormat::NTriples => Ox::NTriples,

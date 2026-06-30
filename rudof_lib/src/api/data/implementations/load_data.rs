@@ -118,7 +118,9 @@ fn load_data_from_specs_rdf(
             .unwrap()
             .unwrap_rdf_mut()
             .merge_prefixes(pm)
-            .map_err(|e| RudofError::Generic { error: format!("merging user prefixes: {e}") })?;
+            .map_err(|e| RudofError::Generic {
+                error: format!("merging user prefixes: {e}"),
+            })?;
     }
     Ok(())
 }

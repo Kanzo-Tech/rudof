@@ -31,9 +31,11 @@ where
         let subj = RDF::term_as_subject(focus).map_err(|_| RDFError::ExpectedFocusAsSubjectError {
             focus: focus.to_string(),
         })?;
-        rdf.graph().outgoing_arcs(&subj).map_err(|e| RDFError::OutgoingArcsError {
-            focus: focus.to_string(),
-            error: e.to_string(),
-        })
+        rdf.graph()
+            .outgoing_arcs(&subj)
+            .map_err(|e| RDFError::OutgoingArcsError {
+                focus: focus.to_string(),
+                error: e.to_string(),
+            })
     }
 }

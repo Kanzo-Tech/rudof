@@ -1,3 +1,5 @@
+use crate::backend::{OxigraphInMemory, ReaderMode};
+use crate::rdf_parser;
 use crate::{
     Any, BuildRDF, NeighsRDF, RDFError, RDFFormat,
     parser::RDFParse,
@@ -10,8 +12,6 @@ use crate::{
     },
     term::Triple,
 };
-use crate::backend::{OxigraphInMemory, ReaderMode};
-use crate::rdf_parser;
 use oxrdf::Literal as OxLiteral;
 use oxrdf::NamedNode as OxNamedNode;
 use oxrdf::NamedOrBlankNode as OxSubject;

@@ -7,9 +7,7 @@ use wasm_bindgen::prelude::*;
 // Every rudof-native type the binding marshals against comes from the façade
 // (`rudof_lib::form`), so this crate depends on `rudof_lib` alone — it never
 // reaches into `shacl`/`rudof_rdf`/`oxrdf` directly.
-use rudof_lib::form::{
-    BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm,
-};
+use rudof_lib::form::{BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm};
 
 mod dto;
 mod project;
@@ -82,9 +80,13 @@ pub(crate) fn object_to_value(o: &OxTerm) -> TermValue {
         OxTerm::BlankNode(b) => TermValue::blank(b.as_str()),
         OxTerm::Literal(l) => {
             let lang = l.language().map(|s| s.to_string());
-            let dt = if lang.is_none() { Some(l.datatype().as_str().to_string()) } else { None };
+            let dt = if lang.is_none() {
+                Some(l.datatype().as_str().to_string())
+            } else {
+                None
+            };
             TermValue::literal(l.value(), dt, lang)
-        }
+        },
         // RDF-star quoted triple — not modelled in the form IR.
         _ => TermValue::blank("rdfstar"),
     }
@@ -102,7 +104,9 @@ pub struct Session {
 impl Session {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Session {
-        Session { engine: FormEngine::new() }
+        Session {
+            engine: FormEngine::new(),
+        }
     }
 
     #[wasm_bindgen(js_name = loadShapes)]
@@ -164,7 +168,9 @@ impl Session {
     }
 
     pub fn serialize(&self, media_type: String) -> Result<String, JsError> {
-        self.engine.serialize(&format_of(&media_type)).map_err(|e| JsError::new(&e.to_string()))
+        self.engine
+            .serialize(&format_of(&media_type))
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 
     /// Serialize only the subgraph reachable from `focus` (a `TermValue`) — the
@@ -183,7 +189,10 @@ impl Session {
         let focus: TermValue = from_js(focus)?;
         match self.engine.shapes_ast() {
             Some(ast) => to_js(&project::project_form(&self.engine, ast, &focus, &shape_id)),
-            None => to_js(&ProjectedForm { focus, properties: vec![] }),
+            None => to_js(&ProjectedForm {
+                focus,
+                properties: vec![],
+            }),
         }
     }
 
@@ -212,7 +221,10 @@ impl Session {
     pub fn validate_focus(&self, focus: JsValue, shape_id: String) -> Result<JsValue, JsError> {
         let focus: TermValue = from_js(focus)?;
         let focus = validate::focus_object(&focus).map_err(|e| JsError::new(&e))?;
-        let outcome = self.engine.validate_focus(&shape_id, &focus).map_err(|e| JsError::new(&e.to_string()))?;
+        let outcome = self
+            .engine
+            .validate_focus(&shape_id, &focus)
+            .map_err(|e| JsError::new(&e.to_string()))?;
         to_js(&validate::report_from_outcome(&outcome))
     }
 }

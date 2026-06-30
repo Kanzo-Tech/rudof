@@ -271,14 +271,11 @@ mod tests {
             SHACLPath::iri(iri!("http://ex/a")),
             SHACLPath::iri(iri!("http://ex/b")),
         ]));
-        let ps = ASTPropertyShape::new(Object::iri(iri!("http://ex/ps")), path)
-            .with_components(vec![
-                ASTComponent::MinCount(1),
-                ASTComponent::Datatype(prefixmap::IriRef::iri(iri!(
-                    "http://www.w3.org/2001/XMLSchema#string"
-                ))),
-                ASTComponent::HasValue(Value::from(iri!("http://ex/v"))),
-            ]);
+        let ps = ASTPropertyShape::new(Object::iri(iri!("http://ex/ps")), path).with_components(vec![
+            ASTComponent::MinCount(1),
+            ASTComponent::Datatype(prefixmap::IriRef::iri(iri!("http://www.w3.org/2001/XMLSchema#string"))),
+            ASTComponent::HasValue(Value::from(iri!("http://ex/v"))),
+        ]);
         let json = serde_json::to_string(&ps).expect("serialize");
         let back: ASTPropertyShape = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(ps, back);

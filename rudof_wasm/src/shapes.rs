@@ -4,11 +4,11 @@
 //! (`sh:name`/`order`/`group`, `shui:editor`/`viewer`) read from the shapes
 //! graph. Emitting JSON here keeps the JS side from re-parsing SHACL.
 
+use rudof_lib::form::shui::editors;
 use rudof_lib::form::{
     ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape, BlankNode, ConcreteLiteral, IriRef, NamedNode,
     NamedOrBlankNode, NodeKind, Object, OxigraphInMemory, SHACLPath, Target, Term as OxTerm, Value,
 };
-use rudof_lib::form::shui::editors;
 use std::collections::HashMap;
 
 use crate::dto::*;
@@ -25,9 +25,22 @@ const SH_IRI: &str = "http://www.w3.org/ns/shacl#IRI";
 
 /// xsd numeric datatypes (local names) → NumberFieldEditor.
 const NUMERIC: &[&str] = &[
-    "integer", "decimal", "float", "double", "long", "int", "short", "byte",
-    "nonNegativeInteger", "positiveInteger", "nonPositiveInteger", "negativeInteger",
-    "unsignedLong", "unsignedInt", "unsignedShort", "unsignedByte",
+    "integer",
+    "decimal",
+    "float",
+    "double",
+    "long",
+    "int",
+    "short",
+    "byte",
+    "nonNegativeInteger",
+    "positiveInteger",
+    "nonPositiveInteger",
+    "negativeInteger",
+    "unsignedLong",
+    "unsignedInt",
+    "unsignedShort",
+    "unsignedByte",
 ];
 
 /// Resolve an editor IRI from a property's own type facts (no fallbacks),
@@ -54,7 +67,7 @@ fn editor_from_facts(value: &ValueConstraints, node: &Option<String>) -> Option<
                 "date" => return Some(editors::DATE_PICKER),
                 "dateTime" => return Some(editors::DATE_TIME_PICKER),
                 _ if NUMERIC.contains(&local) => return Some(editors::NUMBER_FIELD),
-                _ => {}
+                _ => {},
             }
         }
     }
@@ -71,7 +84,11 @@ fn editor_from_facts(value: &ValueConstraints, node: &Option<String>) -> Option<
 /// The full default-editor resolution: own facts, else the first `sh:or`/`sh:xone`
 /// branch's facts, else a plain text field. Mirrors the downstream default rules
 /// so the UI can drop its own inference and just map the emitted IRI to a widget.
-fn resolve_default_editor(value: &ValueConstraints, node: &Option<String>, logical: &LogicalConstraints) -> &'static str {
+fn resolve_default_editor(
+    value: &ValueConstraints,
+    node: &Option<String>,
+    logical: &LogicalConstraints,
+) -> &'static str {
     if let Some(editor) = editor_from_facts(value, node) {
         return editor;
     }
@@ -106,7 +123,11 @@ pub fn schema_to_json(schema: &ASTSchema, graph: &OxigraphInMemory) -> ShapeMode
         }
     }
 
-    ShapeModelJson { node_shapes, groups: read_groups(graph), by_target_class }
+    ShapeModelJson {
+        node_shapes,
+        groups: read_groups(graph),
+        by_target_class,
+    }
 }
 
 fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &OxigraphInMemory) -> NodeShapeIR {
@@ -159,11 +180,11 @@ fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInM
             ASTComponent::Pattern { pattern, flags } => {
                 value.pattern = Some(pattern.clone());
                 value.flags = flags.clone();
-            }
+            },
             ASTComponent::UniqueLang(b) => value.unique_lang = Some(*b),
             ASTComponent::LanguageIn(langs) => {
                 value.language_in = Some(langs.iter().map(|l| l.as_str().to_string()).collect())
-            }
+            },
             ASTComponent::In(vals) => value.in_values = Some(vals.iter().map(value_to_term).collect()),
             ASTComponent::HasValue(v) => value.has_value = Some(value_to_term(v)),
             ASTComponent::Node(o) => node = object_iri(o),
@@ -174,8 +195,8 @@ fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInM
                 if let Some(ASTShape::PropertyShape(b)) = schema.get_shape(o) {
                     logical.not = Some(Box::new(property_to_ir(b, schema, graph)));
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -217,13 +238,18 @@ fn default_value(graph: &OxigraphInMemory, node: &Object) -> Option<TermValue> {
 /// — the open extension point so rules/widgets can read terms the typed core does
 /// not model (custom vocab, new SHACL 1.2 components).
 fn read_components(graph: &OxigraphInMemory, node: &Object) -> Vec<ComponentIR> {
-    let Some(subj) = object_to_subject(node) else { return Vec::new() };
+    let Some(subj) = object_to_subject(node) else {
+        return Vec::new();
+    };
     let mut by_pred: HashMap<String, Vec<TermValue>> = HashMap::new();
     for q in graph.quads() {
         if q.subject != subj {
             continue;
         }
-        by_pred.entry(q.predicate.as_str().to_string()).or_default().push(object_to_value(&q.object));
+        by_pred
+            .entry(q.predicate.as_str().to_string())
+            .or_default()
+            .push(object_to_value(&q.object));
     }
     by_pred
         .into_iter()
@@ -236,8 +262,7 @@ fn read_components(graph: &OxigraphInMemory, node: &Object) -> Vec<ComponentIR> 
 }
 
 fn resolve_branches(refs: &[Object], schema: &ASTSchema, graph: &OxigraphInMemory) -> Vec<PropertyShapeIR> {
-    refs
-        .iter()
+    refs.iter()
         .filter_map(|o| match schema.get_shape(o) {
             Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir(ps, schema, graph)),
             _ => None,
@@ -353,13 +378,27 @@ fn term_iri(t: &OxTerm) -> Option<String> {
 
 fn path_to_ir(path: &SHACLPath) -> PathExpr {
     match path {
-        SHACLPath::Predicate { pred } => PathExpr::Predicate { iri: pred.as_str().to_string() },
-        SHACLPath::Inverse { path } => PathExpr::Inverse { of: Box::new(path_to_ir(path)) },
-        SHACLPath::Sequence { paths } => PathExpr::Sequence { steps: paths.iter().map(path_to_ir).collect() },
-        SHACLPath::Alternative { paths } => PathExpr::Alternative { options: paths.iter().map(path_to_ir).collect() },
-        SHACLPath::ZeroOrMore { path } => PathExpr::ZeroOrMore { path: Box::new(path_to_ir(path)) },
-        SHACLPath::OneOrMore { path } => PathExpr::OneOrMore { path: Box::new(path_to_ir(path)) },
-        SHACLPath::ZeroOrOne { path } => PathExpr::ZeroOrOne { path: Box::new(path_to_ir(path)) },
+        SHACLPath::Predicate { pred } => PathExpr::Predicate {
+            iri: pred.as_str().to_string(),
+        },
+        SHACLPath::Inverse { path } => PathExpr::Inverse {
+            of: Box::new(path_to_ir(path)),
+        },
+        SHACLPath::Sequence { paths } => PathExpr::Sequence {
+            steps: paths.iter().map(path_to_ir).collect(),
+        },
+        SHACLPath::Alternative { paths } => PathExpr::Alternative {
+            options: paths.iter().map(path_to_ir).collect(),
+        },
+        SHACLPath::ZeroOrMore { path } => PathExpr::ZeroOrMore {
+            path: Box::new(path_to_ir(path)),
+        },
+        SHACLPath::OneOrMore { path } => PathExpr::OneOrMore {
+            path: Box::new(path_to_ir(path)),
+        },
+        SHACLPath::ZeroOrOne { path } => PathExpr::ZeroOrOne {
+            path: Box::new(path_to_ir(path)),
+        },
     }
 }
 
@@ -380,10 +419,10 @@ pub(crate) fn path_key(path: &SHACLPath) -> String {
         SHACLPath::Inverse { path } => format!("^{}", path_key(path)),
         SHACLPath::Sequence { paths } => {
             format!("({})", paths.iter().map(path_key).collect::<Vec<_>>().join("/"))
-        }
+        },
         SHACLPath::Alternative { paths } => {
             format!("({})", paths.iter().map(path_key).collect::<Vec<_>>().join("|"))
-        }
+        },
         SHACLPath::ZeroOrMore { path } => format!("{}*", path_key(path)),
         SHACLPath::OneOrMore { path } => format!("{}+", path_key(path)),
         SHACLPath::ZeroOrOne { path } => format!("{}?", path_key(path)),
@@ -429,18 +468,14 @@ fn concrete_to_term(l: &ConcreteLiteral) -> TermValue {
     match l {
         ConcreteLiteral::StringLiteral { lexical_form, lang } => {
             TermValue::literal(lexical_form, None, lang.as_ref().map(|x| x.as_str().to_string()))
-        }
+        },
         ConcreteLiteral::DatatypeLiteral { lexical_form, datatype }
-        | ConcreteLiteral::WrongDatatypeLiteral { lexical_form, datatype, .. } => {
-            TermValue::literal(lexical_form, Some(iriref_str(datatype)), None)
-        }
+        | ConcreteLiteral::WrongDatatypeLiteral {
+            lexical_form, datatype, ..
+        } => TermValue::literal(lexical_form, Some(iriref_str(datatype)), None),
         ConcreteLiteral::NumericLiteral(n) => TermValue::literal(&n.lexical_form(), None, None),
-        ConcreteLiteral::DatetimeLiteral(d) => {
-            TermValue::literal(&d.to_string(), Some(format!("{XSD}dateTime")), None)
-        }
-        ConcreteLiteral::BooleanLiteral(b) => {
-            TermValue::literal(&b.to_string(), Some(format!("{XSD}boolean")), None)
-        }
+        ConcreteLiteral::DatetimeLiteral(d) => TermValue::literal(&d.to_string(), Some(format!("{XSD}dateTime")), None),
+        ConcreteLiteral::BooleanLiteral(b) => TermValue::literal(&b.to_string(), Some(format!("{XSD}boolean")), None),
     }
 }
 

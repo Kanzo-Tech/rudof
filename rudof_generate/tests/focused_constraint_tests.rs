@@ -1,9 +1,9 @@
 #[cfg(not(target_family = "wasm"))]
 use rudof_generate::{DataGenerator, GeneratorConfig};
 #[cfg(not(target_family = "wasm"))]
-use rudof_rdf::{NeighsRDF, RDFFormat};
-#[cfg(not(target_family = "wasm"))]
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
+#[cfg(not(target_family = "wasm"))]
+use rudof_rdf::{NeighsRDF, RDFFormat};
 #[cfg(not(target_family = "wasm"))]
 use std::collections::HashMap;
 #[cfg(not(target_family = "wasm"))]

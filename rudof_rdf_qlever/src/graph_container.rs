@@ -20,11 +20,11 @@ use super::decompressor::strip_compression_suffix;
 use super::index_builder::{build_index, convert_to_native, fingerprint_inputs};
 use super::server::QleverServer;
 use super::{IndexHandle, InputFile, NativeFormat, QleverConfig, QleverError};
+use rudof_rdf::backend::OxigraphEndpoint;
 use rudof_rdf::{
     Any, AsyncRDF, BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf,
     query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions},
 };
-use rudof_rdf::backend::OxigraphEndpoint;
 
 /// An RDF graph served by a locally-launched QLever Docker container.
 ///

@@ -453,7 +453,6 @@ impl NeighsRDF for RdfData {
     }
 }
 
-
 impl BuildRDF for RdfData {
     fn empty() -> Self {
         RdfData::new()

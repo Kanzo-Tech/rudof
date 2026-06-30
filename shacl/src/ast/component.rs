@@ -156,7 +156,10 @@ impl ComponentVisitor for DisplayVisitor<'_, '_> {
             if ignored.is_empty() {
                 "".to_string()
             } else {
-                format!(", Ignored props: [{}]", ignored.iter().map(|p| p.to_string()).join(", "))
+                format!(
+                    ", Ignored props: [{}]",
+                    ignored.iter().map(|p| p.to_string()).join(", ")
+                )
             }
         )
     }

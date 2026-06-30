@@ -102,8 +102,8 @@ impl<B: BuildRDF> SubsetRecorder<B> for BuildRdfRecorder<B> {
 #[cfg(test)]
 mod tests {
     use super::{BuildRdfRecorder, NullRecorder, RecordingRdf};
-    use rudof_rdf::{Any, BuildRDF, NeighsRDF, RDFFormat};
     use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
+    use rudof_rdf::{Any, BuildRDF, NeighsRDF, RDFFormat};
 
     fn sample_graph() -> OxigraphInMemory {
         let data = r#"
@@ -112,8 +112,7 @@ mod tests {
             ex:a ex:q ex:c .
             ex:b ex:p ex:d .
         "#;
-        OxigraphInMemory::from_str(data, &RDFFormat::Turtle, None, &ReaderMode::Lax)
-            .expect("sample turtle parses")
+        OxigraphInMemory::from_str(data, &RDFFormat::Turtle, None, &ReaderMode::Lax).expect("sample turtle parses")
     }
 
     #[test]

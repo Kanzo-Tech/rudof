@@ -11,8 +11,8 @@
 //!    exactly the same frontier (a fixpoint).
 #![cfg(not(target_family = "wasm"))]
 
-use rudof_rdf::{BuildRDF, NeighsRDF, RDFFormat};
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::{BuildRDF, NeighsRDF, RDFFormat};
 use shacl::ast::ASTSchema;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
@@ -68,13 +68,23 @@ fn recorded_subgraph_is_exactly_the_visited_frontier_and_revalidates_identically
     // (a) The slurp is exactly the path-reachable triple of the one targeted node
     // — a strict subset of the data. Triples the validation never visits (ex:age,
     // the untargeted ex:bob) are absent.
-    assert_eq!(sub.len(), 1, "exactly one triple visited via triples_matching, got {sub:?}");
+    assert_eq!(
+        sub.len(),
+        1,
+        "exactly one triple visited via triples_matching, got {sub:?}"
+    );
     assert!(
         sub.iter().any(|t| t.contains("/alice") && t.contains("/name")),
         "the ex:alice ex:name triple was recorded: {sub:?}"
     );
-    assert!(!sub.iter().any(|t| t.contains("/age")), "ex:age is never read → not recorded");
-    assert!(!sub.iter().any(|t| t.contains("/bob")), "ex:bob is never targeted → not recorded");
+    assert!(
+        !sub.iter().any(|t| t.contains("/age")),
+        "ex:age is never read → not recorded"
+    );
+    assert!(
+        !sub.iter().any(|t| t.contains("/bob")),
+        "ex:bob is never targeted → not recorded"
+    );
 
     // The run produced a real report: minCount 2 with a single value → one violation.
     assert_eq!(report1.results().len(), 1, "one minCount violation");

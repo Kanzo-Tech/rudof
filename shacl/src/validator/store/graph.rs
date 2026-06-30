@@ -7,10 +7,10 @@ use crate::error::ValidationError;
 use rudof_rdf::RDFFormat;
 #[cfg(not(target_family = "wasm"))]
 use rudof_rdf::backend::ReaderMode;
-#[cfg(not(target_family = "wasm"))]
-use std::path::Path;
 #[cfg(feature = "sparql")]
 use sparql_service::RdfData;
+#[cfg(not(target_family = "wasm"))]
+use std::path::Path;
 
 pub struct Graph {
     #[cfg(feature = "sparql")]

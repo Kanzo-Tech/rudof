@@ -3,21 +3,21 @@ use crate::ir::IRSchema;
 #[cfg(not(feature = "sparql"))]
 use crate::ir::ShapeLabelIdx;
 use crate::validator::ShaclValidationMode;
+use crate::validator::engine::NativeEngine;
 #[cfg(feature = "sparql")]
 use crate::validator::engine::SparqlEngine;
-use crate::validator::engine::NativeEngine;
 #[cfg(not(feature = "sparql"))]
 use crate::validator::engine::{Validate, validate_focus};
 use crate::validator::index::ClassIndex;
 use crate::validator::processor::{ShaclProcessor, run};
 use crate::validator::report::ValidationResult;
 use crate::validator::store::{Graph, Store};
-#[cfg(not(feature = "sparql"))]
-use rudof_rdf::term::Object;
 #[cfg(not(target_family = "wasm"))]
 use rudof_rdf::RDFFormat;
 #[cfg(not(feature = "sparql"))]
 use rudof_rdf::backend::OxigraphInMemory;
+#[cfg(not(feature = "sparql"))]
+use rudof_rdf::term::Object;
 #[cfg(feature = "sparql")]
 use sparql_service::RdfData;
 #[cfg(not(target_family = "wasm"))]

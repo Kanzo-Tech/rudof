@@ -9,10 +9,10 @@ use crate::validator::report::ValidationResult;
 use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::SHACLPath;
-use rudof_rdf::term::{Object, Triple};
-use std::fmt::Debug;
 #[cfg(feature = "sparql")]
 use rudof_rdf::query::QueryRDF;
+use rudof_rdf::term::{Object, Triple};
+use std::fmt::Debug;
 
 /// `sh:less_than` — each value node is smaller than the objects of `<focus, iri, ?>`.
 pub(crate) struct LessThan<'a>(pub &'a IriS);

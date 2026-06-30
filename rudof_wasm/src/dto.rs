@@ -19,13 +19,28 @@ pub struct TermValue {
 
 impl TermValue {
     pub fn named(v: &str) -> Self {
-        Self { term_type: "NamedNode".into(), value: v.into(), datatype: None, language: None }
+        Self {
+            term_type: "NamedNode".into(),
+            value: v.into(),
+            datatype: None,
+            language: None,
+        }
     }
     pub fn blank(v: &str) -> Self {
-        Self { term_type: "BlankNode".into(), value: v.into(), datatype: None, language: None }
+        Self {
+            term_type: "BlankNode".into(),
+            value: v.into(),
+            datatype: None,
+            language: None,
+        }
     }
     pub fn literal(v: &str, datatype: Option<String>, language: Option<String>) -> Self {
-        Self { term_type: "Literal".into(), value: v.into(), datatype, language }
+        Self {
+            term_type: "Literal".into(),
+            value: v.into(),
+            datatype,
+            language,
+        }
     }
 }
 

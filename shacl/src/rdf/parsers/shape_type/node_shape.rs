@@ -3,9 +3,7 @@ use crate::rdf::parsers::components::components;
 use crate::rdf::parsers::non_shape::message;
 use crate::rdf::parsers::{property, severity, targets};
 use rudof_rdf::NeighsRDF;
-use rudof_rdf::parser::rdf_node_parser::constructors::{
-    NonEmptyValuesPropertyParser, ObjectParser, SuccessParser,
-};
+use rudof_rdf::parser::rdf_node_parser::constructors::{NonEmptyValuesPropertyParser, ObjectParser, SuccessParser};
 use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::vocab::ShaclVocab;
 

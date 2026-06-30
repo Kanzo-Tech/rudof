@@ -9,7 +9,7 @@ use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::term::Object;
 use rudof_rdf::term::Triple;
 use rudof_rdf::vocab::{RdfVocab, ShaclVocab};
-use rudof_rdf::{Any, NeighsRDF, Matcher};
+use rudof_rdf::{Any, Matcher, NeighsRDF};
 use std::collections::{HashMap, HashSet};
 
 pub struct ShaclParser<RDF: NeighsRDF> {

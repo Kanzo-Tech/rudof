@@ -287,7 +287,10 @@ where
     Ok(literal.lexical_form().to_string())
 }
 
-pub fn parse_list_recursive<RDF>(mut visited: Vec<RDF::Term>, rdf: &mut ParseCtx<'_, RDF>) -> Result<Vec<RDF::Term>, RDFError>
+pub fn parse_list_recursive<RDF>(
+    mut visited: Vec<RDF::Term>,
+    rdf: &mut ParseCtx<'_, RDF>,
+) -> Result<Vec<RDF::Term>, RDFError>
 where
     RDF: NeighsRDF,
 {

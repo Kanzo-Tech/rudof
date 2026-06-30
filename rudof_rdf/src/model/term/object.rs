@@ -417,25 +417,27 @@ impl Ord for Object {
     /// Triple) and then by their contents. This is a structural total order; for
     /// SPARQL/RDF value semantics use [`Object::sparql_compare`].
     fn cmp(&self, other: &Self) -> Ordering {
-        self.variant_rank().cmp(&other.variant_rank()).then_with(|| match (self, other) {
-            (Object::Iri(a), Object::Iri(b)) => a.cmp(b),
-            (Object::BlankNode(a), Object::BlankNode(b)) => a.cmp(b),
-            (Object::Literal(a), Object::Literal(b)) => a.cmp(b),
-            (
-                Object::Triple {
-                    subject: s1,
-                    predicate: p1,
-                    object: o1,
-                },
-                Object::Triple {
-                    subject: s2,
-                    predicate: p2,
-                    object: o2,
-                },
-            ) => s1.cmp(s2).then_with(|| p1.cmp(p2)).then_with(|| o1.cmp(o2)),
-            // Different variants are fully discriminated by `variant_rank` above.
-            _ => Ordering::Equal,
-        })
+        self.variant_rank()
+            .cmp(&other.variant_rank())
+            .then_with(|| match (self, other) {
+                (Object::Iri(a), Object::Iri(b)) => a.cmp(b),
+                (Object::BlankNode(a), Object::BlankNode(b)) => a.cmp(b),
+                (Object::Literal(a), Object::Literal(b)) => a.cmp(b),
+                (
+                    Object::Triple {
+                        subject: s1,
+                        predicate: p1,
+                        object: o1,
+                    },
+                    Object::Triple {
+                        subject: s2,
+                        predicate: p2,
+                        object: o2,
+                    },
+                ) => s1.cmp(s2).then_with(|| p1.cmp(p2)).then_with(|| o1.cmp(o2)),
+                // Different variants are fully discriminated by `variant_rank` above.
+                _ => Ordering::Equal,
+            })
     }
 }
 

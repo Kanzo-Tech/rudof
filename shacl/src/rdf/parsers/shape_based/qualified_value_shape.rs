@@ -34,9 +34,9 @@ impl<RDF: NeighsRDF> RDFNodeParse<RDF> for QualifiedValueShapeSiblings<RDF> {
             None => Err(RDFError::NoFocusNodeError),
             Some(focus) => {
                 let mut siblings = Vec::new();
-                let maybe_disjoint =
-                    rdf.graph()
-                        .object_for(focus, &ShaclVocab::sh_qualified_value_shapes_disjoint().into())?;
+                let maybe_disjoint = rdf
+                    .graph()
+                    .object_for(focus, &ShaclVocab::sh_qualified_value_shapes_disjoint().into())?;
                 if let Some(disjoint) = maybe_disjoint {
                     match disjoint {
                         Object::Literal(ConcreteLiteral::BooleanLiteral(true)) => {

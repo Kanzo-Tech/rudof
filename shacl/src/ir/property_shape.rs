@@ -194,11 +194,7 @@ impl IRPropertyShape {
 
         let reifier_info = ReifierInfo::get_reifier_info(shape, ast, ir)?;
 
-        let default_value = shape
-            .default_value()
-            .cloned()
-            .map(super::convert_value)
-            .transpose()?;
+        let default_value = shape.default_value().cloned().map(super::convert_value).transpose()?;
 
         let compiled_prop_shape = IRPropertyShape::new(shape.id().clone(), shape.path().to_owned(), closed_info)
             .with_components(compiled_components)

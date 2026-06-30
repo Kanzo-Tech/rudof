@@ -1,22 +1,21 @@
 #[cfg(feature = "sparql")]
 use crate::error::ValidationError;
-use crate::ir::components::BasicSparql;
 #[cfg(feature = "sparql")]
 use crate::ir::IRSchema;
-use crate::validator::constraints::ConstraintComponent;
-use crate::validator::iteration::ValueNodeIteration;
-use rudof_rdf::NeighsRDF;
-use std::fmt::Debug;
+use crate::ir::components::BasicSparql;
 #[cfg(feature = "sparql")]
 use crate::ir::{IRComponent, IRShape};
 #[cfg(feature = "sparql")]
 use crate::types::MessageMap;
+use crate::validator::constraints::ConstraintComponent;
 #[cfg(feature = "sparql")]
 use crate::validator::constraints::sparql::{inject_values_into_where, path_to_sparql};
+use crate::validator::iteration::ValueNodeIteration;
 #[cfg(feature = "sparql")]
 use crate::validator::nodes::ValueNodes;
 #[cfg(feature = "sparql")]
 use crate::validator::report::ValidationResult;
+use rudof_rdf::NeighsRDF;
 #[cfg(feature = "sparql")]
 use rudof_rdf::SHACLPath;
 #[cfg(feature = "sparql")]
@@ -25,6 +24,7 @@ use rudof_rdf::query::QueryRDF;
 use rudof_rdf::term::Object;
 #[cfg(feature = "sparql")]
 use rudof_rdf::term::literal::ConcreteLiteral;
+use std::fmt::Debug;
 
 /// `sh:sparql` — a SPARQL-based constraint.
 ///
@@ -87,8 +87,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for BasicSparql {
 
             for sol in solutions.iter() {
                 if let Some(failure_term) = sol.find_solution("failure")
-                    && let Ok(Object::Literal(ConcreteLiteral::BooleanLiteral(true))) =
-                        S::term_as_object(failure_term)
+                    && let Ok(Object::Literal(ConcreteLiteral::BooleanLiteral(true))) = S::term_as_object(failure_term)
                 {
                     return Err(ValidationError::QueryError(
                         "SPARQL constraint produced a failure".to_string(),

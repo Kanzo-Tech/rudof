@@ -23,16 +23,29 @@ pub fn project_form(engine: &FormEngine, ast: &ASTSchema, focus: &TermValue, sha
                     .eval_path(&focus_term, path)
                     .into_iter()
                     .map(|n| {
-                        let nested = if has_node && is_resource(&n) { Some(object_to_value(&n)) } else { None };
-                        ProjectedValue { value: object_to_value(&n), nested }
+                        let nested = if has_node && is_resource(&n) {
+                            Some(object_to_value(&n))
+                        } else {
+                            None
+                        };
+                        ProjectedValue {
+                            value: object_to_value(&n),
+                            nested,
+                        }
                     })
                     .collect();
-                properties.push(ProjectedProperty { path_key: path_key(path), values });
+                properties.push(ProjectedProperty {
+                    path_key: path_key(path),
+                    values,
+                });
             }
         }
     }
 
-    ProjectedForm { focus: focus.clone(), properties }
+    ProjectedForm {
+        focus: focus.clone(),
+        properties,
+    }
 }
 
 fn find_node_shape<'a>(ast: &'a ASTSchema, shape_id: &str) -> Option<&'a ASTNodeShape> {

@@ -12,9 +12,9 @@ impl<RDF: Rdf> IterationStrategy<RDF> for ValueNodeIteration {
         value_nodes: &'a ValueNodes<RDF>,
     ) -> impl Iterator<Item = (&'a RDF::Term, &'a Self::Item)> + 'a {
         // Lazy `flat_map` adapters — no intermediate allocation.
-        value_nodes.iter().flat_map(|(focus_node, value_nodes)| {
-            value_nodes.iter().map(move |value_nodes| (focus_node, value_nodes))
-        })
+        value_nodes
+            .iter()
+            .flat_map(|(focus_node, value_nodes)| value_nodes.iter().map(move |value_nodes| (focus_node, value_nodes)))
     }
 
     fn to_value(&self, item: &Self::Item) -> Option<RDF::Term> {

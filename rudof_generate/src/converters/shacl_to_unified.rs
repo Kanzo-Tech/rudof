@@ -4,8 +4,8 @@ use crate::unified_constraints::{
     Value as UnifiedValue,
 };
 use crate::{DataGeneratorError, Result};
-use rudof_rdf::{RDFFormat, term::literal::ConcreteLiteral};
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::{RDFFormat, term::literal::ConcreteLiteral};
 use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 use shacl::rdf::ShaclParser;
 use shacl::types::{NodeKind, Target, Value};

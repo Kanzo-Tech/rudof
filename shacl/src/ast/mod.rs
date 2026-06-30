@@ -19,12 +19,12 @@ pub use component::ASTComponent;
 pub use node_shape::ASTNodeShape;
 pub use property_shape::ASTPropertyShape;
 pub use reifier_info::ReifierInfo;
-pub use visitor::ComponentVisitor;
 use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 pub use schema::ASTSchema;
 pub use shape::ASTShape;
 use std::collections::HashSet;
+pub use visitor::ComponentVisitor;
 
 pub fn defined_properties_for(properties: &[Object], ast: &ASTSchema) -> Result<HashSet<IriS>, ASTError> {
     let mut defined_properties = HashSet::new();

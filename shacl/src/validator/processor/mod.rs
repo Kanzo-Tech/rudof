@@ -11,10 +11,10 @@ use crate::validator::ShaclValidationMode;
 use crate::validator::engine::{Engine, NativeEngine, Validate};
 use crate::validator::index::ClassIndex;
 use crate::validator::report::{ValidationReport, ValidationResult};
-use rudof_rdf::{BuildRDF, Rdf};
 #[cfg(feature = "sparql")]
 pub use endpoint::EndpointValidation;
 pub use graph::GraphValidation;
+use rudof_rdf::{BuildRDF, Rdf};
 // wasm has no threads: validate shapes sequentially there, in parallel elsewhere.
 #[cfg(not(target_family = "wasm"))]
 use rayon::prelude::*;

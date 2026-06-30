@@ -19,7 +19,11 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for In<'_> {
 
     fn check<E: Engine<S>>(&self, vn: &S::Term, _cx: &mut CheckCtx<'_, S, E>) -> Result<Check, ValidationError> {
         let values = self.0.iter().map(S::object_as_term).collect::<Vec<_>>();
-        Ok(if values.contains(vn) { Check::Hold } else { Check::Violate })
+        Ok(if values.contains(vn) {
+            Check::Hold
+        } else {
+            Check::Violate
+        })
     }
 
     fn message(&self, _schema: &IRSchema) -> String {

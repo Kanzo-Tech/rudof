@@ -26,14 +26,14 @@
 pub use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 pub use prefixmap::IriRef;
 pub use rudof_iri::IriS;
+pub use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 pub use rudof_rdf::term::Object;
 pub use rudof_rdf::term::literal::ConcreteLiteral;
 pub use rudof_rdf::{BuildRDF, RDFFormat, SHACLPath};
-pub use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 pub use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 pub use shacl::types::{NodeKind, Severity, Target, Value};
-pub use shacl::vocab::shui;
 pub use shacl::validator::report::ValidationResult;
+pub use shacl::vocab::shui;
 
 use shacl::ir::{IRSchema, ShapeLabelIdx};
 use shacl::rdf::ShaclParser;
@@ -94,7 +94,9 @@ impl FormEngine {
     /// the binding can project its form-IR JSON without re-parsing.
     pub fn load_shapes(&mut self, text: &str, format: &RDFFormat) -> Result<&ASTSchema, FormError> {
         let graph = Self::parse_graph(text, format)?;
-        let schema = ShaclParser::new(graph.clone()).parse().map_err(|e| FormError::Parse(e.to_string()))?;
+        let schema = ShaclParser::new(graph.clone())
+            .parse()
+            .map_err(|e| FormError::Parse(e.to_string()))?;
         self.shapes_graph = Some(graph);
         self.shapes_ast = Some(schema);
         Ok(self.shapes_ast.as_ref().expect("just set"))
@@ -124,8 +126,15 @@ impl FormEngine {
     }
 
     /// Add a single triple to the live data graph.
-    pub fn add_triple(&mut self, subject: NamedOrBlankNode, predicate: NamedNode, object: Term) -> Result<(), FormError> {
-        self.data.add_triple(subject, predicate, object).map_err(|e| FormError::Graph(e.to_string()))
+    pub fn add_triple(
+        &mut self,
+        subject: NamedOrBlankNode,
+        predicate: NamedNode,
+        object: Term,
+    ) -> Result<(), FormError> {
+        self.data
+            .add_triple(subject, predicate, object)
+            .map_err(|e| FormError::Graph(e.to_string()))
     }
 
     /// Remove a single triple from the live data graph.
@@ -135,7 +144,9 @@ impl FormEngine {
         predicate: NamedNode,
         object: Term,
     ) -> Result<(), FormError> {
-        self.data.remove_triple(subject, predicate, object).map_err(|e| FormError::Graph(e.to_string()))
+        self.data
+            .remove_triple(subject, predicate, object)
+            .map_err(|e| FormError::Graph(e.to_string()))
     }
 
     /// Iterate the live data graph as quads (default graph). The binding applies
@@ -158,7 +169,8 @@ impl FormEngine {
     /// copied from the live graph so output stays compact.
     pub fn serialize_focus(&self, focus: &Term, format: &RDFFormat) -> Result<String, FormError> {
         let mut sub = OxigraphInMemory::new();
-        sub.merge_prefixes(self.data.prefixmap().clone()).map_err(|e| FormError::Graph(e.to_string()))?;
+        sub.merge_prefixes(self.data.prefixmap().clone())
+            .map_err(|e| FormError::Graph(e.to_string()))?;
 
         let mut seen: std::collections::HashSet<NamedOrBlankNode> = std::collections::HashSet::new();
         let mut stack: Vec<Term> = vec![focus.clone()];
@@ -198,8 +210,13 @@ impl FormEngine {
     pub fn validate(&self) -> Result<ValidationOutcome, FormError> {
         let ir = self.compile()?;
         let mut gv = GraphValidation::new(Graph::from(self.data.clone()));
-        let report = gv.validate(&ir, &ShaclValidationMode::Native).map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(ValidationOutcome { conforms: report.conforms(), results: report.results().clone() })
+        let report = gv
+            .validate(&ir, &ShaclValidationMode::Native)
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(ValidationOutcome {
+            conforms: report.conforms(),
+            results: report.results().clone(),
+        })
     }
 
     /// Validate only the shape identified by `shape_id` (and its nested property
@@ -235,13 +252,18 @@ impl FormEngine {
 /// Resolve a shape's IRI string to its arena index in the compiled schema.
 fn resolve_idx(ir: &IRSchema, shape_id: &str) -> Result<ShapeLabelIdx, FormError> {
     let shape_ref = Object::iri(IriS::new_unchecked(shape_id));
-    ir.get_idx(&shape_ref).copied().ok_or_else(|| FormError::ShapeNotFound(shape_id.to_string()))
+    ir.get_idx(&shape_ref)
+        .copied()
+        .ok_or_else(|| FormError::ShapeNotFound(shape_id.to_string()))
 }
 
 /// A scoped result list conforms exactly when it is empty (matching the report's
 /// own `conforms()`).
 fn outcome(results: Vec<ValidationResult>) -> ValidationOutcome {
-    ValidationOutcome { conforms: results.is_empty(), results }
+    ValidationOutcome {
+        conforms: results.is_empty(),
+        results,
+    }
 }
 
 // ---- SHACL property-path evaluation -----------------------------------------
@@ -255,7 +277,7 @@ fn eval_path(graph: &OxigraphInMemory, node: &Term, path: &SHACLPath) -> Vec<Ter
                 .filter(|q| q.subject == subj && q.predicate.as_str() == pred.as_str())
                 .map(|q| q.object.clone())
                 .collect()
-        }
+        },
         SHACLPath::Inverse { path } => match &**path {
             SHACLPath::Predicate { pred } => graph
                 .quads()
@@ -270,7 +292,7 @@ fn eval_path(graph: &OxigraphInMemory, node: &Term, path: &SHACLPath) -> Vec<Ter
                 current = current.iter().flat_map(|n| eval_path(graph, n, step)).collect();
             }
             current
-        }
+        },
         SHACLPath::Alternative { paths } => paths.iter().flat_map(|p| eval_path(graph, node, p)).collect(),
         SHACLPath::ZeroOrMore { path } => closure(graph, node, path, true),
         SHACLPath::OneOrMore { path } => closure(graph, node, path, false),
@@ -278,14 +300,18 @@ fn eval_path(graph: &OxigraphInMemory, node: &Term, path: &SHACLPath) -> Vec<Ter
             let mut v = vec![node.clone()];
             v.extend(eval_path(graph, node, path));
             v
-        }
+        },
     }
 }
 
 fn closure(graph: &OxigraphInMemory, start: &Term, step: &SHACLPath, include_start: bool) -> Vec<Term> {
     let mut seen: Vec<String> = Vec::new();
     let mut out = Vec::new();
-    let mut stack: Vec<Term> = if include_start { vec![start.clone()] } else { eval_path(graph, start, step) };
+    let mut stack: Vec<Term> = if include_start {
+        vec![start.clone()]
+    } else {
+        eval_path(graph, start, step)
+    };
     while let Some(n) = stack.pop() {
         let key = format!("{n}");
         if seen.contains(&key) {

@@ -13,8 +13,8 @@ use rudof_rdf::{
         rdf_node_parser::{
             RDFNodeParse,
             constructors::{
-                HasTypeParser, IriParser, IsIriParser, SetFocusParser, SingleBoolPropertyParser,
-                SingleInstanceParser, SingleValuePropertyParser, SuccessParser, TermParser,
+                HasTypeParser, IriParser, IsIriParser, SetFocusParser, SingleBoolPropertyParser, SingleInstanceParser,
+                SingleValuePropertyParser, SuccessParser, TermParser,
             },
         },
     },

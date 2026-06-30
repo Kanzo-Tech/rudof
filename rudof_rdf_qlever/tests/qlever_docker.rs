@@ -7,7 +7,9 @@
 //! ```
 #![cfg(feature = "docker-tests")]
 
-use rudof_rdf_qlever::{CliKind, Compression, QleverConfig, QleverGraphContainer, decompressor_probe, qlever_probe_cli};
+use rudof_rdf_qlever::{
+    CliKind, Compression, QleverConfig, QleverGraphContainer, decompressor_probe, qlever_probe_cli,
+};
 use std::path::PathBuf;
 use std::time::Duration;
 

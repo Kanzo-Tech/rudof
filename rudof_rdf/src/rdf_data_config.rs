@@ -25,9 +25,7 @@ pub struct RdfDataConfig {
 
 impl PartialEq for RdfDataConfig {
     fn eq(&self, other: &Self) -> bool {
-        self.base == other.base
-            && self.endpoints == other.endpoints
-            && self.automatic_base == other.automatic_base
+        self.base == other.base && self.endpoints == other.endpoints && self.automatic_base == other.automatic_base
     }
 }
 

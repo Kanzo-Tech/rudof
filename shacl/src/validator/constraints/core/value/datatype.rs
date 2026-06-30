@@ -24,7 +24,11 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Datatype<'_> {
         };
         let violates = match TryInto::<ConcreteLiteral>::try_into(lit.clone()) {
             Ok(ConcreteLiteral::WrongDatatypeLiteral { .. }) | Err(_) => true,
-            Ok(_) => lit.datatype().get_iri().map(|i| i.as_str() != self.0.as_str()).unwrap_or(true),
+            Ok(_) => lit
+                .datatype()
+                .get_iri()
+                .map(|i| i.as_str() != self.0.as_str())
+                .unwrap_or(true),
         };
         Ok(if violates { Check::Violate } else { Check::Hold })
     }

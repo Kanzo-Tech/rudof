@@ -183,7 +183,16 @@ pub(crate) fn validate_native<S: NeighsRDF + Debug, E: Engine<S>>(
 ) -> Result<Vec<ValidationResult>, ValidationError> {
     macro_rules! run {
         ($checker:expr) => {
-            $checker.validate_native(component, shape, store, engine, value_nodes, source_shape, maybe_path, schema)
+            $checker.validate_native(
+                component,
+                shape,
+                store,
+                engine,
+                value_nodes,
+                source_shape,
+                maybe_path,
+                schema,
+            )
         };
     }
     match component {
@@ -232,7 +241,15 @@ pub(crate) fn validate_sparql<S: QueryRDF + NeighsRDF + Debug>(
 ) -> Result<Vec<ValidationResult>, ValidationError> {
     macro_rules! run {
         ($checker:expr) => {
-            $checker.validate_sparql(component, shape, store, value_nodes, source_shape, maybe_path, schema)
+            $checker.validate_sparql(
+                component,
+                shape,
+                store,
+                value_nodes,
+                source_shape,
+                maybe_path,
+                schema,
+            )
         };
     }
     match component {

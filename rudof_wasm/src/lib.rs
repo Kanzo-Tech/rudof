@@ -167,6 +167,17 @@ impl Session {
         self.engine.serialize(&format_of(&media_type)).map_err(|e| JsError::new(&e.to_string()))
     }
 
+    /// Serialize only the subgraph reachable from `focus` (a `TermValue`) — the
+    /// focus-scoped form output, vs whole-graph [`serialize`].
+    #[wasm_bindgen(js_name = serializeFocus)]
+    pub fn serialize_focus(&self, focus: JsValue, media_type: String) -> Result<String, JsError> {
+        let focus: TermValue = from_js(focus)?;
+        let focus = term_to_object(&focus);
+        self.engine
+            .serialize_focus(&focus, &format_of(&media_type))
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     #[wasm_bindgen(js_name = projectForm)]
     pub fn project_form(&self, focus: JsValue, shape_id: String) -> Result<JsValue, JsError> {
         let focus: TermValue = from_js(focus)?;

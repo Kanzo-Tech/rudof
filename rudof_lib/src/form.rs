@@ -150,6 +150,38 @@ impl FormEngine {
         String::from_utf8(buf).map_err(|e| FormError::Serialize(e.to_string()))
     }
 
+    /// Serialize only the subgraph reachable from `focus` — its outgoing triples,
+    /// recursing through resource (IRI / blank-node) objects — to `format`. This is
+    /// the focus-scoped form output: a form edits one subject, so callers want just
+    /// that record, not every subject the data graph happens to hold. Prefixes are
+    /// copied from the live graph so output stays compact.
+    pub fn serialize_focus(&self, focus: &Term, format: &RDFFormat) -> Result<String, FormError> {
+        let mut sub = OxigraphInMemory::new();
+        sub.merge_prefixes(self.data.prefixmap().clone()).map_err(|e| FormError::Graph(e.to_string()))?;
+
+        let mut seen: Vec<String> = Vec::new();
+        let mut stack: Vec<Term> = vec![focus.clone()];
+        while let Some(node) = stack.pop() {
+            let Some(subj) = as_subject(&node) else { continue };
+            let key = format!("{node}");
+            if seen.contains(&key) {
+                continue;
+            }
+            seen.push(key);
+            for q in self.data.quads().filter(|q| q.subject == subj) {
+                if matches!(q.object, Term::NamedNode(_) | Term::BlankNode(_)) {
+                    stack.push(q.object.clone());
+                }
+                sub.add_triple(q.subject.clone(), q.predicate.clone(), q.object.clone())
+                    .map_err(|e| FormError::Graph(e.to_string()))?;
+            }
+        }
+
+        let mut buf: Vec<u8> = Vec::new();
+        BuildRDF::serialize(&sub, format, &mut buf).map_err(|e| FormError::Serialize(e.to_string()))?;
+        String::from_utf8(buf).map_err(|e| FormError::Serialize(e.to_string()))
+    }
+
     // ---- projection ----------------------------------------------------------
 
     /// Evaluate a SHACL property path from `focus` against the live data graph,

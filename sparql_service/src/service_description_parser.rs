@@ -8,8 +8,8 @@ use crate::{
     void_property_partition, void_triples,
 };
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::{
-    FocusRDF, RDFError,
+use rudof_rdf::{
+    NeighsRDF, RDFError,
     parser::{
         RDFParse,
         rdf_node_parser::{
@@ -28,14 +28,14 @@ use tracing::trace;
 
 pub struct ServiceDescriptionParser<RDF>
 where
-    RDF: FocusRDF + Debug,
+    RDF: NeighsRDF + Debug,
 {
     rdf_parser: RDFParse<RDF>,
 }
 
 impl<RDF> ServiceDescriptionParser<RDF>
 where
-    RDF: FocusRDF + Debug + 'static,
+    RDF: NeighsRDF + Debug + 'static,
     RDF::Term: From<IriOrBlankNode> + TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -49,13 +49,13 @@ where
         let service_node = self.rdf_parser.find_single_instance(sd_service().clone())?;
         let term: RDF::Term = service_node.into();
         self.rdf_parser.set_focus(&term);
-        let service = Self::service_description().parse_focused(self.rdf_parser.rdf_mut())?;
+        let service = Self::service_description().parse_focused(&mut self.rdf_parser.ctx())?;
         Ok(service.with_prefixmap(self.rdf_parser.prefixmap()))
     }
 
     pub fn service_description() -> impl RDFNodeParse<RDF, Output = ServiceDescription>
     where
-        RDF: FocusRDF + 'static,
+        RDF: NeighsRDF + 'static,
         RDF::Term: From<IriOrBlankNode> + TryInto<IriOrBlankNode> + Clone,
         <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
     {
@@ -120,7 +120,7 @@ where
 
 pub fn title<RDF>(focus: RDF::Term) -> impl RDFNodeParse<RDF, Output = Option<String>>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: Clone,
 {
     SetFocusParser::new(focus).with(SingleStringPropertyParser::new(dct_title().clone()).optional())
@@ -128,14 +128,14 @@ where
 
 pub fn endpoint<RDF>() -> impl RDFNodeParse<RDF, Output = Option<IriS>>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
 {
     SingleIriPropertyParser::new(sd_endpoint().clone()).optional()
 }
 
 pub fn feature<RDF>() -> impl RDFNodeParse<RDF, Output = HashSet<Feature>>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     IrisPropertyParser::new(sd_feature().clone()).flat_map(|ref iris| {
         let features = get_features(iris)?;
@@ -145,7 +145,7 @@ where
 
 pub fn result_format<RDF>() -> impl RDFNodeParse<RDF, Output = HashSet<SparqlResultFormat>>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     IrisPropertyParser::new(sd_result_format().clone()).flat_map(|ref iris| {
         let result_format = get_result_formats(iris)?;
@@ -155,7 +155,7 @@ where
 
 pub fn supported_language<RDF>() -> impl RDFNodeParse<RDF, Output = HashSet<SupportedLanguage>>
 where
-    RDF: FocusRDF,
+    RDF: NeighsRDF,
 {
     IrisPropertyParser::new(sd_supported_language().clone()).flat_map(|ref iris| {
         let langs = get_supported_languages(iris)?;
@@ -229,7 +229,7 @@ fn feature_iri(iri: &IriS) -> Result<Feature, RDFError> {
 
 pub fn available_graphs<RDF>(node: RDF::Term) -> impl RDFNodeParse<RDF, Output = Vec<GraphCollection>>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: From<IriOrBlankNode> + TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -238,7 +238,7 @@ where
 
 pub fn available_graph<RDF>() -> impl RDFNodeParse<RDF, Output = GraphCollection>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + From<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -258,7 +258,7 @@ where
 
 pub fn default_dataset<RDF>(node: RDF::Term) -> impl RDFNodeParse<RDF, Output = Dataset>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: From<IriOrBlankNode> + TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -268,7 +268,7 @@ where
 
 pub fn dataset<RDF>(node_ds: IriOrBlankNode) -> impl RDFNodeParse<RDF, Output = Dataset>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: From<IriOrBlankNode> + TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -289,7 +289,7 @@ where
 
 pub fn default_graph<RDF>(focus: RDF::Term) -> impl RDFNodeParse<RDF, Output = GraphDescription>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: From<IriOrBlankNode> + TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -302,7 +302,7 @@ where
 
 pub fn graph_description<RDF>(node: IriOrBlankNode) -> impl RDFNodeParse<RDF, Output = GraphDescription>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: From<IriOrBlankNode> + TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -330,7 +330,7 @@ where
 
 pub fn named_graphs<RDF>(focus: RDF::Term) -> impl RDFNodeParse<RDF, Output = Vec<NamedGraphDescription>>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + From<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -339,7 +339,7 @@ where
 
 pub fn named_graph<RDF>() -> impl RDFNodeParse<RDF, Output = NamedGraphDescription>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + From<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -348,7 +348,7 @@ where
 
 fn named_graph_description<RDF>(focus: RDF::Term) -> impl RDFNodeParse<RDF, Output = NamedGraphDescription>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + From<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -374,14 +374,14 @@ where
 
 fn name<RDF>() -> impl RDFNodeParse<RDF, Output = IriS>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
 {
     SingleIriPropertyParser::new(sd_name().clone())
 }
 
 fn graph<RDF>() -> impl RDFNodeParse<RDF, Output = GraphDescription>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + From<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -394,7 +394,7 @@ where
 
 pub fn parse_void_triples<RDF>(node: RDF::Term) -> impl RDFNodeParse<RDF, Output = Option<NumericLiteral>>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: Clone,
 {
     SetFocusParser::new(node).with(
@@ -406,7 +406,7 @@ where
 
 pub fn parse_void_classes<RDF>(node: RDF::Term) -> impl RDFNodeParse<RDF, Output = Option<NumericLiteral>>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: Clone,
 {
     SetFocusParser::new(node).with(
@@ -418,7 +418,7 @@ where
 
 pub fn parse_void_class_partition<RDF>(node: RDF::Term) -> impl RDFNodeParse<RDF, Output = Vec<ClassPartition>>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -427,7 +427,7 @@ where
 
 pub fn parse_void_property_partition<RDF>(node: RDF::Term) -> impl RDFNodeParse<RDF, Output = Vec<PropertyPartition>>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -436,7 +436,7 @@ where
 
 pub fn class_partition<RDF>() -> impl RDFNodeParse<RDF, Output = ClassPartition>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {
@@ -460,7 +460,7 @@ where
 
 pub fn property_partition<RDF>() -> impl RDFNodeParse<RDF, Output = crate::PropertyPartition>
 where
-    RDF: FocusRDF + 'static,
+    RDF: NeighsRDF + 'static,
     RDF::Term: TryInto<IriOrBlankNode> + Clone,
     <RDF::Term as TryInto<IriOrBlankNode>>::Error: Debug,
 {

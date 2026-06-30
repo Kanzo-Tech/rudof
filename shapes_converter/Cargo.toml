@@ -25,6 +25,7 @@ shex_validation.workspace = true
 spargebra.workspace = true
 sparql_service.workspace = true
 rudof_rdf.workspace = true
+rudof_rdf_viz.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 toml.workspace = true

@@ -1,4 +1,4 @@
-use rudof_rdf::rdf_core::term::literal::Lang;
+use rudof_rdf::term::literal::Lang;
 use serde::{Serialize, Serializer};
 use std::{result, str::FromStr};
 use thiserror::Error;

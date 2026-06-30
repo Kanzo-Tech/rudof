@@ -7,10 +7,10 @@ use crate::ir::shape_label_idx::ShapeLabelIdx;
 use crate::rdf::ShaclParser;
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfVocabulary, ShaclVocab, XsdVocab};
-use rudof_rdf::rdf_core::{BuildRDF, RDFFormat};
-use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::{RdfVocab, RdfVocabulary, ShaclVocab, XsdVocab};
+use rudof_rdf::{BuildRDF, RDFFormat};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::io::{Cursor, Read};
@@ -97,14 +97,14 @@ impl IRSchema {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Object, &IRShape)> {
-        self.labels_idx_map.iter().map(move |(node, label_idx)| {
-            let shape = self.shapes.get(label_idx).unwrap_or_else(|| {
-                panic!(
-                    "Internal error: Shape label index {label_idx} for node {node} not found in shapes map: {:?}",
-                    self.shapes
-                )
-            });
-            (node, shape)
+        self.labels_idx_map.iter().filter_map(move |(node, label_idx)| match self.shapes.get(label_idx) {
+            Some(shape) => Some((node, shape)),
+            None => {
+                // Arena invariant: every interned label has a shape. If it is ever
+                // violated, skip the orphan entry instead of crashing the iterator.
+                warn!("Internal invariant: shape label index {label_idx} for node {node} missing from shapes map; skipping");
+                None
+            },
         })
     }
 
@@ -265,12 +265,22 @@ impl IRSchema {
     pub fn build_graph<RDF: BuildRDF>(&self) -> Result<RDF, IRError> {
         let mut graph = RDF::empty();
 
-        graph.set_prefix_map(self.prefixmap.clone());
-        graph.add_prefix("rdf", RdfVocab::base_iri());
-        graph.add_prefix("xsd", XsdVocab::base_iri());
-        graph.add_prefix("sh", ShaclVocab::base_iri());
+        graph
+            .set_prefix_map(self.prefixmap.clone())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("set prefix map", e))?;
+        graph
+            .add_prefix("rdf", RdfVocab::base_iri())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("add prefix rdf", e))?;
+        graph
+            .add_prefix("xsd", XsdVocab::base_iri())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("add prefix xsd", e))?;
+        graph
+            .add_prefix("sh", ShaclVocab::base_iri())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("add prefix sh", e))?;
 
-        graph.add_base(&self.base().cloned());
+        graph
+            .add_base(&self.base().cloned())
+            .map_err(|e| IRError::from_rdf_err::<RDF>("add base", e))?;
 
         self.labels_idx_map.iter().try_for_each(|(_, idx)| {
             let shape = self.shapes.get(idx).ok_or(IRError::ShapeNotFound(*idx))?;

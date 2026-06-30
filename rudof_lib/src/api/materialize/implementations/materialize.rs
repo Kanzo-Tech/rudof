@@ -1,7 +1,7 @@
 use crate::{Result, Rudof, errors::MaterializeError, formats::ResultDataFormat};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::BuildRDF;
-use rudof_rdf::rdf_impl::OxigraphInMemory;
+use rudof_rdf::BuildRDF;
+use rudof_rdf::backend::OxigraphInMemory;
 use shex_ast::Node;
 use shex_ast::materialize::Materializer;
 use std::io;

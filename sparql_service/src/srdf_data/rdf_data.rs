@@ -6,14 +6,10 @@ use oxrdf::{
 };
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
-#[cfg(feature = "qlever")]
-use rudof_rdf::rdf_impl::QleverGraphContainer;
 use rudof_rdf::{
-    rdf_core::{
-        BuildRDF, FocusRDF, Matcher, NeighsRDF, RDFFormat, Rdf, RdfDataConfig,
-        query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions},
-    },
-    rdf_impl::{OxigraphEndpoint, OxigraphInMemory, RdfBackend, ReaderMode},
+    BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf, RdfDataConfig,
+    backend::{OxigraphEndpoint, OxigraphInMemory, RdfBackend, ReaderMode},
+    query::{QueryRDF, QueryResultFormat, QuerySolution, QuerySolutions},
 };
 use serde::Serialize;
 use serde::ser::SerializeStruct;
@@ -66,13 +62,6 @@ impl RdfData {
         self.primary = backend;
     }
 
-    /// Replace the QLever-backed primary. Provided for ergonomic parity with
-    /// `set_backend(RdfBackend::Qlever(g))`.
-    #[cfg(feature = "qlever")]
-    pub fn set_qlever(&mut self, graph: QleverGraphContainer) {
-        self.primary = RdfBackend::Qlever(graph);
-    }
-
     pub fn reset(&mut self) {
         self.use_endpoints.clear();
         self.primary = RdfBackend::default();
@@ -101,7 +90,7 @@ impl RdfData {
     pub fn check_store(&mut self) -> Result<(), RdfDataError> {
         if let Some(g) = self.primary.as_in_memory_mut() {
             g.ensure_store().map_err(|e| RdfDataError::Backend {
-                err: Box::new(rudof_rdf::rdf_impl::RdfBackendError::from(e)),
+                err: Box::new(rudof_rdf::backend::RdfBackendError::from(e)),
             })?;
         }
         Ok(())
@@ -110,7 +99,7 @@ impl RdfData {
     /// Creates an RdfData from an in-memory RDF graph.
     pub fn from_graph(graph: OxigraphInMemory) -> Result<RdfData, RdfDataError> {
         Ok(RdfData {
-            primary: RdfBackend::InMemory(graph),
+            primary: RdfBackend::InMemory(Box::new(graph)),
             endpoints: HashMap::new(),
             use_endpoints: HashMap::new(),
         })
@@ -159,8 +148,6 @@ impl RdfData {
             RdfBackend::InMemory(_) => "in-memory",
             #[cfg(all(not(target_family = "wasm"), feature = "sparql"))]
             RdfBackend::Endpoint(_) => "sparql-endpoint",
-            #[cfg(all(not(target_family = "wasm"), feature = "qlever"))]
-            RdfBackend::Qlever(_) => "qlever",
         };
         let RdfBackend::InMemory(graph) = &mut self.primary else {
             return Err(RdfDataError::NotInMemoryBackend { backend: backend_name });
@@ -168,7 +155,7 @@ impl RdfData {
         graph
             .merge_from_reader(read, source_name, format, base, reader_mode)
             .map_err(|e| RdfDataError::Backend {
-                err: Box::new(rudof_rdf::rdf_impl::RdfBackendError::from(e)),
+                err: Box::new(rudof_rdf::backend::RdfBackendError::from(e)),
             })
     }
 
@@ -466,35 +453,29 @@ impl NeighsRDF for RdfData {
     }
 }
 
-impl FocusRDF for RdfData {
-    fn set_focus(&mut self, focus: &Self::Term) {
-        self.primary.set_focus(focus);
-    }
-
-    fn get_focus(&self) -> Option<&Self::Term> {
-        self.primary.get_focus()
-    }
-}
-
 impl BuildRDF for RdfData {
     fn empty() -> Self {
         RdfData::new()
     }
 
-    fn add_base(&mut self, base: &Option<IriS>) {
-        self.primary.add_base(base);
+    fn add_base(&mut self, base: &Option<IriS>) -> Result<(), Self::Err> {
+        self.primary.add_base(base)?;
+        Ok(())
     }
 
-    fn add_prefix(&mut self, alias: &str, iri: &IriS) {
-        self.primary.add_prefix(alias, iri);
+    fn add_prefix(&mut self, alias: &str, iri: &IriS) -> Result<(), Self::Err> {
+        self.primary.add_prefix(alias, iri)?;
+        Ok(())
     }
 
-    fn set_prefix_map(&mut self, prefix_map: PrefixMap) {
-        self.primary.set_prefix_map(prefix_map);
+    fn set_prefix_map(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
+        self.primary.set_prefix_map(prefix_map)?;
+        Ok(())
     }
 
-    fn merge_prefixes(&mut self, prefix_map: PrefixMap) {
-        self.primary.merge_prefixes(prefix_map);
+    fn merge_prefixes(&mut self, prefix_map: PrefixMap) -> Result<(), Self::Err> {
+        self.primary.merge_prefixes(prefix_map)?;
+        Ok(())
     }
 
     fn add_triple<S, P, O>(&mut self, subj: S, pred: P, obj: O) -> Result<(), Self::Err>
@@ -565,7 +546,9 @@ mod tests {
     #[test]
     fn test_build_rdf_data() {
         let mut rdf_data = RdfData::new();
-        rdf_data.add_prefix("ex", &IriS::from_str("http://example.org/").unwrap());
+        rdf_data
+            .add_prefix("ex", &IriS::from_str("http://example.org/").unwrap())
+            .unwrap();
         rdf_data
             .add_triple(
                 iri!("http://example.org/alice"),

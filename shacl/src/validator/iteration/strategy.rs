@@ -1,6 +1,6 @@
 use crate::validator::nodes::ValueNodes;
-use rudof_rdf::rdf_core::Rdf;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::Rdf;
+use rudof_rdf::term::Object;
 
 /// Abstraction over the possible iteration strategies when validating
 pub(crate) trait IterationStrategy<RDF: Rdf> {
@@ -9,7 +9,7 @@ pub(crate) trait IterationStrategy<RDF: Rdf> {
     fn iterate<'a>(
         &'a self,
         value_nodes: &'a ValueNodes<RDF>,
-    ) -> Box<dyn Iterator<Item = (&'a RDF::Term, &'a Self::Item)> + 'a>;
+    ) -> impl Iterator<Item = (&'a RDF::Term, &'a Self::Item)> + 'a;
 
     fn to_value(&self, item: &Self::Item) -> Option<RDF::Term>;
 

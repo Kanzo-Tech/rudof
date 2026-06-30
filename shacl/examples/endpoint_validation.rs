@@ -4,7 +4,7 @@ fn main() {}
 #[cfg(not(target_family = "wasm"))]
 fn main() -> anyhow::Result<()> {
     use prefixmap::PrefixMap;
-    use rudof_rdf::rdf_core::RDFFormat;
+    use rudof_rdf::RDFFormat;
     use shacl::validator::ShaclValidationMode;
     use shacl::validator::processor::{EndpointValidation, ShaclProcessor};
     use shacl::validator::store::ShaclDataManager;

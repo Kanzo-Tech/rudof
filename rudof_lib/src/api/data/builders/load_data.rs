@@ -116,22 +116,11 @@ impl<'a> LoadDataBuilder<'a> {
         }
     }
 
-    #[cfg(feature = "qlever")]
-    fn execute_qlever(self) -> Result<()> {
-        crate::api::data::implementations::load_data_via_qlever(
-            self.rudof,
-            self.data,
-            self.data_format,
-            self.base,
-            self.prefixes,
-        )
-    }
-
-    #[cfg(not(feature = "qlever"))]
     fn execute_qlever(self) -> Result<()> {
         Err(Box::new(crate::errors::DataError::DataSourceSpec {
-            message: "--backend qlever was passed but this rudof binary was built without the \
-                      `qlever` feature. Rebuild with `cargo install rudof_cli --features qlever`."
+            message: "--backend qlever is no longer wired through rudof_lib. The QLever backend now \
+                      lives in the standalone `rudof_rdf_qlever` crate; use `QleverGraphContainer` \
+                      from that crate directly."
                 .to_string(),
         })
         .into())

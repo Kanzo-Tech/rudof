@@ -1,30 +1,38 @@
 use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape, ShapeLabelIdx};
-use crate::validator::cache::{SharedValidationCache, ValidationCache};
-use crate::validator::constraints::{BasicSparqlValidator, ShaclComponent, ValidatorDeref};
+use crate::validator::cache::ValidationCache;
+use crate::validator::constraints::validate_sparql;
 use crate::validator::engine::{Engine, select};
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
 use indoc::formatdoc;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::query::QueryRDF;
-use rudof_rdf::rdf_core::term::{Object, Term};
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::query::QueryRDF;
+use rudof_rdf::term::{Object, Term};
+use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
+/// SPARQL validation engine: dispatches constraints to their `validate_sparql`
+/// arms (no engine recursion needed) and owns a plain `HashMap` cache.
 pub struct SparqlEngine {
-    cache: SharedValidationCache,
+    cache: ValidationCache,
 }
 
 impl SparqlEngine {
     pub fn new() -> Self {
         Self {
-            cache: SharedValidationCache::new(),
+            cache: ValidationCache::default(),
         }
     }
 }
 
-impl<S: QueryRDF + NeighsRDF + Debug + 'static> Engine<S> for SparqlEngine {
+impl<S: QueryRDF + NeighsRDF + Debug> Engine<S> for SparqlEngine {
+    fn fork(&self) -> Self {
+        SparqlEngine {
+            cache: ValidationCache::default(),
+        }
+    }
+
     fn evaluate(
         &mut self,
         store: &S,
@@ -35,10 +43,8 @@ impl<S: QueryRDF + NeighsRDF + Debug + 'static> Engine<S> for SparqlEngine {
         maybe_path: Option<&SHACLPath>,
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
-        let shacl_component = ShaclComponent::new(component);
-        let validator: &dyn BasicSparqlValidator<S> = shacl_component.deref();
-
-        validator.validate_sparql(
+        // Static dispatch over the IRComponent enum — no trait object.
+        validate_sparql::<S>(
             component,
             shape,
             store,
@@ -137,14 +143,8 @@ impl<S: QueryRDF + NeighsRDF + Debug + 'static> Engine<S> for SparqlEngine {
         self.cache.has_validated(node, shape_idx)
     }
 
-    fn get_cached_results(&self, node: &Object, shape_idx: ShapeLabelIdx) -> Option<Vec<ValidationResult>> {
+    fn get_cached_results(&self, node: &Object, shape_idx: ShapeLabelIdx) -> Option<&[ValidationResult]> {
         self.cache.get_results(node, shape_idx)
-    }
-
-    fn fork(&self) -> Box<dyn Engine<S>> {
-        Box::new(SparqlEngine {
-            cache: self.cache.clone(),
-        })
     }
 }
 

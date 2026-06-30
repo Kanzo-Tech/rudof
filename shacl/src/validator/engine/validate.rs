@@ -1,34 +1,55 @@
 use crate::error::ValidationError;
-use crate::ir::{IRSchema, IRShape, ReifierInfo};
+use crate::ir::{IRSchema, IRShape, ReifierInfo, ShapeLabelIdx};
 use crate::types::MessageMap;
 use crate::validator::engine::Engine;
 use crate::validator::engine::focus_nodes_ops::FocusNodesOps;
 use crate::validator::engine::value_nodes_ops::ValueNodesOps;
 use crate::validator::nodes::FocusNodes;
 use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{NeighsRDF, Rdf, SHACLPath};
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
 /// Validate RDF data using SHACL
-pub trait Validate<RDF: Rdf> {
-    fn validate(
+pub trait Validate<RDF: NeighsRDF> {
+    fn validate<E: Engine<RDF>>(
         &self,
         store: &RDF,
-        runner: &mut dyn Engine<RDF>,
+        runner: &mut E,
         targets: Option<&FocusNodes<RDF>>,
         source_shape: Option<&IRShape>, // TODO - Review if this is needed since its probably the same as self
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError>;
 }
 
+/// Scoped validation: validate a single focus node against a single shape,
+/// reusing the generic engine, its `focus_nodes`/`target_*` machinery and its
+/// cache. This is the entry point for per-keystroke / incremental revalidation
+/// downstream — no trait object, no allocation beyond the one focus term.
+pub fn validate_focus<RDF, E>(
+    store: &RDF,
+    shapes_graph: &IRSchema,
+    engine: &mut E,
+    idx: ShapeLabelIdx,
+    focus: &Object,
+) -> Result<Vec<ValidationResult>, ValidationError>
+where
+    RDF: NeighsRDF + Debug,
+    E: Engine<RDF>,
+{
+    let shape = shapes_graph.get_shape_from_idx_e(&idx)?;
+    let focus_node: RDF::Term = focus.clone().into();
+    let focus_nodes = FocusNodes::single(focus_node);
+    shape.validate(store, engine, Some(&focus_nodes), Some(shape), shapes_graph)
+}
+
 impl<RDF: NeighsRDF + Debug> Validate<RDF> for IRShape {
-    fn validate(
+    fn validate<E: Engine<RDF>>(
         &self,
         store: &RDF,
-        runner: &mut dyn Engine<RDF>,
+        runner: &mut E,
         targets: Option<&FocusNodes<RDF>>,
         source_shape: Option<&IRShape>,
         shapes_graph: &IRSchema,
@@ -38,10 +59,14 @@ impl<RDF: NeighsRDF + Debug> Validate<RDF> for IRShape {
             return Ok(Vec::new());
         }
 
-        // Get focus nodes
+        // Get focus nodes (computed lazily; `computed_focus` keeps it alive).
+        let computed_focus;
         let focus_nodes = match targets {
-            None => &self.focus_nodes(store, runner),
             Some(targets) => targets,
+            None => {
+                computed_focus = self.focus_nodes(store, runner)?;
+                &computed_focus
+            },
         };
 
         // Resolve the ShapeLabelIdx for the current shape (used for memoization)
@@ -57,14 +82,15 @@ impl<RDF: NeighsRDF + Debug> Validate<RDF> for IRShape {
                 if let Ok(ref obj) = node_object
                     && let Some(results) = runner.get_cached_results(obj, *idx)
                 {
-                    cached_results.extend(results);
+                    cached_results.extend(results.iter().cloned());
                     continue;
                 }
                 uncached.push(fnode.clone());
             }
             FocusNodes::from_iter(uncached)
         } else {
-            focus_nodes.clone()
+            // FocusNodes is no longer Clone; rebuild by cloning the terms.
+            FocusNodes::from_iter(focus_nodes.iter().cloned())
         };
 
         // If all focus nodes were cached, return early
@@ -163,10 +189,10 @@ impl<RDF: NeighsRDF + Debug> Validate<RDF> for IRShape {
     }
 }
 
-fn validate_reifiers<RDF: NeighsRDF + Debug>(
+fn validate_reifiers<RDF: NeighsRDF + Debug, E: Engine<RDF>>(
     shape: &IRShape,
     store: &RDF,
-    runner: &mut dyn Engine<RDF>,
+    runner: &mut E,
     source_shape: Option<&IRShape>,
     reifier_info: &ReifierInfo,
     focus_nodes: &FocusNodes<RDF>,

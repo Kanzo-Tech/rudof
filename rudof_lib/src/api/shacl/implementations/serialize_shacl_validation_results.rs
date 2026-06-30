@@ -5,7 +5,7 @@ use crate::{
     formats::{ResultShaclValidationFormat, ShaclValidationSortByMode},
     utils::terminal_width,
 };
-use rudof_rdf::{rdf_core::BuildRDF, rdf_impl::OxigraphInMemory};
+use rudof_rdf::{BuildRDF, backend::OxigraphInMemory};
 use shacl::types::Severity;
 use shacl::validator::report::ValidationReport;
 use std::io;

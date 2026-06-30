@@ -1,7 +1,7 @@
 use crate::error::ValidationError;
-use rudof_rdf::rdf_core::NeighsRDF;
-use rudof_rdf::rdf_core::term::{Object, Triple};
-use rudof_rdf::rdf_core::vocabs::{RdfVocab, RdfsVocab};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::term::{Object, Triple};
+use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
 use std::collections::{HashMap, HashSet};
 
 /// Pre-computed inverted index for class-based target resolution.

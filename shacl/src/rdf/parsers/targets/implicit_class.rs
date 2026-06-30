@@ -1,10 +1,10 @@
 use crate::types::Target;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{FocusParser, InstancesParser};
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::vocabs::{RdfsVocab, ShaclVocab};
-use rudof_rdf::rdf_core::{FocusRDF, RDFError};
+use rudof_rdf::parser::rdf_node_parser::constructors::{FocusParser, InstancesParser};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::vocab::{RdfsVocab, ShaclVocab};
+use rudof_rdf::{NeighsRDF, RDFError};
 
-pub(crate) fn targets_implicit_class<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<Target>> {
+pub(crate) fn targets_implicit_class<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<Target>> {
     InstancesParser::new(RdfsVocab::rdfs_class())
         .and(InstancesParser::new(ShaclVocab::sh_property_shape()))
         .and(InstancesParser::new(ShaclVocab::sh_node_shape()))

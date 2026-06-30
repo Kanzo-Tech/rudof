@@ -2,21 +2,29 @@ use crate::error::ValidationError;
 use crate::ir::components::Xone;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
-use crate::validator::constraints::Validator;
+use crate::validator::constraints::ConstraintComponent;
 use crate::validator::engine::{Engine, Validate};
+use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::SHACLPath;
+use rudof_rdf::term::Object;
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug> Validator<S> for Xone {
-    fn validate(
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Xone {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn validate_native<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         store: &S,
-        engine: &mut dyn Engine<S>,
+        engine: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,

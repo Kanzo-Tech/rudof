@@ -2,7 +2,7 @@ use super::object_value::ObjectValue;
 use crate::ir::exclusion::{IriExclusion, LanguageExclusion, LiteralExclusion};
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::{
+use rudof_rdf::term::{
     Object,
     literal::{ConcreteLiteral, Lang},
 };

@@ -1,56 +1,44 @@
 use crate::error::ValidationError;
-use crate::ir::components::LanguageIn;
-use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::{Validator, validate_with};
+use crate::ir::IRSchema;
+use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
-use crate::validator::nodes::ValueNodes;
-use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::term::literal::Literal;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::term::literal::{Lang, Literal};
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug> Validator<S> for LanguageIn {
-    fn validate(
-        &self,
-        component: &IRComponent,
-        shape: &IRShape,
-        _: &S,
-        _: &mut dyn Engine<S>,
-        value_nodes: &ValueNodes<S>,
-        _: Option<&IRShape>,
-        maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
-        validate_with(
-            component,
-            shape,
-            value_nodes,
-            ValueNodeIteration,
-            |vn| {
-                if let Ok(lit) = S::term_as_literal(vn) {
-                    return match lit.lang() {
-                        None => true,
-                        Some(lang) => {
-                            let lang_str = lang.to_string().to_lowercase();
-                            !self.langs().iter().any(|l| {
-                                let l_str = l.to_string().to_lowercase();
-                                lang_str == l_str || lang_str.starts_with(&format!("{}-", l_str))
-                            })
-                        },
-                    };
-                }
-                true
-            },
-            &format!(
-                "LanguageIn constraint not satisfied. Expected one of {}",
-                self.langs()
-                    .iter()
-                    .map(|l| l.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            maybe_path,
+/// `sh:languageIn` — each literal value node uses one of the allowed languages.
+pub(crate) struct LanguageIn<'a>(pub &'a [Lang]);
+
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for LanguageIn<'_> {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn check<E: Engine<S>>(&self, vn: &S::Term, _cx: &mut CheckCtx<'_, S, E>) -> Result<Check, ValidationError> {
+        let violates = if let Ok(lit) = S::term_as_literal(vn) {
+            match lit.lang() {
+                None => true,
+                Some(lang) => {
+                    let lang_str = lang.to_string().to_lowercase();
+                    !self.0.iter().any(|l| {
+                        let l_str = l.to_string().to_lowercase();
+                        lang_str == l_str || lang_str.starts_with(&format!("{}-", l_str))
+                    })
+                },
+            }
+        } else {
+            true
+        };
+        Ok(if violates { Check::Violate } else { Check::Hold })
+    }
+
+    fn message(&self, _schema: &IRSchema) -> String {
+        format!(
+            "LanguageIn constraint not satisfied. Expected one of {}",
+            self.0.iter().map(|l| l.to_string()).collect::<Vec<_>>().join(", ")
         )
     }
 }

@@ -1,10 +1,10 @@
 use crate::types::MessageMap;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::LiteralsPropertyParser;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{FocusRDF, RDFError};
+use rudof_rdf::parser::rdf_node_parser::constructors::LiteralsPropertyParser;
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{NeighsRDF, RDFError};
 
-pub(crate) fn message<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = MessageMap> {
+pub(crate) fn message<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = MessageMap> {
     LiteralsPropertyParser::new(ShaclVocab::sh_message()).flat_map(|lits| {
         if lits.is_empty() {
             return Err(RDFError::ParseFailError {

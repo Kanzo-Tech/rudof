@@ -2,36 +2,41 @@ use crate::error::ValidationError;
 use crate::ir::components::QualifiedValueShape;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
-use crate::validator::constraints::Validator;
+use crate::validator::constraints::ConstraintComponent;
 use crate::validator::engine::{Engine, Validate};
+use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::SHACLPath;
+use rudof_rdf::term::Object;
+use rudof_rdf::vocab::ShaclVocab;
 use std::collections::HashSet;
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug> Validator<S> for QualifiedValueShape {
-    fn validate(
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for QualifiedValueShape {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn validate_native<E: Engine<S>>(
         &self,
         _: &IRComponent,
         shape: &IRShape,
         store: &S,
-        engine: &mut dyn Engine<S>,
+        engine: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
-        // TODO - It works but it returns duplicated validation results
-        // I tried to use a HashSet but it still doesn't remove duplicates...
         let mut validation_results = HashSet::new();
 
         for (fnode, nodes) in value_nodes.iter() {
             let mut valid_counter = 0;
             let fnode_obj = S::term_as_object(fnode)?;
-            // Count how many nodes conform to the shape
             for node in nodes.iter() {
                 let focus_nodes = FocusNodes::single(node.clone());
                 let qv_shape = shapes_graph.get_shape_from_idx_e(self.shape())?;
@@ -42,7 +47,6 @@ impl<S: NeighsRDF + Debug> Validator<S> for QualifiedValueShape {
                 };
 
                 if !self.siblings().is_empty() && is_valid {
-                    // If there are siblings, check that none of them validate
                     for sibling in self.siblings().iter() {
                         let sibling_shape = shapes_graph.get_shape_from_idx_e(sibling)?;
                         let sibling_results =

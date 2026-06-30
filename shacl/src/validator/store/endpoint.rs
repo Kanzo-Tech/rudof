@@ -2,7 +2,7 @@ use crate::error::ValidationError;
 use crate::validator::store::Store;
 use prefixmap::PrefixMap;
 use rudof_iri::iri;
-use rudof_rdf::rdf_impl::OxigraphEndpoint;
+use rudof_rdf::backend::OxigraphEndpoint;
 
 #[derive(Debug, Clone)]
 pub struct Endpoint {

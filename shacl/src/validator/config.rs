@@ -1,8 +1,13 @@
-use crate::error::ShaclConfigError;
-use rudof_rdf::rdf_core::RdfDataConfig;
+use rudof_rdf::RdfDataConfig;
 use serde::{Deserialize, Serialize};
+// File-based config loading is not available on wasm.
+#[cfg(not(target_family = "wasm"))]
+use crate::error::ShaclConfigError;
+#[cfg(not(target_family = "wasm"))]
 use std::fs::File;
+#[cfg(not(target_family = "wasm"))]
 use std::io::Read;
+#[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 
 /// This struct can be used to define the configuration of SHACLco

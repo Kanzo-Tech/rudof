@@ -1,5 +1,5 @@
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::literal::Lang;
+use rudof_rdf::term::literal::Lang;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt::Display;

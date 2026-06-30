@@ -4,7 +4,7 @@ use crate::ValidatorErrors;
 use prefixmap::PrefixMap;
 use prefixmap::error::PrefixMapError;
 use rbe::RbeError;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 use serde::Serialize;
 use serde::ser::SerializeMap;
 use shex_ast::ir::node_constraint::NodeConstraint;
@@ -460,12 +460,10 @@ impl Serialize for ValidatorError {
 fn show_label(idx: &ShapeLabelIdx, schema: &SchemaIR, width: usize) -> String {
     if let Some(label) = schema.shape_label_from_idx(idx) {
         schema.show_label(label)
+    } else if let Some(info) = schema.find_shape_idx(idx) {
+        show_shape_expr(info.expr(), schema, width)
     } else {
-        if let Some(info) = schema.find_shape_idx(idx) {
-            show_shape_expr(info.expr(), schema, width)
-        } else {
-            format!("Shape {idx}")
-        }
+        format!("Shape {idx}")
     }
 }
 

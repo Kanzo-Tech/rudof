@@ -1,8 +1,9 @@
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::vocab::ShaclVocab;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-#[derive(Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Severity {
     Trace,
     Debug,

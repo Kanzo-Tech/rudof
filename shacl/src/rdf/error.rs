@@ -1,6 +1,6 @@
 use crate::ast::error::ASTError;
 use crate::error::IRError;
-use rudof_rdf::rdf_core::{BuildRDF, RDFError};
+use rudof_rdf::{BuildRDF, RDFError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]

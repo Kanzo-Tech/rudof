@@ -1,6 +1,6 @@
 use crate::errors::ConfigError;
 use dctap::TapConfig;
-use rudof_rdf::rdf_core::RdfDataConfig;
+use rudof_rdf::RdfDataConfig;
 use serde::{Deserialize, Serialize};
 use shapes_comparator::ComparatorConfig;
 use shapes_converter::{ShEx2HtmlConfig, ShEx2SparqlConfig, ShEx2UmlConfig, Shacl2ShExConfig, Tap2ShExConfig};
@@ -195,9 +195,7 @@ impl RudofConfig {
     /// Lets callers tweak individual fields without rebuilding the whole `RdfDataConfig`, e.g.:
     ///
     /// ```ignore
-    /// rudof_config.rdf_data_mut().qlever = Some(
-    ///     QleverConfig::default().with_container_memory("8G")
-    /// );
+    /// rudof_config.rdf_data_mut().automatic_base = Some(false);
     /// ```
     pub fn rdf_data_mut(&mut self) -> &mut RdfDataConfig {
         self.rdf_data.get_or_insert_with(RdfDataConfig::default)

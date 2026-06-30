@@ -1,8 +1,8 @@
 //! End-to-end tests for EXTERNAL shape resolution.
 
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::RDFFormat;
-use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::RDFFormat;
+use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shex_ast::ir::external_resolver::SchemaExternalResolver;
 use shex_ast::ir::shape_label::ShapeLabel;
 use shex_ast::ir::{map_state::MapState, schema_ir::SchemaIR, semantic_actions_registry::SemanticActionsRegistry};

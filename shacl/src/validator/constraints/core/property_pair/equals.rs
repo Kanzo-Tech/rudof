@@ -1,23 +1,35 @@
 use crate::error::ValidationError;
-use crate::ir::components::Equals;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::{BasicSparqlValidator, NativeValidator};
+use crate::validator::constraints::ConstraintComponent;
 use crate::validator::engine::Engine;
+use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::query::QueryRDF;
-use rudof_rdf::rdf_core::term::{Object, Triple};
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_iri::IriS;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::SHACLPath;
+#[cfg(feature = "sparql")]
+use rudof_rdf::query::QueryRDF;
+use rudof_rdf::term::{Object, Triple};
 use std::collections::HashSet;
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for Equals {
-    fn validate_native(
+/// `sh:equals` — the value-node set equals the objects of `<focus, iri, ?>`.
+pub(crate) struct Equals<'a>(pub &'a IriS);
+
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Equals<'_> {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn validate_native<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         store: &S,
-        _: &mut dyn Engine<S>,
+        _: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
@@ -32,7 +44,7 @@ impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for Equals {
                 Err(_) => continue,
             };
 
-            let iri: S::IRI = self.iri().clone().into();
+            let iri: S::IRI = self.0.clone().into();
 
             let prop_values = store
                 .triples_with_subject_predicate(&subject, &iri)
@@ -69,10 +81,8 @@ impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for Equals {
 
         Ok(results)
     }
-}
 
-#[cfg(feature = "sparql")]
-impl<S: QueryRDF + Debug + 'static> BasicSparqlValidator<S> for Equals {
+    #[cfg(feature = "sparql")]
     fn validate_sparql(
         &self,
         _: &IRComponent,
@@ -82,7 +92,10 @@ impl<S: QueryRDF + Debug + 'static> BasicSparqlValidator<S> for Equals {
         _: Option<&IRShape>,
         _: Option<&SHACLPath>,
         _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
+    ) -> Result<Vec<ValidationResult>, ValidationError>
+    where
+        S: QueryRDF,
+    {
         unimplemented!()
     }
 }

@@ -5,7 +5,7 @@ use crate::ir::error::IRError;
 use crate::types::Value;
 use prefixmap::IriRef;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 
 mod component;
 pub mod components;
@@ -18,6 +18,7 @@ mod schema;
 mod shape;
 mod shape_label_idx;
 mod test;
+pub mod visitor;
 
 pub use component::IRComponent;
 pub use node_shape::IRNodeShape;

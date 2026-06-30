@@ -1,10 +1,10 @@
 use crate::types::Target;
-use rudof_rdf::rdf_core::FocusRDF;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::ObjectsPropertyParser;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::parser::rdf_node_parser::constructors::ObjectsPropertyParser;
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::vocab::ShaclVocab;
 
-pub(crate) fn targets_node<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<Target>> {
+pub(crate) fn targets_node<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<Target>> {
     ObjectsPropertyParser::new(ShaclVocab::sh_target_node()).flat_map(|ts| {
         let result = ts.into_iter().map(Target::Node).collect();
         Ok(result)

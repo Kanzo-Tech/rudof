@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use rudof_iri::MimeType;
-use rudof_rdf::rdf_core::RDFFormat;
+use rudof_rdf::RDFFormat;
 use serde::{Deserialize, Serialize};
 
 /// Contains possible ShEx formats

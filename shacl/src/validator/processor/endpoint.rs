@@ -1,10 +1,13 @@
 use crate::error::ValidationError;
+use crate::ir::IRSchema;
 use crate::validator::ShaclValidationMode;
-use crate::validator::engine::{Engine, NativeEngine, SparqlEngine};
-use crate::validator::processor::ShaclProcessor;
+use crate::validator::engine::{NativeEngine, SparqlEngine};
+use crate::validator::index::ClassIndex;
+use crate::validator::processor::{ShaclProcessor, run};
+use crate::validator::report::ValidationResult;
 use crate::validator::store::{Endpoint, Store};
 use prefixmap::PrefixMap;
-use rudof_rdf::rdf_impl::OxigraphEndpoint;
+use rudof_rdf::backend::OxigraphEndpoint;
 
 // TODO - Move to validation::algorithms module
 /// The endpoint Graph Validation Algorithm
@@ -25,10 +28,21 @@ impl ShaclProcessor<OxigraphEndpoint> for EndpointValidation {
         self.store.store()
     }
 
-    fn runner(mode: &ShaclValidationMode) -> Box<dyn Engine<OxigraphEndpoint>> {
+    fn run_validation(
+        store: &OxigraphEndpoint,
+        shapes_graph: &IRSchema,
+        mode: &ShaclValidationMode,
+    ) -> Result<Vec<ValidationResult>, ValidationError> {
         match mode {
-            ShaclValidationMode::Native => Box::new(NativeEngine::new()),
-            ShaclValidationMode::Sparql => Box::new(SparqlEngine::new()),
+            ShaclValidationMode::Native => {
+                let index = ClassIndex::build(store)?;
+                let master = NativeEngine::new(Some(&index));
+                run(store, shapes_graph, &master)
+            },
+            ShaclValidationMode::Sparql => {
+                let master = SparqlEngine::new();
+                run(store, shapes_graph, &master)
+            },
         }
     }
 }

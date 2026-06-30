@@ -2,7 +2,7 @@ use crate::shapemap::{Association, NodeSelector, ShapeSelector, ShapemapError};
 use crate::{Node, ShapeExprLabel, ir::shape_label::ShapeLabel, object_value::ObjectValue};
 use prefixmap::{DerefError, PrefixMap};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::query::QueryRDF;
+use rudof_rdf::query::QueryRDF;
 use serde::Serialize;
 use std::fmt::Display;
 

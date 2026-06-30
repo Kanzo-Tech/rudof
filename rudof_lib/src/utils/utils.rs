@@ -5,7 +5,7 @@ use crate::{
 };
 use crossterm::terminal;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::query::SparqlQuery;
+use rudof_rdf::query::SparqlQuery;
 use std::{env, str::FromStr};
 #[cfg(not(target_family = "wasm"))]
 use url::Url;

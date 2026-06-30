@@ -2,6 +2,7 @@
 //! Represents [SHACL](https://www.w3.org/TR/shacl/) Abstract Syntax Tree.
 //! This project started as a re-implementation in Rust of [SHACL-s](https://github.com/weso/shacl-s).
 
+mod builder;
 mod component;
 pub(crate) mod error;
 mod node_expr;
@@ -10,17 +11,20 @@ mod property_shape;
 mod reifier_info;
 mod schema;
 mod shape;
+mod visitor;
 
 use crate::error::ASTError;
+pub use builder::{BuildError, NodeShapeBuilder, PropertyShapeBuilder, SchemaBuilder};
 pub use component::ASTComponent;
 pub use node_shape::ASTNodeShape;
 pub use property_shape::ASTPropertyShape;
 pub use reifier_info::ReifierInfo;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 pub use schema::ASTSchema;
 pub use shape::ASTShape;
 use std::collections::HashSet;
+pub use visitor::ComponentVisitor;
 
 pub fn defined_properties_for(properties: &[Object], ast: &ASTSchema) -> Result<HashSet<IriS>, ASTError> {
     let mut defined_properties = HashSet::new();

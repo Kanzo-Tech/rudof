@@ -1,8 +1,8 @@
 use crate::ast::ASTShape;
 use prefixmap::IriRef;
-use rudof_rdf::rdf_core::SHACLPath;
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
-use rudof_rdf::rdf_core::term::{IriOrBlankNode, Object};
+use rudof_rdf::SHACLPath;
+use rudof_rdf::term::literal::ConcreteLiteral;
+use rudof_rdf::term::{IriOrBlankNode, Object};
 use std::fmt::{Display, Formatter};
 
 #[allow(dead_code)]

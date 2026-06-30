@@ -1,37 +1,33 @@
 use crate::error::ValidationError;
-use crate::ir::components::HasValue;
-use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::{Validator, validate_with};
+use crate::ir::IRSchema;
+use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::FocusNodeIteration;
-use crate::validator::nodes::ValueNodes;
-use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use crate::validator::nodes::FocusNodes;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::term::Object;
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug> Validator<S> for HasValue {
-    fn validate(
-        &self,
-        component: &IRComponent,
-        shape: &IRShape,
-        _: &S,
-        _: &mut dyn Engine<S>,
-        value_nodes: &ValueNodes<S>,
-        _: Option<&IRShape>,
-        maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
-        validate_with(
-            component,
-            shape,
-            value_nodes,
-            FocusNodeIteration,
-            |t| {
-                let value_term = &S::object_as_term(self.value());
-                !t.iter().any(|v| v == value_term)
-            },
-            &format!("HasValue({}) not satisfied", self.value()),
-            maybe_path,
-        )
+/// `sh:hasValue` — at least one value node equals the given term.
+pub(crate) struct HasValue<'a>(pub &'a Object);
+
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for HasValue<'_> {
+    type Strategy = FocusNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        FocusNodeIteration
+    }
+
+    fn check<E: Engine<S>>(&self, vs: &FocusNodes<S>, _cx: &mut CheckCtx<'_, S, E>) -> Result<Check, ValidationError> {
+        let value_term = S::object_as_term(self.0);
+        Ok(if vs.iter().any(|v| v == &value_term) {
+            Check::Hold
+        } else {
+            Check::Violate
+        })
+    }
+
+    fn message(&self, _schema: &IRSchema) -> String {
+        format!("HasValue({}) not satisfied", self.0)
     }
 }

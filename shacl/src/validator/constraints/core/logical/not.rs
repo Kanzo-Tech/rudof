@@ -2,21 +2,29 @@ use crate::error::ValidationError;
 use crate::ir::components::Not;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
-use crate::validator::constraints::Validator;
+use crate::validator::constraints::ConstraintComponent;
 use crate::validator::engine::{Engine, Validate};
+use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::SHACLPath;
+use rudof_rdf::term::Object;
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug> Validator<S> for Not {
-    fn validate(
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Not {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn validate_native<E: Engine<S>>(
         &self,
         component: &IRComponent,
         shape: &IRShape,
         store: &S,
-        engine: &mut dyn Engine<S>,
+        engine: &mut E,
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
@@ -32,7 +40,7 @@ impl<S: NeighsRDF + Debug> Validator<S> for Not {
                 let inner_results = not_shape.validate(store, engine, Some(&focus_nodes), Some(shape), shapes_graph);
                 let is_valid_inside = match inner_results {
                     Ok(results) => results.is_empty(),
-                    Err(_) => false, // TODO - Should we fail instead of considering it valid?
+                    Err(_) => false,
                 };
                 if is_valid_inside {
                     let msg = format!(

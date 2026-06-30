@@ -1,15 +1,18 @@
+use crate::ast::ComponentVisitor;
 use crate::types::{MessageMap, NodeKind, Value};
 use itertools::Itertools;
 use prefixmap::{IriRef, PrefixMap};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang};
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::{ConcreteLiteral, Lang};
+use rudof_rdf::vocab::ShaclVocab;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 
 // TODO - For node expr only derive Debug (maybe)
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ASTComponent {
     Class(Object),
     Datatype(IriRef),
@@ -59,145 +62,318 @@ pub enum ASTComponent {
     },
 }
 
+/// Writes the canonical textual form of a component. The variant dispatch is
+/// owned by [`ASTComponent::accept`]; this visitor only renders.
+struct DisplayVisitor<'a, 'b> {
+    f: &'a mut Formatter<'b>,
+}
+
+impl ComponentVisitor for DisplayVisitor<'_, '_> {
+    type Output = ();
+    type Error = std::fmt::Error;
+
+    fn default_component(&mut self) -> Result<(), std::fmt::Error> {
+        Ok(())
+    }
+
+    fn visit_class(&mut self, class: &Object) -> Result<(), std::fmt::Error> {
+        write!(self.f, "class({class})")
+    }
+    fn visit_datatype(&mut self, iri: &IriRef) -> Result<(), std::fmt::Error> {
+        write!(self.f, "datatype({iri})")
+    }
+    fn visit_node_kind(&mut self, node: &NodeKind) -> Result<(), std::fmt::Error> {
+        write!(self.f, "nodeKind({node})")
+    }
+    fn visit_min_count(&mut self, qty: isize) -> Result<(), std::fmt::Error> {
+        write!(self.f, "minCount({qty})")
+    }
+    fn visit_max_count(&mut self, qty: isize) -> Result<(), std::fmt::Error> {
+        write!(self.f, "maxCount({qty})")
+    }
+    fn visit_min_exclusive(&mut self, lit: &ConcreteLiteral) -> Result<(), std::fmt::Error> {
+        write!(self.f, "minExclusive({lit})")
+    }
+    fn visit_max_exclusive(&mut self, lit: &ConcreteLiteral) -> Result<(), std::fmt::Error> {
+        write!(self.f, "maxExclusive({lit})")
+    }
+    fn visit_min_inclusive(&mut self, lit: &ConcreteLiteral) -> Result<(), std::fmt::Error> {
+        write!(self.f, "minInclusive({lit})")
+    }
+    fn visit_max_inclusive(&mut self, lit: &ConcreteLiteral) -> Result<(), std::fmt::Error> {
+        write!(self.f, "maxInclusive({lit})")
+    }
+    fn visit_min_length(&mut self, len: isize) -> Result<(), std::fmt::Error> {
+        write!(self.f, "minLength({len})")
+    }
+    fn visit_max_length(&mut self, len: isize) -> Result<(), std::fmt::Error> {
+        write!(self.f, "maxLength({len})")
+    }
+    fn visit_pattern(&mut self, pattern: &str, flags: Option<&str>) -> Result<(), std::fmt::Error> {
+        match flags {
+            None => write!(self.f, "pattern({pattern})"),
+            Some(flags) => write!(self.f, "pattern({pattern}, {flags})"),
+        }
+    }
+    fn visit_unique_lang(&mut self, unique: bool) -> Result<(), std::fmt::Error> {
+        write!(self.f, "uniqueLang({unique})")
+    }
+    fn visit_language_in(&mut self, langs: &[Lang]) -> Result<(), std::fmt::Error> {
+        let str = langs.iter().map(|s| s.to_string()).join(", ");
+        write!(self.f, "languageIn[{str}]")
+    }
+    fn visit_equals(&mut self, iri: &IriRef) -> Result<(), std::fmt::Error> {
+        write!(self.f, "equals({iri})")
+    }
+    fn visit_disjoint(&mut self, iri: &IriRef) -> Result<(), std::fmt::Error> {
+        write!(self.f, "disjoint({iri})")
+    }
+    fn visit_less_than(&mut self, iri: &IriRef) -> Result<(), std::fmt::Error> {
+        write!(self.f, "lessThan({iri})")
+    }
+    fn visit_less_than_or_equals(&mut self, iri: &IriRef) -> Result<(), std::fmt::Error> {
+        write!(self.f, "lessThanOrEquals({iri})")
+    }
+    fn visit_or(&mut self, shapes: &[Object]) -> Result<(), std::fmt::Error> {
+        let str = shapes.iter().map(|s| s.to_string()).join(", ");
+        write!(self.f, "or[{str}]")
+    }
+    fn visit_and(&mut self, shapes: &[Object]) -> Result<(), std::fmt::Error> {
+        let str = shapes.iter().map(|s| s.to_string()).join(", ");
+        write!(self.f, "and[{str}]")
+    }
+    fn visit_not(&mut self, shape: &Object) -> Result<(), std::fmt::Error> {
+        write!(self.f, "not({shape})")
+    }
+    fn visit_xone(&mut self, shapes: &[Object]) -> Result<(), std::fmt::Error> {
+        let str = shapes.iter().map(|s| s.to_string()).join(", ");
+        write!(self.f, "xone[{str}]")
+    }
+    fn visit_closed(&mut self, is_closed: bool, ignored: &HashSet<IriS>) -> Result<(), std::fmt::Error> {
+        write!(
+            self.f,
+            "closed({is_closed}{})",
+            if ignored.is_empty() {
+                "".to_string()
+            } else {
+                format!(
+                    ", Ignored props: [{}]",
+                    ignored.iter().map(|p| p.to_string()).join(", ")
+                )
+            }
+        )
+    }
+    fn visit_node(&mut self, shape: &Object) -> Result<(), std::fmt::Error> {
+        write!(self.f, "node({shape})")
+    }
+    fn visit_has_value(&mut self, value: &Value) -> Result<(), std::fmt::Error> {
+        write!(self.f, "hasValue({value})")
+    }
+    fn visit_in(&mut self, values: &[Value]) -> Result<(), std::fmt::Error> {
+        let str = values.iter().map(|v| v.to_string()).join(", ");
+        write!(self.f, "in[{str}]")
+    }
+    fn visit_qualified_value_shape(
+        &mut self,
+        shape: &Object,
+        q_min_count: Option<isize>,
+        q_max_count: Option<isize>,
+        disjoint: Option<bool>,
+        siblings: &[Object],
+    ) -> Result<(), std::fmt::Error> {
+        write!(
+            self.f,
+            "qualifiedValueShape(shape: {shape}, qualified_min_count: {q_min_count:?}, qualified_max_count: {q_max_count:?}, qualified_value_shape_disjoint: {disjoint:?}{}",
+            if siblings.is_empty() {
+                "".to_string()
+            } else {
+                format!(", siblings: [{}]", siblings.iter().map(|s| s.to_string()).join(", "))
+            }
+        )
+    }
+    fn visit_deactivated(&mut self, deactivated: bool) -> Result<(), std::fmt::Error> {
+        write!(self.f, "deactivated({deactivated})")
+    }
+    fn visit_basic_sparql(
+        &mut self,
+        select: &str,
+        message: Option<&MessageMap>,
+        deactivated: Option<bool>,
+        prefixes: Option<&PrefixMap>,
+    ) -> Result<(), std::fmt::Error> {
+        write!(
+            self.f,
+            "basic_sparql: (select: {select}{}{}{})",
+            if let Some(deactivated) = deactivated {
+                format!(", deactivated: {deactivated}")
+            } else {
+                "".to_string()
+            },
+            if let Some(msg) = message {
+                format!(", message: {msg}")
+            } else {
+                "".to_string()
+            },
+            if let Some(prefixes) = prefixes {
+                format!(", prefixes: {prefixes}")
+            } else {
+                "".to_string()
+            }
+        )
+    }
+}
+
 impl Display for ASTComponent {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ASTComponent::Class(o) => write!(f, "class({o})"),
-            ASTComponent::Datatype(iri) => write!(f, "datatype({iri})"),
-            ASTComponent::NodeKind(node) => write!(f, "nodeKind({node})"),
-            ASTComponent::MinCount(qty) => write!(f, "minCount({qty})"),
-            ASTComponent::MaxCount(qty) => write!(f, "maxCount({qty})"),
-            ASTComponent::MinExclusive(lit) => write!(f, "minExclusive({lit})"),
-            ASTComponent::MaxExclusive(lit) => write!(f, "maxExclusive({lit})"),
-            ASTComponent::MinInclusive(lit) => write!(f, "minInclusive({lit})"),
-            ASTComponent::MaxInclusive(lit) => write!(f, "maxInclusive({lit})"),
-            ASTComponent::MinLength(l) => write!(f, "minLength({l})"),
-            ASTComponent::MaxLength(l) => write!(f, "maxLength({l})"),
-            ASTComponent::Pattern { pattern, flags } => match flags {
-                None => write!(f, "pattern({pattern})"),
-                Some(flags) => write!(f, "pattern({pattern}, {flags})"),
-            },
-            ASTComponent::UniqueLang(l) => write!(f, "uniqueLang({l})"),
-            ASTComponent::LanguageIn(l) => {
-                let str = l.iter().map(|s| s.to_string()).join(", ");
-                write!(f, "languageIn[{str}]")
-            },
-            ASTComponent::Equals(iri) => write!(f, "equals({iri})"),
-            ASTComponent::Disjoint(iri) => write!(f, "disjoint({iri})"),
-            ASTComponent::LessThan(iri) => write!(f, "lessThan({iri})"),
-            ASTComponent::LessThanOrEquals(iri) => write!(f, "lessThanOrEquals({iri})"),
-            ASTComponent::Or(obj) => {
-                let str = obj.iter().map(|s| s.to_string()).join(", ");
-                write!(f, "or[{str}]")
-            },
-            ASTComponent::And(obj) => {
-                let str = obj.iter().map(|s| s.to_string()).join(", ");
-                write!(f, "and[{str}]")
-            },
-            ASTComponent::Not(obj) => write!(f, "not({obj})"),
-            ASTComponent::Xone(obj) => {
-                let str = obj.iter().map(|s| s.to_string()).join(", ");
-                write!(f, "xone[{str}]")
-            },
-            ASTComponent::Closed {
-                is_closed,
-                ignored_properties,
-            } => write!(
-                f,
-                "closed({is_closed}{})",
-                if ignored_properties.is_empty() {
-                    "".to_string()
-                } else {
-                    format!(
-                        ", Ignored props: [{}]",
-                        ignored_properties.iter().map(|p| p.to_string()).join(", ")
-                    )
-                }
-            ),
-            ASTComponent::Node(obj) => write!(f, "node({obj})"),
-            ASTComponent::HasValue(v) => write!(f, "hasValue({v})"),
-            ASTComponent::In(v) => {
-                let str = v.iter().map(|v| v.to_string()).join(", ");
-                write!(f, "in[{str}]")
-            },
-            ASTComponent::QualifiedValueShape {
-                shape,
-                disjoint,
-                siblings,
-                q_max_count,
-                q_min_count,
-            } => {
-                write!(
-                    f,
-                    "qualifiedValueShape(shape: {shape}, qualified_min_count: {q_min_count:?}, qualified_max_count: {q_max_count:?}, qualified_value_shape_disjoint: {disjoint:?}{}",
-                    if siblings.is_empty() {
-                        "".to_string()
-                    } else {
-                        format!(", siblings: [{}]", siblings.iter().map(|s| s.to_string()).join(", "))
-                    }
-                )
-            },
-            ASTComponent::Deactivated(b) => write!(f, "deactivated({b})"),
-            ASTComponent::BasicSparql {
-                prefixes,
-                message,
-                deactivated,
-                select,
-            } => write!(
-                f,
-                "basic_sparql: (select: {select}{}{}{})",
-                if let Some(deactivated) = deactivated {
-                    format!(", deactivated: {deactivated}")
-                } else {
-                    "".to_string()
-                },
-                if let Some(msg) = message {
-                    format!(", message: {msg}")
-                } else {
-                    "".to_string()
-                },
-                if let Some(prefixes) = prefixes {
-                    format!(", prefixes: {prefixes}")
-                } else {
-                    "".to_string()
-                }
-            ),
+        self.accept(&mut DisplayVisitor { f })
+    }
+}
+
+/// Maps a component to its defining SHACL constraint IRI. Total and infallible.
+struct ConstraintIriVisitor;
+
+impl ComponentVisitor for ConstraintIriVisitor {
+    type Output = IriS;
+    type Error = Infallible;
+
+    // Every arm is overridden below, so this is never reached; return the base
+    // SHACL namespace rather than panic.
+    fn default_component(&mut self) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh())
+    }
+
+    fn visit_class(&mut self, _: &Object) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_class())
+    }
+    fn visit_datatype(&mut self, _: &IriRef) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_datatype())
+    }
+    fn visit_node_kind(&mut self, _: &NodeKind) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_node_kind())
+    }
+    fn visit_min_count(&mut self, _: isize) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_min_count())
+    }
+    fn visit_max_count(&mut self, _: isize) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_max_count())
+    }
+    fn visit_min_exclusive(&mut self, _: &ConcreteLiteral) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_min_exclusive())
+    }
+    fn visit_max_exclusive(&mut self, _: &ConcreteLiteral) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_max_exclusive())
+    }
+    fn visit_min_inclusive(&mut self, _: &ConcreteLiteral) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_min_inclusive())
+    }
+    fn visit_max_inclusive(&mut self, _: &ConcreteLiteral) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_max_inclusive())
+    }
+    fn visit_min_length(&mut self, _: isize) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_min_length())
+    }
+    fn visit_max_length(&mut self, _: isize) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_max_length())
+    }
+    fn visit_pattern(&mut self, _: &str, _: Option<&str>) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_pattern())
+    }
+    fn visit_unique_lang(&mut self, _: bool) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_unique_lang())
+    }
+    fn visit_language_in(&mut self, _: &[Lang]) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_language_in())
+    }
+    fn visit_equals(&mut self, _: &IriRef) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_equals())
+    }
+    fn visit_disjoint(&mut self, _: &IriRef) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_disjoint())
+    }
+    fn visit_less_than(&mut self, _: &IriRef) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_less_than())
+    }
+    fn visit_less_than_or_equals(&mut self, _: &IriRef) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_less_than_or_equals())
+    }
+    fn visit_or(&mut self, _: &[Object]) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_or())
+    }
+    fn visit_and(&mut self, _: &[Object]) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_and())
+    }
+    fn visit_not(&mut self, _: &Object) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_not())
+    }
+    fn visit_xone(&mut self, _: &[Object]) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_xone())
+    }
+    fn visit_closed(&mut self, _: bool, _: &HashSet<IriS>) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_closed())
+    }
+    fn visit_node(&mut self, _: &Object) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_node())
+    }
+    fn visit_has_value(&mut self, _: &Value) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_has_value())
+    }
+    fn visit_in(&mut self, _: &[Value]) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_in())
+    }
+    fn visit_qualified_value_shape(
+        &mut self,
+        _: &Object,
+        _: Option<isize>,
+        _: Option<isize>,
+        _: Option<bool>,
+        _: &[Object],
+    ) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_qualified_value_shape())
+    }
+    fn visit_deactivated(&mut self, _: bool) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_deactivated())
+    }
+    fn visit_basic_sparql(
+        &mut self,
+        _: &str,
+        _: Option<&MessageMap>,
+        _: Option<bool>,
+        _: Option<&PrefixMap>,
+    ) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_sparql())
+    }
+}
+
+impl From<&ASTComponent> for IriS {
+    fn from(value: &ASTComponent) -> Self {
+        match value.accept(&mut ConstraintIriVisitor) {
+            Ok(iri) => iri,
+            Err(infallible) => match infallible {},
         }
     }
 }
 
 impl From<ASTComponent> for IriS {
     fn from(value: ASTComponent) -> Self {
-        match value {
-            ASTComponent::Class(_) => ShaclVocab::sh_class(),
-            ASTComponent::Datatype(_) => ShaclVocab::sh_datatype(),
-            ASTComponent::NodeKind(_) => ShaclVocab::sh_node_kind(),
-            ASTComponent::MinCount(_) => ShaclVocab::sh_min_count(),
-            ASTComponent::MaxCount(_) => ShaclVocab::sh_max_count(),
-            ASTComponent::MinExclusive(_) => ShaclVocab::sh_min_exclusive(),
-            ASTComponent::MaxExclusive(_) => ShaclVocab::sh_max_exclusive(),
-            ASTComponent::MinInclusive(_) => ShaclVocab::sh_min_inclusive(),
-            ASTComponent::MaxInclusive(_) => ShaclVocab::sh_max_inclusive(),
-            ASTComponent::MinLength(_) => ShaclVocab::sh_min_length(),
-            ASTComponent::MaxLength(_) => ShaclVocab::sh_max_length(),
-            ASTComponent::Pattern { .. } => ShaclVocab::sh_pattern(),
-            ASTComponent::UniqueLang(_) => ShaclVocab::sh_unique_lang(),
-            ASTComponent::LanguageIn(_) => ShaclVocab::sh_language_in(),
-            ASTComponent::Equals(_) => ShaclVocab::sh_equals(),
-            ASTComponent::Disjoint(_) => ShaclVocab::sh_disjoint(),
-            ASTComponent::LessThan(_) => ShaclVocab::sh_less_than(),
-            ASTComponent::LessThanOrEquals(_) => ShaclVocab::sh_less_than_or_equals(),
-            ASTComponent::Or(_) => ShaclVocab::sh_or(),
-            ASTComponent::And(_) => ShaclVocab::sh_and(),
-            ASTComponent::Not(_) => ShaclVocab::sh_not(),
-            ASTComponent::Xone(_) => ShaclVocab::sh_xone(),
-            ASTComponent::Closed { .. } => ShaclVocab::sh_closed(),
-            ASTComponent::Node(_) => ShaclVocab::sh_node(),
-            ASTComponent::HasValue(_) => ShaclVocab::sh_has_value(),
-            ASTComponent::In(_) => ShaclVocab::sh_in(),
-            ASTComponent::QualifiedValueShape { .. } => ShaclVocab::sh_qualified_value_shape(),
-            ASTComponent::Deactivated(_) => ShaclVocab::sh_deactivated(),
-            ASTComponent::BasicSparql { .. } => ShaclVocab::sh_sparql(),
-        }
+        IriS::from(&value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_and_iri_via_visitor() {
+        let c = ASTComponent::MinCount(2);
+        assert_eq!(c.to_string(), "minCount(2)");
+        assert_eq!(IriS::from(&c), ShaclVocab::sh_min_count());
+
+        let p = ASTComponent::Pattern {
+            pattern: "^a".to_string(),
+            flags: Some("i".to_string()),
+        };
+        assert_eq!(p.to_string(), "pattern(^a, i)");
+        assert_eq!(IriS::from(&p), ShaclVocab::sh_pattern());
     }
 }

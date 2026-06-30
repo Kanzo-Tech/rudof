@@ -1,6 +1,10 @@
 use crate::error::{IRError, ShaclParserError};
-use rudof_rdf::rdf_core::{RDFError, Rdf};
-use rudof_rdf::rdf_impl::{OxigraphEndpointError, OxigraphInMemoryError};
+use crate::ir::ShapeLabelIdx;
+#[cfg(feature = "sparql")]
+use rudof_rdf::backend::OxigraphEndpointError;
+use rudof_rdf::backend::OxigraphInMemoryError;
+use rudof_rdf::{RDFError, Rdf};
+#[cfg(feature = "sparql")]
 use sparql_service::RdfDataError;
 use std::io;
 use std::io::Error;
@@ -55,6 +59,18 @@ pub enum ValidationError {
 
     #[error("TargetClass should be an IRI")]
     TargetClassNotIri,
+
+    #[error("Malformed target: {0}")]
+    MalformedTarget(String),
+
+    #[error("Shape index not found: {0:?}")]
+    ShapeIdxNotFound(ShapeLabelIdx),
+
+    #[error("Literal has no datatype IRI")]
+    MissingDatatypeIri,
+
+    #[error("Value path resolution failed: {0}")]
+    PathError(String),
 }
 
 impl ValidationError {

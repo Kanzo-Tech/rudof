@@ -1,7 +1,7 @@
 use crate::types::Severity;
 use prefixmap::PrefixMap;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{BuildRDF, FocusRDF, Rdf};
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{BuildRDF, NeighsRDF, Rdf};
 use std::fmt::{Display, Formatter};
 
 mod result;
@@ -9,7 +9,7 @@ mod sorting;
 
 use crate::error::ValidationError;
 pub use result::ValidationResult;
-use rudof_rdf::rdf_core::term::Object;
+use rudof_rdf::term::Object;
 pub use sorting::ValidationReportSorting;
 
 #[derive(Debug, Clone)]
@@ -74,7 +74,7 @@ impl ValidationReport {
 }
 
 impl ValidationReport {
-    pub fn parse<S: FocusRDF>(store: &mut S, subject: S::Term) -> Result<Self, ValidationError> {
+    pub fn parse<S: NeighsRDF>(store: &mut S, subject: S::Term) -> Result<Self, ValidationError> {
         let mut results = Vec::new();
 
         for result in store.objects_for(&subject, &ShaclVocab::sh_result().into())? {
@@ -91,7 +91,9 @@ impl ValidationReport {
     }
 
     pub fn to_rdf<RDF: BuildRDF + Sized>(&self, writer: &mut RDF) -> Result<(), ValidationError> {
-        writer.add_prefix("sh", ShaclVocab::sh_ref());
+        writer
+            .add_prefix("sh", ShaclVocab::sh_ref())
+            .map_err(error_mapper::<RDF>("Error adding prefix sh"))?;
 
         let report_node: RDF::Subject = writer
             .add_bnode()

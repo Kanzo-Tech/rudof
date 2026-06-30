@@ -1,12 +1,41 @@
 use itertools::Itertools;
-use rudof_rdf::rdf_core::term::literal::{ConcreteLiteral, Lang};
+use rudof_rdf::term::literal::{ConcreteLiteral, Lang};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::hash_map::IntoIter;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+// `HashMap<Option<Lang>, String>` does not serialize to JSON (non-string map
+// key). Round-trip through an order-independent `Vec<LangString>` instead so the
+// public API keeps the map while the wire form is a plain list.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Vec<LangString>", into = "Vec<LangString>")]
 pub struct MessageMap {
     messages: HashMap<Option<Lang>, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LangString {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lang: Option<Lang>,
+    value: String,
+}
+
+impl From<Vec<LangString>> for MessageMap {
+    fn from(items: Vec<LangString>) -> Self {
+        MessageMap {
+            messages: items.into_iter().map(|ls| (ls.lang, ls.value)).collect(),
+        }
+    }
+}
+
+impl From<MessageMap> for Vec<LangString> {
+    fn from(map: MessageMap) -> Self {
+        map.messages
+            .into_iter()
+            .map(|(lang, value)| LangString { lang, value })
+            .collect()
+    }
 }
 
 impl MessageMap {

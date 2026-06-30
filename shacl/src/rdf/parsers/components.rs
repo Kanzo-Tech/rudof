@@ -5,10 +5,10 @@ use crate::rdf::parsers::{
     less_than_or_equals, max_count, max_exclusive, max_inclusive, max_length, min_count, min_exclusive, min_inclusive,
     min_length, node, node_kind, not, or, pattern, qualified_value_shape, unique_lang, xone,
 };
-use rudof_rdf::rdf_core::FocusRDF;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 
-pub(crate) fn components<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn components<RDF: NeighsRDF + 'static>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     let parsers: Vec<Box<dyn RDFNodeParse<RDF, Output = Vec<ASTComponent>>>> = vec![
         // Value type
         Box::new(node_kind()),

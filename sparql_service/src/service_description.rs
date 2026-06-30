@@ -9,8 +9,8 @@ use mie::Mie;
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
 use rudof_rdf::{
-    rdf_core::RDFFormat,
-    rdf_impl::{OxigraphInMemory, ReaderMode},
+    RDFFormat,
+    backend::{OxigraphInMemory, ReaderMode},
 };
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_family = "wasm"))]

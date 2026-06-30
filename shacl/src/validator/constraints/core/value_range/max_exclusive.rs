@@ -1,45 +1,49 @@
 use crate::error::ValidationError;
-use crate::ir::components::MaxExclusive;
-use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::{BasicSparqlValidator, NativeValidator, validate_ask_with, validate_with};
+use crate::ir::IRSchema;
+#[cfg(feature = "sparql")]
+use crate::ir::{IRComponent, IRShape};
+#[cfg(feature = "sparql")]
+use crate::validator::constraints::sparql_ask;
+use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
+#[cfg(feature = "sparql")]
 use crate::validator::nodes::ValueNodes;
+#[cfg(feature = "sparql")]
 use crate::validator::report::ValidationResult;
+#[cfg(feature = "sparql")]
 use indoc::formatdoc;
-use rudof_rdf::rdf_core::query::QueryRDF;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::NeighsRDF;
+#[cfg(feature = "sparql")]
+use rudof_rdf::SHACLPath;
+#[cfg(feature = "sparql")]
+use rudof_rdf::query::QueryRDF;
+use rudof_rdf::term::literal::ConcreteLiteral;
 use std::fmt::Debug;
 
-impl<S: NeighsRDF + Debug + 'static> NativeValidator<S> for MaxExclusive {
-    fn validate_native(
-        &self,
-        component: &IRComponent,
-        shape: &IRShape,
-        _: &S,
-        _: &mut dyn Engine<S>,
-        value_nodes: &ValueNodes<S>,
-        _: Option<&IRShape>,
-        maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
-        validate_with(
-            component,
-            shape,
-            value_nodes,
-            ValueNodeIteration,
-            |n| match S::term_as_sliteral(n) {
-                Ok(lit) => lit.partial_cmp(self.max_exclusive()).map(|o| o.is_ge()).unwrap_or(true),
-                Err(_) => true,
-            },
-            &format!("MaxExclusive({}) not satisfied", self.max_exclusive()),
-            maybe_path,
-        )
-    }
-}
+/// `sh:MaxExclusive` value-range constraint.
+pub(crate) struct MaxExclusive<'a>(pub &'a ConcreteLiteral);
 
-#[cfg(feature = "sparql")]
-impl<S: QueryRDF + Debug + 'static> BasicSparqlValidator<S> for MaxExclusive {
+impl<S: NeighsRDF + Debug> ConstraintComponent<S> for MaxExclusive<'_> {
+    type Strategy = ValueNodeIteration;
+
+    fn strategy(&self) -> Self::Strategy {
+        ValueNodeIteration
+    }
+
+    fn check<E: Engine<S>>(&self, vn: &S::Term, _cx: &mut CheckCtx<'_, S, E>) -> Result<Check, ValidationError> {
+        let violates = match S::term_as_sliteral(vn) {
+            Ok(lit) => lit.sparql_compare(self.0).map(|o| o.is_ge()).unwrap_or(true),
+            Err(_) => true,
+        };
+        Ok(if violates { Check::Violate } else { Check::Hold })
+    }
+
+    fn message(&self, _schema: &IRSchema) -> String {
+        format!("MaxExclusive({}) not satisfied", self.0)
+    }
+
+    #[cfg(feature = "sparql")]
     fn validate_sparql(
         &self,
         component: &IRComponent,
@@ -49,21 +53,23 @@ impl<S: QueryRDF + Debug + 'static> BasicSparqlValidator<S> for MaxExclusive {
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
         _: &IRSchema,
-    ) -> Result<Vec<ValidationResult>, ValidationError> {
+    ) -> Result<Vec<ValidationResult>, ValidationError>
+    where
+        S: QueryRDF,
+    {
         let query_fn = |vn: &S::Term| {
             formatdoc! {
                 " ASK {{ FILTER ({} > {}) }} ",
-                vn, self.max_exclusive()
+                vn, self.0
             }
         };
-
-        validate_ask_with(
+        sparql_ask(
             component,
             shape,
             store,
             value_nodes,
             query_fn,
-            &format!("MaxExclusive({}) not satisfied", self.max_exclusive()),
+            &format!("MaxExclusive({}) not satisfied", self.0),
             maybe_path,
         )
     }

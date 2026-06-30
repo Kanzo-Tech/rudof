@@ -7,7 +7,7 @@ use prefixmap::IriRef;
 use prefixmap::PrefixMap;
 use prefixmap::error::PrefixMapError;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::{NeighsRDF, query::QueryRDF, term::Object, term::literal::ConcreteLiteral};
+use rudof_rdf::{NeighsRDF, query::QueryRDF, term::Object, term::literal::ConcreteLiteral};
 use serde::Serialize;
 use std::fmt::Display;
 use thiserror::Error;

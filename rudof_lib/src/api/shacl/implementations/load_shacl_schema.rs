@@ -5,7 +5,7 @@ use crate::{
     utils::get_base_iri,
 };
 use rudof_iri::{IriS, MimeType};
-use rudof_rdf::rdf_impl::OxigraphInMemory;
+use rudof_rdf::backend::OxigraphInMemory;
 use shacl::error::IRError;
 use shacl::rdf::ShaclParser;
 use sparql_service::RdfData;

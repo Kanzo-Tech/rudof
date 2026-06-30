@@ -2,21 +2,21 @@ use crate::ast::ASTComponent;
 use crate::rdf::parsers::non_shape::message;
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{
+use rudof_rdf::parser::rdf_node_parser::constructors::{
     SingleBoolPropertyParser, SingleStringPropertyParser, ValuesPropertyParser,
 };
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::vocabs::{OwlVocab, ShaclVocab};
-use rudof_rdf::rdf_core::{FocusRDF, RDFError};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::vocab::{OwlVocab, ShaclVocab};
+use rudof_rdf::{NeighsRDF, ParseCtx, RDFError};
 use std::collections::HashSet;
 use std::marker::PhantomData;
 
 struct BasicSparqlConstraintParser<RDF>(PhantomData<RDF>);
 
-impl<RDF: FocusRDF> RDFNodeParse<RDF> for BasicSparqlConstraintParser<RDF> {
+impl<RDF: NeighsRDF> RDFNodeParse<RDF> for BasicSparqlConstraintParser<RDF> {
     type Output = Vec<ASTComponent>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let fshape = rdf.get_focus().ok_or(RDFError::NoFocusNodeError)?.clone();
 
         let constraint_nodes = ValuesPropertyParser::new(ShaclVocab::sh_sparql()).parse_focused(rdf)?;
@@ -64,8 +64,8 @@ impl<RDF: FocusRDF> RDFNodeParse<RDF> for BasicSparqlConstraintParser<RDF> {
 ///
 /// Follows `sh:declare` to pick up `sh:prefix` / `sh:namespace` pairs, and
 /// `owl:imports` to include prefixes declared in imported ontologies.
-fn collect_prefixes<RDF: FocusRDF>(
-    rdf: &mut RDF,
+fn collect_prefixes<RDF: NeighsRDF>(
+    rdf: &mut ParseCtx<'_, RDF>,
     node: &RDF::Term,
     out: &mut PrefixMap,
     visited: &mut HashSet<String>,
@@ -101,6 +101,6 @@ fn collect_prefixes<RDF: FocusRDF>(
     }
 }
 
-pub(crate) fn basic_sparql<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn basic_sparql<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     BasicSparqlConstraintParser(PhantomData)
 }

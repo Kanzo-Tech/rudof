@@ -1,9 +1,10 @@
 use prefixmap::IriRef;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
+use rudof_rdf::term::literal::ConcreteLiteral;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Value {
     Iri(IriRef),
     Literal(ConcreteLiteral),

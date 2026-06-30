@@ -1,12 +1,12 @@
 use crate::ast::ASTComponent;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::{
+use rudof_rdf::parser::rdf_node_parser::constructors::{
     ObjectsPropertyParser, SingleBoolPropertyParser, SingleIntegerPropertyParser,
 };
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::ConcreteLiteral;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{FocusRDF, RDFError, SHACLPath};
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::ConcreteLiteral;
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{NeighsRDF, ParseCtx, RDFError, SHACLPath};
 use std::collections::HashSet;
 use std::marker::PhantomData;
 
@@ -21,28 +21,32 @@ use std::marker::PhantomData;
 /// shapes for Q is defined as the set of all values of the SPARQL property path
 /// sh:property/sh:qualifiedValueShape for any shape in ps minus the value of
 /// sh:qualifiedValueShape of Q itself. The set of sibling shapes is empty otherwise."
-struct QualifiedValueShapeSiblings<RDF: FocusRDF> {
+struct QualifiedValueShapeSiblings<RDF: NeighsRDF> {
     _marker: PhantomData<RDF>,
     property_qualified_value_shape_path: SHACLPath,
 }
 
-impl<RDF: FocusRDF> RDFNodeParse<RDF> for QualifiedValueShapeSiblings<RDF> {
+impl<RDF: NeighsRDF> RDFNodeParse<RDF> for QualifiedValueShapeSiblings<RDF> {
     type Output = Vec<Object>;
 
-    fn parse_focused(&self, rdf: &mut RDF) -> Result<Self::Output, RDFError> {
+    fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         match rdf.get_focus() {
             None => Err(RDFError::NoFocusNodeError),
             Some(focus) => {
                 let mut siblings = Vec::new();
-                let maybe_disjoint = rdf.object_for(focus, &ShaclVocab::sh_qualified_value_shapes_disjoint().into())?;
+                let maybe_disjoint = rdf
+                    .graph()
+                    .object_for(focus, &ShaclVocab::sh_qualified_value_shapes_disjoint().into())?;
                 if let Some(disjoint) = maybe_disjoint {
                     match disjoint {
                         Object::Literal(ConcreteLiteral::BooleanLiteral(true)) => {
-                            let qvs = rdf.objects_for(focus, &ShaclVocab::sh_qualified_value_shape().into())?;
+                            let qvs = rdf
+                                .graph()
+                                .objects_for(focus, &ShaclVocab::sh_qualified_value_shape().into())?;
                             if !qvs.is_empty() {
-                                let ps = rdf.subjects_for(&ShaclVocab::sh_property().into(), focus)?;
+                                let ps = rdf.graph().subjects_for(&ShaclVocab::sh_property().into(), focus)?;
                                 for property_parent in ps {
-                                    let candidate_siblings = rdf.objects_for_shacl_path(
+                                    let candidate_siblings = rdf.graph().objects_for_shacl_path(
                                         &property_parent,
                                         &self.property_qualified_value_shape_path,
                                     )?;
@@ -65,24 +69,24 @@ impl<RDF: FocusRDF> RDFNodeParse<RDF> for QualifiedValueShapeSiblings<RDF> {
     }
 }
 
-pub(crate) fn qualified_value_shape<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn qualified_value_shape<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     ObjectsPropertyParser::new(ShaclVocab::sh_qualified_value_shape())
         .then(|qvs| parse_qualified_value_shape::<RDF>(qvs.into_iter().collect()))
 }
 
-fn qualified_value_shape_disjoint_parser<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Option<bool>> {
+fn qualified_value_shape_disjoint_parser<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Option<bool>> {
     SingleBoolPropertyParser::new(ShaclVocab::sh_qualified_value_shapes_disjoint()).optional()
 }
 
-fn qualified_min_count_parser<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Option<isize>> {
+fn qualified_min_count_parser<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Option<isize>> {
     SingleIntegerPropertyParser::new(ShaclVocab::sh_qualified_min_count()).optional()
 }
 
-fn qualified_max_count_parser<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Option<isize>> {
+fn qualified_max_count_parser<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Option<isize>> {
     SingleIntegerPropertyParser::new(ShaclVocab::sh_qualified_max_count()).optional()
 }
 
-fn qualified_value_shape_siblings<RDF: FocusRDF>() -> QualifiedValueShapeSiblings<RDF> {
+fn qualified_value_shape_siblings<RDF: NeighsRDF>() -> QualifiedValueShapeSiblings<RDF> {
     QualifiedValueShapeSiblings {
         _marker: PhantomData,
         property_qualified_value_shape_path: SHACLPath::sequence(vec![
@@ -92,7 +96,7 @@ fn qualified_value_shape_siblings<RDF: FocusRDF>() -> QualifiedValueShapeSibling
     }
 }
 
-fn parse_qualified_value_shape<RDF: FocusRDF>(
+fn parse_qualified_value_shape<RDF: NeighsRDF>(
     qvs: HashSet<Object>,
 ) -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     qualified_value_shape_disjoint_parser()

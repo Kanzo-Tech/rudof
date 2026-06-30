@@ -43,7 +43,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run cargo check
-        run: cargo check --workspace
+        run: cargo check --workspace --exclude rudof_wasm
 
   check-wasm:
     name: Check wasm
@@ -57,7 +57,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Run cargo check
-        run: cargo check --workspace --target wasm32-unknown-unknown
+        run: cargo check -p rudof_wasm --target wasm32-unknown-unknown
 
   rustfmt:
     name: Rustfmt
@@ -84,7 +84,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Clippy check
-        run: cargo clippy --all-targets --all-features --workspace -- -D warnings
+        run: cargo clippy --all-targets --all-features --workspace --exclude rudof_wasm -- -D warnings
 
   test:
     name: Test Suite
@@ -98,7 +98,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run cargo test
-        run: cargo test --workspace --features qlever
+        run: cargo test --workspace --exclude rudof_wasm
 
   wasm-test:
     name: Test Suite on Wasm
@@ -118,4 +118,4 @@ jobs:
       - name: Run cargo test
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
-        run: cargo test --workspace --target wasm32-unknown-unknown --lib --tests
+        run: cargo test -p rudof_wasm --target wasm32-unknown-unknown --lib --tests

@@ -747,6 +747,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "const_format"
 version = "0.2.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2053,10 +2063,12 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.85"
+version = "0.3.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c942ebf8e95485ca0d52d97da7c5a2c387d0e7f0ba4c35e93bfcaee045955b3"
+checksum = "a1840c94c045fbcf8ba2812c95db44499f7c64910a912551aaaa541decebcacf"
 dependencies = [
+ "cfg-if",
+ "futures-util",
  "once_cell",
  "wasm-bindgen",
 ]
@@ -3603,6 +3615,7 @@ dependencies = [
  "rudof_generate",
  "rudof_iri",
  "rudof_rdf",
+ "rudof_rdf_viz",
  "serde",
  "serde_json",
  "shacl",
@@ -3614,7 +3627,6 @@ dependencies = [
  "tabled",
  "termtree",
  "thiserror 2.0.17",
- "tokio",
  "toml",
  "tracing",
  "url",
@@ -3654,13 +3666,10 @@ dependencies = [
 name = "rudof_rdf"
 version = "0.3.4"
 dependencies = [
- "bollard",
  "colored",
  "const_format",
  "csv",
- "futures",
  "getrandom 0.3.4",
- "nix",
  "once_cell",
  "oxigraph",
  "oxilangtag",
@@ -3684,13 +3693,57 @@ dependencies = [
  "spargebra",
  "tabled",
  "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "toml",
+ "url",
+]
+
+[[package]]
+name = "rudof_rdf_qlever"
+version = "0.3.4"
+dependencies = [
+ "bollard",
+ "colored",
+ "futures",
+ "nix",
+ "oxiri",
+ "oxrdf",
+ "oxrdfio",
+ "prefixmap",
+ "reqwest",
+ "rudof_iri",
+ "rudof_rdf",
+ "serde",
+ "sparesults",
+ "tempfile",
  "testcontainers",
  "thiserror 2.0.17",
  "tokio",
  "tokio-util",
- "toml",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "rudof_rdf_viz"
+version = "0.3.4"
+dependencies = [
+ "rudof_rdf",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "rudof_wasm"
+version = "0.3.4"
+dependencies = [
+ "console_error_panic_hook",
+ "rudof_lib",
+ "serde",
+ "serde-wasm-bindgen",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -4005,6 +4058,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-wasm-bindgen"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4160,6 +4224,7 @@ dependencies = [
  "rudof_iri",
  "rudof_rdf",
  "serde",
+ "serde_json",
  "sparql_service",
  "thiserror 2.0.17",
  "toml",
@@ -4196,6 +4261,7 @@ dependencies = [
  "rdf_config",
  "rudof_iri",
  "rudof_rdf",
+ "rudof_rdf_viz",
  "serde",
  "shacl",
  "shex_ast",
@@ -5308,9 +5374,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.108"
+version = "0.2.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64024a30ec1e37399cf85a7ffefebdb72205ca1c972291c51512360d90bd8566"
+checksum = "df52b6d9b87e0c74c9edfa1eb2d9bf85e5d63515474513aa50fa181b3c4f5db1"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -5321,23 +5387,19 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.58"
+version = "0.4.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70a6e77fd0ae8029c9ea0063f87c46fde723e7d887703d74ad2616d792e51e6f"
+checksum = "af934872acec734c2d80e6617bbb5ff4f12b052dd8e6332b0817bce889516084"
 dependencies = [
- "cfg-if",
- "futures-util",
  "js-sys",
- "once_cell",
  "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.108"
+version = "0.2.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "008b239d9c740232e71bd39e8ef6429d27097518b6b30bdf9086833bd5b6d608"
+checksum = "78b1041f495fb322e64aca85f5756b2172e35cd459376e67f2a6c9dffcedb103"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -5345,9 +5407,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.108"
+version = "0.2.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5256bae2d58f54820e6490f9839c49780dff84c65aeab9e772f15d5f0e913a55"
+checksum = "9dcd0ff20416988a18ac686d4d4d0f6aae9ebf08a389ff5d29012b05af2a1b41"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -5358,9 +5420,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.108"
+version = "0.2.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f01b580c9ac74c8d8f0c0e4afb04eeef2acf145458e52c03845ee9cd23e3d12"
+checksum = "49757b3c82ebf16c57d69365a142940b384176c24df52a087fb748e2085359ea"
 dependencies = [
  "unicode-ident",
 ]
@@ -5401,9 +5463,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.85"
+version = "0.3.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "312e32e551d92129218ea9a2452120f4aabc03529ef03e4d0d82fb2780608598"
+checksum = "2eadbac71025cd7b0834f20d1fe8472e8495821b4e9801eb0a60bd1f19827602"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

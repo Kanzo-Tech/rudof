@@ -4,9 +4,9 @@ mod tests {
     use crate::rdf::ShaclParser;
     use crate::types::Target;
     use rudof_iri::iri;
-    use rudof_rdf::rdf_core::RDFFormat;
-    use rudof_rdf::rdf_core::term::Object;
-    use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
+    use rudof_rdf::RDFFormat;
+    use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
+    use rudof_rdf::term::Object;
 
     #[test]
     fn test_language_in() {

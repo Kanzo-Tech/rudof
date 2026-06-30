@@ -2,10 +2,10 @@ use crate::ast::error::ASTError;
 use crate::ir::ShapeLabelIdx;
 use crate::rdf::error::ShaclParserError;
 use prefixmap::IriRefError;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::utils::RDFRegexError;
-use rudof_rdf::rdf_core::{RDFError, Rdf, SHACLPath};
-use rudof_rdf::rdf_impl::OxigraphInMemoryError;
+use rudof_rdf::backend::OxigraphInMemoryError;
+use rudof_rdf::term::Object;
+use rudof_rdf::utils::RDFRegexError;
+use rudof_rdf::{RDFError, Rdf, SHACLPath};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -38,6 +38,18 @@ pub enum IRError {
 
     #[error(transparent)]
     RDFError(#[from] Box<RDFError>),
+
+    #[error("Shape id {0} cannot be used as an RDF subject (expected an IRI or blank node)")]
+    InvalidShapeId(Box<Object>),
+
+    #[error("Unexpected term {0} in a value constraint (expected an IRI or literal)")]
+    UnexpectedValueTerm(Box<Object>),
+
+    #[error("Cannot serialize the non-predicate property path to RDF: {0}")]
+    UnsupportedPathSerialization(Box<SHACLPath>),
+
+    #[error("{component} cardinality must be >= 0, got {value}")]
+    NegativeCardinality { component: &'static str, value: isize },
 }
 
 impl IRError {

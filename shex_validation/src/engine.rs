@@ -12,7 +12,7 @@ use itertools::Itertools;
 // use prefixmap::PrefixMap;
 use rbe::MatchCond;
 use rudof_iri::iri;
-use rudof_rdf::rdf_core::{
+use rudof_rdf::{
     NeighsRDF,
     query::QueryRDF,
     term::{BlankNode, Iri as _, Object},
@@ -1511,8 +1511,8 @@ mod tests {
     use super::*;
     use crate::ValidatorConfig;
     use rudof_iri::IriS;
-    use rudof_rdf::rdf_core::RDFFormat;
-    use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
+    use rudof_rdf::RDFFormat;
+    use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 
     // :alice :knows :bob .
     // :carol :knows :alice .

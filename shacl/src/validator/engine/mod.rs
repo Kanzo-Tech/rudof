@@ -8,32 +8,28 @@ mod value_nodes_ops;
 use crate::ir::{IRComponent, IRPropertyShape, IRSchema, IRShape, ShapeLabelIdx};
 use crate::types::Target;
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::{NeighsRDF, SHACLPath};
+use rudof_rdf::term::Object;
+use rudof_rdf::{NeighsRDF, SHACLPath};
+#[cfg(feature = "sparql")]
 use std::collections::HashSet;
 
 use crate::error::ValidationError;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
 pub use native::NativeEngine;
-use rudof_rdf::rdf_core::query::QueryRDF;
+#[cfg(feature = "sparql")]
+use rudof_rdf::query::QueryRDF;
 #[cfg(feature = "sparql")]
 pub use sparql::SparqlEngine;
-pub use validate::Validate;
+pub use validate::{Validate, validate_focus};
 
-pub trait Engine<S: NeighsRDF>: Send {
-    /// Pre-builds internal indexes from the data graph for faster target resolution
-    ///
-    /// This should be called **once** before the validation loop starts
-    fn build_indexes(&mut self, _store: &S) -> Result<(), ValidationError> {
-        Ok(())
-    }
-
-    /// Creates a new engine instance that shares pre-built indexes and cache.
-    ///
-    /// This is used by the parallel validator to cheaply spin up per-shape
-    /// engines without rebuilding expensive indexes for every thread.
-    fn fork(&self) -> Box<dyn Engine<S>>;
+pub trait Engine<S: NeighsRDF>: Sized {
+    /// Creates a fresh sibling engine for a parallel task: it copies the
+    /// borrowed read-only context (a `Copy` of an `&ref`, e.g. the class index)
+    /// and starts with an empty owned cache. No `Box`, no `Arc`: it returns
+    /// `Self`, so the engine is never type-erased and never crosses a thread
+    /// boundary (each task forks its own inside the worker closure).
+    fn fork(&self) -> Self;
 
     fn evaluate(
         &mut self,
@@ -47,24 +43,29 @@ pub trait Engine<S: NeighsRDF>: Send {
     ) -> Result<Vec<ValidationResult>, ValidationError>;
 
     fn focus_nodes(&self, store: &S, targets: &[Target]) -> Result<FocusNodes<S>, ValidationError> {
-        let targets_iter: Vec<_> = targets
-            .iter()
-            .flat_map(|target| match target {
-                Target::Node(n) => self.target_node(store, n),
-                Target::Class(c) => self.target_class(store, c),
-                Target::SubjectsOf(p) => self.target_subject_of(store, p),
-                Target::ObjectsOf(p) => self.target_object_of(store, p),
-                Target::ImplicitClass(n) => self.implicit_target_class(store, n),
-                Target::WrongNode(_) => todo!(),
-                Target::WrongClass(_) => todo!(),
-                Target::WrongSubjectsOf(_) => todo!(),
-                Target::WrongObjectsOf(_) => todo!(),
-                Target::WrongImplicitClass(_) => todo!(),
-            })
-            .flatten()
-            .collect();
+        let mut acc: Vec<S::Term> = Vec::new();
+        for target in targets {
+            let resolved = match target {
+                Target::Node(n) => self.target_node(store, n)?,
+                Target::Class(c) => self.target_class(store, c)?,
+                Target::SubjectsOf(p) => self.target_subject_of(store, p)?,
+                Target::ObjectsOf(p) => self.target_object_of(store, p)?,
+                Target::ImplicitClass(n) => self.implicit_target_class(store, n)?,
+                // Malformed targets propagate a typed error instead of panicking.
+                Target::WrongNode(_)
+                | Target::WrongClass(_)
+                | Target::WrongSubjectsOf(_)
+                | Target::WrongObjectsOf(_)
+                | Target::WrongImplicitClass(_) => {
+                    return Err(ValidationError::MalformedTarget(
+                        "target value has the wrong term kind".to_string(),
+                    ));
+                },
+            };
+            acc.extend(resolved);
+        }
 
-        Ok(FocusNodes::from_iter(targets_iter))
+        Ok(FocusNodes::from_iter(acc))
     }
 
     /// If s is a shape in a shapes graph SG and s has value t for sh:targetNode
@@ -89,12 +90,10 @@ pub trait Engine<S: NeighsRDF>: Send {
 
     fn has_validated(&self, node: &Object, shape_idx: ShapeLabelIdx) -> bool;
 
-    /// Returns the cached validation results for a given `(node, shape_idx)` pair, if any.
-    ///
-    /// Returns an owned [`Vec`] so that implementations backed by concurrent data
-    /// structures can return data without tying the lifetime to
-    /// an internal lock guard.
-    fn get_cached_results(&self, node: &Object, shape_idx: ShapeLabelIdx) -> Option<Vec<ValidationResult>>;
+    /// Borrows the cached validation results for a given `(node, shape_idx)`
+    /// pair, if any. The cache is an owned `HashMap` now, so there is no lock
+    /// guard to tie a lifetime to — return a slice.
+    fn get_cached_results(&self, node: &Object, shape_idx: ShapeLabelIdx) -> Option<&[ValidationResult]>;
 }
 
 #[cfg(feature = "sparql")]

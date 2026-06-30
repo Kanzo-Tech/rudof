@@ -18,16 +18,10 @@ sparql = [
     "dep:spargebra",
     "dep:sparesults",
 ]
-qlever = [
-    "sparql",
-    "dep:testcontainers",
-    "dep:bollard",
-    "dep:nix",
-    "dep:futures",
-    "dep:tracing",
-    "dep:tokio-util",
-]
-qlever-docker-tests = ["qlever"]
+# Opt-in, type-erased parser combinators (`Opaque`/`FnOpaque`). Off by default so the
+# core parser stays 100% generic / monomorphized. Only needed to tame compile-time
+# blow-up from pathologically deep combinator nesting (a build-time concern).
+parser-erased = []
 
 [dependencies]
 colored.workspace = true
@@ -56,14 +50,8 @@ spargebra = { workspace = true, optional = true }
 tabled.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, optional = true }
-tokio-util = { workspace = true, optional = true }
 toml.workspace = true
 url.workspace = true
-tracing = { workspace = true, optional = true }
-futures = { workspace = true, optional = true }
-testcontainers = { workspace = true, optional = true }
-bollard = { workspace = true, optional = true }
-nix = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 oxigraph = { workspace = true, features = ["http-client-rustls-native"] }

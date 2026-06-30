@@ -1,10 +1,8 @@
 use crate::errors::DataError;
 use rudof_generate::config::OutputFormat;
 use rudof_iri::MimeType;
-use rudof_rdf::{
-    rdf_core::{RDFFormat, visualizer::uml_converter::ImageFormat},
-    rdf_impl::ReaderMode,
-};
+use rudof_rdf::{RDFFormat, backend::ReaderMode};
+use rudof_rdf_viz::uml_converter::ImageFormat;
 use std::{
     fmt::{Display, Formatter},
     str::FromStr,

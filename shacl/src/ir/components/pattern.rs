@@ -1,5 +1,5 @@
 use crate::ir::error::IRError;
-use rudof_rdf::rdf_core::utils::RDFRegex;
+use rudof_rdf::utils::RDFRegex;
 use std::fmt::{Display, Formatter};
 
 /// sh:property can be used to specify that each value node has a given property

@@ -1,11 +1,11 @@
 use crate::ast::ASTComponent;
 use crate::rdf::parsers::utils::{parse_components_for_iri, term_to_value};
-use rudof_rdf::rdf_core::FocusRDF;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::constructors::TermParser;
-use rudof_rdf::rdf_core::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
+use rudof_rdf::NeighsRDF;
+use rudof_rdf::parser::rdf_node_parser::constructors::TermParser;
+use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::vocab::ShaclVocab;
 
-pub(crate) fn has_value<RDF: FocusRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
+pub(crate) fn has_value<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
     parse_components_for_iri(
         ShaclVocab::sh_has_value(),
         TermParser::new().flat_map(|term| {

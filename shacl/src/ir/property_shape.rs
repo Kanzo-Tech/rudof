@@ -6,12 +6,12 @@ use crate::ir::error::IRError;
 use crate::ir::schema::IRSchema;
 use crate::ir::shape::IRShape;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
-use crate::types::{ClosedInfo, MessageMap, Severity, Target};
+use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target};
 use rudof_iri::IriS;
-use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::term::literal::NumericLiteral;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
-use rudof_rdf::rdf_core::{BuildRDF, SHACLPath};
+use rudof_rdf::term::Object;
+use rudof_rdf::term::literal::{ConcreteLiteral, NumericLiteral};
+use rudof_rdf::vocab::ShaclVocab;
+use rudof_rdf::{BuildRDF, SHACLPath};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -32,6 +32,10 @@ pub struct IRPropertyShape {
     description: MessageMap,
     order: Option<NumericLiteral>,
     group: Option<Object>,
+    // SHACL 1.2: `sh:defaultValue` resolved to a concrete term (via convert_value).
+    default_value: Option<Object>,
+    // SHACL-UI presentation hints, carried through from the AST.
+    presentation: Presentation,
     // source_iri: Option<S::IRI>,
     // annotations: Vec<(S::IRI, S::Term)>,
 }
@@ -53,6 +57,8 @@ impl IRPropertyShape {
             description: MessageMap::new(),
             order: None,
             group: None,
+            default_value: None,
+            presentation: Presentation::default(),
         }
     }
 
@@ -102,6 +108,24 @@ impl IRPropertyShape {
     pub fn with_message(mut self, message: Option<MessageMap>) -> Self {
         self.message = message;
         self
+    }
+
+    pub fn with_default_value(mut self, default_value: Option<Object>) -> Self {
+        self.default_value = default_value;
+        self
+    }
+
+    pub fn with_presentation(mut self, presentation: Presentation) -> Self {
+        self.presentation = presentation;
+        self
+    }
+
+    pub fn default_value(&self) -> Option<&Object> {
+        self.default_value.as_ref()
+    }
+
+    pub fn presentation(&self) -> &Presentation {
+        &self.presentation
     }
 
     pub fn id(&self) -> &Object {
@@ -170,6 +194,8 @@ impl IRPropertyShape {
 
         let reifier_info = ReifierInfo::get_reifier_info(shape, ast, ir)?;
 
+        let default_value = shape.default_value().cloned().map(super::convert_value).transpose()?;
+
         let compiled_prop_shape = IRPropertyShape::new(shape.id().clone(), shape.path().to_owned(), closed_info)
             .with_components(compiled_components)
             .with_targets(shape.targets().to_owned())
@@ -181,7 +207,9 @@ impl IRPropertyShape {
             .with_description(shape.description().to_owned())
             .with_order(shape.order().cloned())
             .with_group(shape.group().cloned())
-            .with_message(shape.message().cloned());
+            .with_message(shape.message().cloned())
+            .with_default_value(default_value)
+            .with_presentation(shape.presentation().clone());
 
         Ok(compiled_prop_shape)
     }
@@ -193,7 +221,11 @@ impl IRPropertyShape {
         graph: &mut RDF,
         shapes_map: &HashMap<ShapeLabelIdx, IRShape>,
     ) -> Result<(), IRError> {
-        let id: RDF::Subject = self.id.clone().try_into().unwrap_or_else(|_| unreachable!());
+        let id: RDF::Subject = self
+            .id
+            .clone()
+            .try_into()
+            .map_err(|_| IRError::InvalidShapeId(Box::new(self.id.clone())))?;
         graph
             .add_type(id.clone(), ShaclVocab::sh_property_shape())
             .map_err(|e| IRError::from_rdf_err::<RDF>("add type", e))?;
@@ -211,24 +243,9 @@ impl IRPropertyShape {
         })?;
 
         if let Some(order) = &self.order {
-            let lit: RDF::Literal = match order {
-                NumericLiteral::Integer(i) => (*i).into(),
-                NumericLiteral::Byte(_) => todo!(),
-                NumericLiteral::Short(_) => todo!(),
-                NumericLiteral::NonNegativeInteger(_) => todo!(),
-                NumericLiteral::UnsignedLong(_) => todo!(),
-                NumericLiteral::UnsignedInt(_) => todo!(),
-                NumericLiteral::UnsignedShort(_) => todo!(),
-                NumericLiteral::UnsignedByte(_) => todo!(),
-                NumericLiteral::PositiveInteger(_) => todo!(),
-                NumericLiteral::NegativeInteger(_) => todo!(),
-                NumericLiteral::NonPositiveInteger(_) => todo!(),
-                NumericLiteral::Long(_) => todo!(),
-                NumericLiteral::Decimal(_) => todo!(),
-                NumericLiteral::Double(f) => (*f).into(),
-                NumericLiteral::Float(f) => f.to_string().into(),
-            };
-
+            // One typed conversion for every NumericLiteral variant: ConcreteLiteral
+            // carries the lexical form + xsd datatype, and RDF::Literal: From<ConcreteLiteral>.
+            let lit: RDF::Literal = ConcreteLiteral::NumericLiteral(order.clone()).into();
             graph
                 .add_triple(id.clone(), ShaclVocab::sh_order(), lit)
                 .map_err(IRError::add_triple::<RDF>)?;
@@ -245,7 +262,9 @@ impl IRPropertyShape {
                 .add_triple(id.clone(), ShaclVocab::sh_path(), pred.clone())
                 .map_err(IRError::add_triple::<RDF>)?;
         } else {
-            unimplemented!()
+            // Complex paths (sequence/alternative/inverse/…) need an RDF list
+            // encoding that is not yet emitted; fail loudly instead of panicking.
+            return Err(IRError::UnsupportedPathSerialization(Box::new(self.path.clone())));
         }
 
         self.components
@@ -254,8 +273,7 @@ impl IRPropertyShape {
 
         self.targets
             .iter()
-            .try_for_each(|target| target.register(&self.id, graph))
-            .map_err(|e| IRError::from_rdf_err::<RDF>("add target to graph", e))?;
+            .try_for_each(|target| target.register(&self.id, graph))?;
 
         if self.deactivated {
             let lit: RDF::Literal = "true".to_string().into();

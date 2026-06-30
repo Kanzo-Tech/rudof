@@ -150,13 +150,11 @@ where
                     &Values::from(&values),
                 )))
             } else {
-                let result = Ok(MatchTableIter::Empty(EmptyIter::new(
+                Ok(MatchTableIter::Empty(EmptyIter::new(
                     &self.rbe,
                     self,
                     &Values::from(&values),
-                )));
-                //trace!("Result of matches: {:?}", result);
-                result
+                )))
             }
         } else {
             //trace!("Some candidates found for rbe: {:?}", self.rbe);

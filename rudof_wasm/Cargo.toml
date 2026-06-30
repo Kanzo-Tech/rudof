@@ -10,6 +10,12 @@ description = "wasm-bindgen bindings exposing rudof's SHACL/ShEx stack to JavaSc
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+# wasm-pack reads this: run wasm-opt -Oz on the release build so the published
+# .wasm stays small (the standard `release` profile + default -O leaves it ~0.8MB
+# larger than -Oz). This replaces the old hand-rolled `wasm-release` cargo profile.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-Oz']
+
 [dependencies]
 wasm-bindgen = "=0.2.120"
 serde = { workspace = true, features = ["derive"] }

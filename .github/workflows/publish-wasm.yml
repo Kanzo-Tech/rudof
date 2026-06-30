@@ -1,0 +1,60 @@
+name: Publish rudof-wasm (npm)
+
+# Builds rudof_wasm with wasm-pack and publishes @kanzo/rudof-wasm to npm.
+# Trigger: a `rudof-wasm-v*` tag (version derived from the tag) or manual dispatch.
+# Requires an NPM_TOKEN repository secret (npm automation token with publish rights
+# on the @kanzo scope).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "npm version to publish (e.g. 0.3.4)"
+        required: true
+  push:
+    tags:
+      - "rudof-wasm-v*"
+
+jobs:
+  publish:
+    name: Build & publish @kanzo/rudof-wasm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#rudof-wasm-v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust (wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: "v0.13.1"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Build pkg
+        run: PKG_NAME="@kanzo/rudof-wasm" PKG_VERSION="${{ steps.ver.outputs.version }}" bash rudof_wasm/build.sh
+
+      - name: Publish to npm
+        run: npm publish --access public
+        working-directory: rudof_wasm/pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

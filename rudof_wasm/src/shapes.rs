@@ -116,6 +116,7 @@ fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInM
     PropertyShapeIR {
         id: object_iri(ps.id()),
         path: path_to_ir(ps.path()),
+        path_key: path_key(ps.path()),
         cardinality,
         value,
         logical,

@@ -133,6 +133,10 @@ pub struct PropertyShapeIR {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub path: PathExpr,
+    /// Canonical SPARQL-ish path key (`(a/b)`, `^p`), matching the projected
+    /// `ProjectedProperty.pathKey` — lets consumers align a property shape to its
+    /// projected values without re-deriving the key.
+    pub path_key: String,
     pub cardinality: Cardinality,
     pub value: ValueConstraints,
     pub logical: LogicalConstraints,

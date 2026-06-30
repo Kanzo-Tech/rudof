@@ -1,9 +1,9 @@
 name: Publish rudof-wasm (npm)
 
-# Builds rudof_wasm with wasm-pack and publishes @kanzo/rudof-wasm to npm.
+# Builds rudof_wasm with wasm-pack and publishes @kanzo-tech/rudof-wasm to npm.
 # Trigger: a `rudof-wasm-v*` tag (version derived from the tag) or manual dispatch.
 # Requires an NPM_TOKEN repository secret (npm automation token with publish rights
-# on the @kanzo scope).
+# on the @kanzo-tech scope).
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ on:
 
 jobs:
   publish:
-    name: Build & publish @kanzo/rudof-wasm
+    name: Build & publish @kanzo-tech/rudof-wasm
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,7 +51,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Build pkg
-        run: PKG_NAME="@kanzo/rudof-wasm" PKG_VERSION="${{ steps.ver.outputs.version }}" bash rudof_wasm/build.sh
+        run: PKG_NAME="@kanzo-tech/rudof-wasm" PKG_VERSION="${{ steps.ver.outputs.version }}" bash rudof_wasm/build.sh
 
       - name: Publish to npm
         run: npm publish --access public

@@ -5,12 +5,12 @@
 # Requires wasm-pack and the wasm32-unknown-unknown target.
 #
 # Package identity is overridable for publishing:
-#   PKG_NAME     npm name     (default: @kanzo/rudof-wasm)
+#   PKG_NAME     npm name     (default: @kanzo-tech/rudof-wasm)
 #   PKG_VERSION  npm version  (default: the crate version; CI sets the release version)
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PKG_NAME="${PKG_NAME:-@kanzo/rudof-wasm}"
+PKG_NAME="${PKG_NAME:-@kanzo-tech/rudof-wasm}"
 
 wasm-pack build --target web --out-dir pkg --out-name rudof_wasm --release
 

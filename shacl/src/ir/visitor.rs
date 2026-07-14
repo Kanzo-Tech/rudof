@@ -15,7 +15,7 @@
 //! [`IRComponent::accept`] changes — every visitor keeps working untouched.
 
 use crate::ir::ShapeLabelIdx;
-use crate::ir::components::{BasicSparql, Closed, Pattern, QualifiedValueShape};
+use crate::ir::components::{BasicSparql, Closed, If, Pattern, QualifiedValueShape};
 use crate::types::NodeKind;
 use rudof_iri::IriS;
 use rudof_rdf::term::Object;
@@ -109,6 +109,9 @@ pub trait IRComponentVisitor {
     fn visit_xone(&mut self, _shapes: &[ShapeLabelIdx]) -> Result<Self::Output, Self::Error> {
         self.default_component()
     }
+    fn visit_if(&mut self, _if: &If) -> Result<Self::Output, Self::Error> {
+        self.default_component()
+    }
 
     // shape-based
     fn visit_node(&mut self, _shape: ShapeLabelIdx) -> Result<Self::Output, Self::Error> {
@@ -166,6 +169,7 @@ impl IRComponent {
             IRComponent::And(and) => visitor.visit_and(and.shapes()),
             IRComponent::Not(not) => visitor.visit_not(*not.shape()),
             IRComponent::Xone(xone) => visitor.visit_xone(xone.shapes()),
+            IRComponent::If(if_) => visitor.visit_if(if_),
             IRComponent::Node(node) => visitor.visit_node(*node.shape()),
             IRComponent::QualifiedValueShape(qvs) => visitor.visit_qualified_value_shape(qvs),
             IRComponent::Closed(closed) => visitor.visit_closed(closed),

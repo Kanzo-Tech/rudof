@@ -39,6 +39,11 @@ pub enum ASTComponent {
     And(Vec<Object>),
     Not(Object),
     Xone(Vec<Object>),
+    If {
+        cond: Object,
+        then_: Option<Object>,
+        else_: Option<Object>,
+    },
     Closed {
         is_closed: bool,
         ignored_properties: HashSet<IriS>,
@@ -148,6 +153,21 @@ impl ComponentVisitor for DisplayVisitor<'_, '_> {
     fn visit_xone(&mut self, shapes: &[Object]) -> Result<(), std::fmt::Error> {
         let str = shapes.iter().map(|s| s.to_string()).join(", ");
         write!(self.f, "xone[{str}]")
+    }
+    fn visit_if(
+        &mut self,
+        cond: &Object,
+        then_: Option<&Object>,
+        else_: Option<&Object>,
+    ) -> Result<(), std::fmt::Error> {
+        write!(self.f, "if({cond}")?;
+        if let Some(t) = then_ {
+            write!(self.f, ", then: {t}")?;
+        }
+        if let Some(e) = else_ {
+            write!(self.f, ", else: {e}")?;
+        }
+        write!(self.f, ")")
     }
     fn visit_closed(&mut self, is_closed: bool, ignored: &HashSet<IriS>) -> Result<(), std::fmt::Error> {
         write!(
@@ -307,6 +327,9 @@ impl ComponentVisitor for ConstraintIriVisitor {
     }
     fn visit_xone(&mut self, _: &[Object]) -> Result<IriS, Infallible> {
         Ok(ShaclVocab::sh_xone())
+    }
+    fn visit_if(&mut self, _: &Object, _: Option<&Object>, _: Option<&Object>) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_if())
     }
     fn visit_closed(&mut self, _: bool, _: &HashSet<IriS>) -> Result<IriS, Infallible> {
         Ok(ShaclVocab::sh_closed())

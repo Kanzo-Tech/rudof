@@ -149,12 +149,49 @@ fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &
         })
         .collect();
 
+    let conditionals = ns
+        .components()
+        .iter()
+        .filter_map(|c| match c {
+            ASTComponent::If { cond, then_, else_ } => Some(ConditionalIR {
+                condition_id: object_str(cond),
+                then: resolve_then_else(then_.as_ref(), schema, graph),
+                els: resolve_then_else(else_.as_ref(), schema, graph),
+            }),
+            _ => None,
+        })
+        .collect();
+
     NodeShapeIR {
         id: object_str(id),
         instance_class: target_classes.first().cloned(),
         target_classes,
         properties,
+        conditionals,
         closed: None,
+    }
+}
+
+/// Resolve a `sh:then` / `sh:else` object to its property shapes: a node-shape
+/// target contributes each of its `property_shapes()`; a direct property shape
+/// contributes itself; anything unresolved/absent yields an empty vec.
+pub(crate) fn resolve_then_else(
+    obj: Option<&Object>,
+    schema: &ASTSchema,
+    graph: &OxigraphInMemory,
+) -> Vec<PropertyShapeIR> {
+    let Some(obj) = obj else { return Vec::new() };
+    match schema.get_shape(obj) {
+        Some(ASTShape::NodeShape(ns)) => ns
+            .property_shapes()
+            .iter()
+            .filter_map(|pref| match schema.get_shape(pref) {
+                Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir(ps, schema, graph)),
+                _ => None,
+            })
+            .collect(),
+        Some(ASTShape::PropertyShape(ps)) => vec![property_to_ir(ps, schema, graph)],
+        _ => Vec::new(),
     }
 }
 
@@ -429,7 +466,7 @@ pub(crate) fn path_key(path: &SHACLPath) -> String {
     }
 }
 
-fn object_str(o: &Object) -> String {
+pub(crate) fn object_str(o: &Object) -> String {
     match o {
         Object::Iri(i) => i.as_str().to_string(),
         Object::BlankNode(b) => format!("_:{b}"),

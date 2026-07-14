@@ -107,6 +107,19 @@ pub struct ValueConstraints {
     pub language_in: Option<Vec<String>>,
 }
 
+/// A node-shape-level `sh:if` / `sh:then` / `sh:else` conditional. The `then`/`else`
+/// property shapes are the fields shown when the condition (does not) hold.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ConditionalIR {
+    /// stable id of the sh:if condition shape (IRI, or "_:b" for a blank node).
+    pub condition_id: String,
+    #[serde(default)]
+    pub then: Vec<PropertyShapeIR>,
+    #[serde(default, rename = "else")]
+    pub els: Vec<PropertyShapeIR>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct LogicalConstraints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -169,6 +182,8 @@ pub struct NodeShapeIR {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instance_class: Option<String>,
     pub properties: Vec<PropertyShapeIR>,
+    #[serde(default)]
+    pub conditionals: Vec<ConditionalIR>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<bool>,
 }
@@ -209,6 +224,10 @@ pub struct ProjectedProperty {
 pub struct ProjectedForm {
     pub focus: TermValue,
     pub properties: Vec<ProjectedProperty>,
+    /// condition_ids (matching `ConditionalIR.condition_id`) whose `sh:if`
+    /// condition the focus currently conforms to — the live "satisfied" flag.
+    #[serde(default)]
+    pub satisfied: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

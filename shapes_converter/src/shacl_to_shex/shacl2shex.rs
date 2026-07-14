@@ -342,6 +342,7 @@ impl Shacl2ShEx {
             IRComponent::And(_) => todo!(),
             IRComponent::Not(_) => todo!(),
             IRComponent::Xone(_) => todo!(),
+            IRComponent::If(_) => todo!(),
             IRComponent::Closed(_) => todo!(),
             IRComponent::Node(_) => todo!(),
             IRComponent::HasValue(_) => todo!(),

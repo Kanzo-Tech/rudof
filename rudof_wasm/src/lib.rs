@@ -192,6 +192,7 @@ impl Session {
             None => to_js(&ProjectedForm {
                 focus,
                 properties: vec![],
+                satisfied: vec![],
             }),
         }
     }

@@ -242,6 +242,27 @@ impl FormEngine {
         Ok(outcome(results))
     }
 
+    /// Does `focus` conform to `shape`? Resolves the shape by `Object` (IRI OR
+    /// blank node), so blank-node `sh:if` condition shapes — which
+    /// [`validate_focus`]/[`validate_shape`] cannot address (they resolve IRI
+    /// ids only) — can be evaluated. Conformance is decided canonically by the
+    /// validator: the focus conforms exactly when scoped validation yields no
+    /// results.
+    ///
+    /// [`validate_focus`]: FormEngine::validate_focus
+    /// [`validate_shape`]: FormEngine::validate_shape
+    pub fn conforms_focus(&self, shape: &Object, focus: &Object) -> Result<bool, FormError> {
+        let ir = self.compile()?;
+        let idx = ir
+            .get_idx(shape)
+            .copied()
+            .ok_or_else(|| FormError::ShapeNotFound(format!("{shape}")))?;
+        let results = GraphValidation::new(Graph::from(self.data.clone()))
+            .validate_scoped(&ir, idx, Some(focus))
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(results.is_empty())
+    }
+
     /// Compile the loaded shapes AST into the validator's internal representation.
     fn compile(&self) -> Result<IRSchema, FormError> {
         let ast = self.shapes_ast.as_ref().ok_or(FormError::NoShapes)?;

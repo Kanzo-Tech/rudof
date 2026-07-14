@@ -118,6 +118,10 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
         })?;
         // elements of `sh:reifierShape` list
         let sh_reifier_shape_values = self.objects_with_predicate(&ShaclVocab::sh_reifier_shape().into())?;
+        // objects of `sh:if` / `sh:then` / `sh:else` (SHACL-AF conditional)
+        let sh_if_values = self.objects_with_predicate(&ShaclVocab::sh_if().into())?;
+        let sh_then_values = self.objects_with_predicate(&ShaclVocab::sh_then().into())?;
+        let sh_else_values = self.objects_with_predicate(&ShaclVocab::sh_else().into())?;
 
         node_shapes_instances.extend(property_shapes_instances);
         node_shapes_instances.extend(shape_instances);
@@ -133,6 +137,9 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
         node_shapes_instances.extend(sh_node_values);
         node_shapes_instances.extend(sh_xone_values);
         node_shapes_instances.extend(sh_reifier_shape_values);
+        node_shapes_instances.extend(sh_if_values);
+        node_shapes_instances.extend(sh_then_values);
+        node_shapes_instances.extend(sh_else_values);
 
         Ok(node_shapes_instances
             .into_iter()

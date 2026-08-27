@@ -2,6 +2,7 @@ use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::with_shape_message;
 use crate::validator::engine::Engine;
 use crate::validator::iteration::{IterationStrategy, ValueNodeIteration};
 use crate::validator::nodes::ValueNodes;
@@ -66,7 +67,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Disjoint<'_> {
                 results.push(
                     ValidationResult::new(focus, component_obj, shape.severity().clone())
                         .with_source(Some(shape.id().clone()))
-                        .with_message(MessageMap::from(msg.as_str()))
+                        .with_message(with_shape_message(MessageMap::from(msg.as_str()), shape))
                         .with_path(maybe_path.cloned())
                         .with_value(value),
                 );

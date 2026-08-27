@@ -2,6 +2,7 @@ use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::with_shape_message;
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
@@ -62,7 +63,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for UniqueLang {
                     );
                     let vr = ValidationResult::new(fnode_obj.clone(), component.clone(), shape.severity().clone())
                         .with_path(maybe_path.cloned())
-                        .with_message(MessageMap::from(msg))
+                        .with_message(with_shape_message(MessageMap::from(msg), shape))
                         .with_source(Some(shape.id().clone()));
                     validation_results.push(vr);
                 }

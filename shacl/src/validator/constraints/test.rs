@@ -2,10 +2,12 @@
 mod tests {
     use crate::ir::IRSchema;
     use crate::rdf::ShaclParser;
+    use crate::types::MessageMap;
     use crate::validator::ShaclValidationMode;
     use crate::validator::processor::{DataValidation, ShaclProcessor};
     use rudof_rdf::RDFFormat;
     use rudof_rdf::backend::ReaderMode;
+    use rudof_rdf::term::literal::Lang;
     use sparql_service::RdfData;
 
     #[test]
@@ -109,5 +111,230 @@ prefix : <http://example.org/>
 :n a :C ; :flag :no .
 "#;
         assert_eq!(results_len(shapes), 0);
+    }
+
+    // -- sh:message reaches the report, whatever the component ---------------
+    //
+    // `sh:message` is declared on the shape, so *every* component that emits a
+    // result owes the author their text. The components that build their
+    // results by hand used to drop it on the floor; these lock that shut.
+
+    const PREFIXES: &str = r#"
+prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+prefix sh: <http://www.w3.org/ns/shacl#>
+prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+prefix : <http://example.org/>
+"#;
+
+    /// Validate `graph` (native engine) and return the results' messages.
+    fn messages(graph: &str) -> Vec<MessageMap> {
+        let graph = format!("{PREFIXES}{graph}");
+        let rdf = RdfData::from_str(&graph, &RDFFormat::Turtle, None, &ReaderMode::Strict).unwrap();
+        let mut validator: DataValidation = rdf.clone().into();
+        let schema = ShaclParser::new(rdf).parse().unwrap();
+        let schema_ir: IRSchema = schema.try_into().unwrap();
+        let report = validator.validate(&schema_ir, &ShaclValidationMode::Native).unwrap();
+        report.results().iter().map(|r| r.message().clone()).collect()
+    }
+
+    /// Every result carries the author's `sh:message`, language tag intact.
+    fn assert_author_message(graph: &str) {
+        let msgs = messages(graph);
+        assert!(!msgs.is_empty(), "expected at least one violation, got none");
+        let es = Lang::new("es").unwrap();
+        for m in &msgs {
+            assert_eq!(
+                m.get(Some(&es)).map(String::as_str),
+                Some("mensaje del autor"),
+                "author sh:message missing from result message {m}"
+            );
+        }
+    }
+
+    #[test]
+    fn node_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:node :Inner ; sh:message "mensaje del autor"@es ] .
+:Inner a sh:NodeShape ; sh:property [ sh:path :q ; sh:minCount 1 ] .
+:n a :C ; :p :x .
+"#,
+        );
+    }
+
+    #[test]
+    fn not_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:not [ sh:datatype xsd:string ] ; sh:message "mensaje del autor"@es ] .
+:n a :C ; :p "s" .
+"#,
+        );
+    }
+
+    #[test]
+    fn xone_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ;
+    sh:xone ( [ sh:datatype xsd:string ] [ sh:minLength 1 ] ) ;
+    sh:message "mensaje del autor"@es ] .
+:n a :C ; :p "s" .
+"#,
+        );
+    }
+
+    #[test]
+    fn or_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ;
+    sh:or ( [ sh:datatype xsd:integer ] [ sh:datatype xsd:boolean ] ) ;
+    sh:message "mensaje del autor"@es ] .
+:n a :C ; :p "s" .
+"#,
+        );
+    }
+
+    #[test]
+    fn and_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ;
+    sh:and ( [ sh:datatype xsd:integer ] [ sh:minInclusive 10 ] ) ;
+    sh:message "mensaje del autor"@es ] .
+:n a :C ; :p 5 .
+"#,
+        );
+    }
+
+    #[test]
+    fn if_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:message "mensaje del autor"@es ;
+  sh:if [ sh:path :flag ; sh:hasValue :yes ] ;
+  sh:then [ sh:property [ sh:path :thenProp ; sh:minCount 1 ] ] .
+:n a :C ; :flag :yes .
+"#,
+        );
+    }
+
+    #[test]
+    fn qualified_value_shape_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ;
+    sh:qualifiedValueShape [ sh:datatype xsd:integer ] ;
+    sh:qualifiedMinCount 1 ;
+    sh:message "mensaje del autor"@es ] .
+:n a :C ; :p "s" .
+"#,
+        );
+    }
+
+    #[test]
+    fn unique_lang_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:uniqueLang true ; sh:message "mensaje del autor"@es ] .
+:n a :C ; :p "uno"@es, "dos"@es .
+"#,
+        );
+    }
+
+    #[test]
+    fn less_than_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:lessThan :q ; sh:message "mensaje del autor"@es ] .
+:n a :C ; :p 5 ; :q 1 .
+"#,
+        );
+    }
+
+    #[test]
+    fn less_than_or_equals_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:lessThanOrEquals :q ; sh:message "mensaje del autor"@es ] .
+:n a :C ; :p 5 ; :q 1 .
+"#,
+        );
+    }
+
+    #[test]
+    fn disjoint_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:disjoint :q ; sh:message "mensaje del autor"@es ] .
+:n a :C ; :p "same" ; :q "same" .
+"#,
+        );
+    }
+
+    #[test]
+    fn equals_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:equals :q ; sh:message "mensaje del autor"@es ] .
+:n a :C ; :p "uno" ; :q "dos" .
+"#,
+        );
+    }
+
+    #[test]
+    fn closed_keeps_author_message() {
+        assert_author_message(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:closed true ;
+  sh:ignoredProperties ( rdf:type ) ;
+  sh:message "mensaje del autor"@es ;
+  sh:property [ sh:path :p ] .
+:n a :C ; :p "x" ; :other "y" .
+"#,
+        );
+    }
+
+    /// The author's message wins over the engine's built-in English wording,
+    /// which stays available under the default (untagged) key.
+    #[test]
+    fn author_message_overrides_builtin_and_keeps_default() {
+        let msgs = messages(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:node :Inner ; sh:message "mensaje del autor"@es ] .
+:Inner a sh:NodeShape ; sh:property [ sh:path :q ; sh:minCount 1 ] .
+:n a :C ; :p :x .
+"#,
+        );
+        let m = msgs.first().unwrap();
+        assert_eq!(
+            m.get(Some(&Lang::new("es").unwrap())).map(String::as_str),
+            Some("mensaje del autor")
+        );
+        let default = m.get(None).expect("built-in message still there under the default key");
+        // sh:node reports the shape's *id*, never a Display dump of the IR.
+        assert!(
+            default.contains("http://example.org/Inner"),
+            "expected the node shape id, got {default}"
+        );
+        assert!(
+            !default.contains("Property Shapes"),
+            "IR dump leaked into the message: {default}"
+        );
     }
 }

@@ -1,7 +1,9 @@
 use crate::error::ValidationError;
 use crate::ir::components::Closed;
 use crate::ir::{IRComponent, IRSchema, IRShape};
+use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::with_shape_message;
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
@@ -56,6 +58,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Closed {
                     let value = S::term_as_object(&obj).ok();
                     let vr = ValidationResult::new(focus_obj.clone(), component_obj.clone(), shape.severity().clone())
                         .with_source(Some(shape.id().clone()))
+                        .with_message(with_shape_message(MessageMap::default(), shape))
                         .with_path(Some(SHACLPath::iri(pred_iri)))
                         .with_value(value);
                     results.push(vr);

@@ -3,6 +3,7 @@ use crate::ir::components::Node;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::with_shape_message;
 use crate::validator::engine::{Engine, Validate};
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
@@ -57,12 +58,13 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Node {
 
                 if had_violations {
                     let msg = format!(
-                        "Shape {}: Node({node_shape}) constraint not satisfied for {node}",
-                        shape.id()
+                        "Shape {}: Node({}) constraint not satisfied for {node}",
+                        shape.id(),
+                        node_shape.id()
                     );
                     let vr = ValidationResult::new(fnode_obj.clone(), component_obj.clone(), shape.severity().clone())
                         .with_path(maybe_path.cloned())
-                        .with_message(MessageMap::from(msg))
+                        .with_message(with_shape_message(MessageMap::from(msg), shape))
                         .with_value(Some(node_object.clone()))
                         .with_source(Some(shape.id().clone()));
                     validation_results.push(vr);

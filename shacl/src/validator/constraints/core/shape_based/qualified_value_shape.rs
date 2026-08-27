@@ -3,6 +3,7 @@ use crate::ir::components::QualifiedValueShape;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::with_shape_message;
 use crate::validator::engine::{Engine, Validate};
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
@@ -73,7 +74,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for QualifiedValueShape {
                     shape.id()
                 );
                 let vr = ValidationResult::new(fnode_obj.clone(), component, shape.severity().clone())
-                    .with_message(MessageMap::from(msg))
+                    .with_message(with_shape_message(MessageMap::from(msg), shape))
                     .with_path(maybe_path.cloned())
                     .with_source(Some(shape.id().clone()));
                 validation_results.insert(vr);
@@ -89,7 +90,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for QualifiedValueShape {
                 );
                 let vr = ValidationResult::new(fnode_obj, component, shape.severity().clone())
                     .with_path(maybe_path.cloned())
-                    .with_message(MessageMap::from(msg))
+                    .with_message(with_shape_message(MessageMap::from(msg), shape))
                     .with_source(Some(shape.id().clone()));
                 validation_results.insert(vr);
             }

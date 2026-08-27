@@ -3,6 +3,7 @@ use crate::ir::components::If;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::with_shape_message;
 use crate::validator::engine::{Engine, Validate};
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
@@ -41,8 +42,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for If {
                 // A node conforms to the condition shape when validating it
                 // yields no results (same convention as Xone counting).
                 let cond_shape = shapes_graph.get_shape_from_idx_e(self.cond())?;
-                let cond_results =
-                    cond_shape.validate(store, engine, Some(&focus_nodes), Some(shape), shapes_graph);
+                let cond_results = cond_shape.validate(store, engine, Some(&focus_nodes), Some(shape), shapes_graph);
                 let conforms_cond = matches!(cond_results, Ok(ref results) if results.is_empty());
 
                 // Pick the branch dictated by the condition; a missing branch is
@@ -62,11 +62,15 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for If {
                     let msg = format!(
                         "Shape {}: sh:if constraint not satisfied for node {node} (condition {}, branch {})",
                         shape.id(),
-                        if conforms_cond { "true -> sh:then" } else { "false -> sh:else" },
+                        if conforms_cond {
+                            "true -> sh:then"
+                        } else {
+                            "false -> sh:else"
+                        },
                         branch_shape.id()
                     );
                     let vr = ValidationResult::new(fnode_obj.clone(), component.clone(), shape.severity().clone())
-                        .with_message(MessageMap::from(msg))
+                        .with_message(with_shape_message(MessageMap::from(msg), shape))
                         .with_path(maybe_path.cloned())
                         .with_value(node_obj)
                         .with_source(Some(shape.id().clone()));

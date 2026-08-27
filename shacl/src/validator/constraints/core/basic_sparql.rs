@@ -10,6 +10,8 @@ use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
 #[cfg(feature = "sparql")]
 use crate::validator::constraints::sparql::{inject_values_into_where, path_to_sparql};
+#[cfg(feature = "sparql")]
+use crate::validator::constraints::with_shape_message;
 use crate::validator::iteration::ValueNodeIteration;
 #[cfg(feature = "sparql")]
 use crate::validator::nodes::ValueNodes;
@@ -116,10 +118,15 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for BasicSparql {
                     .and_then(|t| S::term_as_object(t).ok())
                     .or_else(|| S::term_as_object(focus_node).ok());
 
+                // Most specific message wins: the query's own `?message`
+                // binding, then the constraint's `sh:message`, then the
+                // shape's — which until now never reached the report at all.
                 let message = if let Some(msg_term) = sol.find_solution("message") {
                     MessageMap::from(format!("{msg_term}"))
+                } else if let Some(m) = self.message() {
+                    m.clone()
                 } else {
-                    self.message().cloned().unwrap_or_default()
+                    with_shape_message(MessageMap::default(), shape)
                 };
 
                 results.push(

@@ -20,6 +20,20 @@ use rudof_rdf::term::Object;
 use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
+/// Merge the shape's own `sh:message` over a component-supplied default.
+///
+/// `sh:message` is declared on the *shape*, so every component that emits a
+/// [`ValidationResult`] owes the author their text — language tags included.
+/// Author messages win (`over = true`) over the engine's built-in English
+/// wording; components that build their results by hand call this instead of
+/// re-deriving the rule.
+pub(crate) fn with_shape_message(base: MessageMap, shape: &IRShape) -> MessageMap {
+    match shape.message() {
+        Some(m) => base.merge(m.to_owned(), true),
+        None => base,
+    }
+}
+
 /// Outcome of checking a single item against a constraint component.
 pub(crate) enum Check {
     /// The item satisfies the constraint.
@@ -115,10 +129,7 @@ pub(crate) trait ConstraintComponent<S: NeighsRDF + Debug> {
             if let Check::Violate = self.check(item, &mut cx)? {
                 let component_obj = Object::iri(component.into());
                 let value = strategy.to_object(item);
-                let mut message = MessageMap::from(msg.as_str());
-                if let Some(m) = shape.message() {
-                    message = message.merge(m.to_owned(), true);
-                }
+                let message = with_shape_message(MessageMap::from(msg.as_str()), shape);
                 results.push(
                     ValidationResult::new(focus, component_obj, shape.severity().clone())
                         .with_source(Some(shape.id().clone()))
@@ -314,10 +325,7 @@ pub(crate) fn sparql_ask<S: QueryRDF + NeighsRDF + Debug>(
         if violates {
             let component_obj = Object::iri(component.into());
             let value = S::term_as_object(item).ok();
-            let mut message = MessageMap::from(msg);
-            if let Some(m) = shape.message() {
-                message = message.merge(m.to_owned(), true);
-            }
+            let message = with_shape_message(MessageMap::from(msg), shape);
             results.push(
                 ValidationResult::new(focus, component_obj, shape.severity().clone())
                     .with_source(Some(shape.id().clone()))

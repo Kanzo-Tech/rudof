@@ -41,10 +41,14 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
+      # Build with wasm-bindgen-cli (NOT wasm-pack, which is archived). The CLI
+      # version MUST match the `wasm-bindgen = "=0.2.120"` lib pin. wasm-opt
+      # (binaryen 116) does the -Oz size pass; build.sh skips it gracefully if
+      # absent (apt's binaryen 108 corrupts the externref table — do not use it).
+      - name: Install wasm-bindgen-cli + wasm-opt
+        uses: taiki-e/install-action@v2
         with:
-          version: "v0.13.1"
+          tool: wasm-bindgen-cli@0.2.120,wasm-opt@116
 
       - name: Setup Node
         uses: actions/setup-node@v4

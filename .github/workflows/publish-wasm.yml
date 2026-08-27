@@ -42,13 +42,37 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # Build with wasm-bindgen-cli (NOT wasm-pack, which is archived). The CLI
-      # version MUST match the `wasm-bindgen = "=0.2.120"` lib pin. wasm-opt
-      # (binaryen 116) does the -Oz size pass; build.sh skips it gracefully if
-      # absent (apt's binaryen 108 corrupts the externref table — do not use it).
-      - name: Install wasm-bindgen-cli + wasm-opt
+      # version MUST match the `wasm-bindgen = "=0.2.120"` lib pin, or the module
+      # is ABI-mismatched and fails at instantiation.
+      - name: Install wasm-bindgen-cli
         uses: taiki-e/install-action@v2
         with:
-          tool: wasm-bindgen-cli@0.2.120,wasm-opt@116
+          tool: wasm-bindgen-cli@0.2.120
+
+      # wasm-opt comes from the binaryen RELEASE, not from install-action, which
+      # carries no manifest for it (nor for binaryen) at any version: asking it
+      # for `wasm-opt@116` falls back to cargo-binstall, which resolves the Rust
+      # *crate* named wasm-opt — versioned 0.x, so `=116` matches nothing and the
+      # job dies with exit 76. Distro packages are not an option either: apt ships
+      # binaryen 108, which corrupts the externref table.
+      #
+      # build.sh treats wasm-opt as optional and only skips the -Oz size pass when
+      # it is missing, so a silent failure here would publish a ~4.6 MB artefact
+      # instead of ~3.0 MB. Hence the checksum check and the explicit --version.
+      - name: Install wasm-opt (binaryen)
+        env:
+          BINARYEN: "116"
+        run: |
+          set -euo pipefail
+          tarball="binaryen-version_${BINARYEN}-x86_64-linux.tar.gz"
+          base="https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN}"
+          curl -sSfL -O "${base}/${tarball}"
+          curl -sSfL -O "${base}/${tarball}.sha256"
+          sha256sum -c "${tarball}.sha256"
+          sudo tar xzf "${tarball}" -C /opt
+          echo "/opt/binaryen-version_${BINARYEN}/bin" >> "$GITHUB_PATH"
+      - name: Verify wasm-opt
+        run: wasm-opt --version
 
       - name: Setup Node
         uses: actions/setup-node@v4

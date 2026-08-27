@@ -245,7 +245,10 @@ pub struct RudofResult {
     pub path: Option<TermValue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<TermValue>,
-    pub message: Vec<String>,
+    /// Lang-tagged messages: the engine's default (untagged, `language: ""`)
+    /// merged with the shape's per-language `sh:message` entries. The JS side
+    /// picks the best by locale; untagged is the fallback.
+    pub message: Vec<LangString>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub severity: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

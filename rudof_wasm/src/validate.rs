@@ -5,7 +5,7 @@
 
 use rudof_lib::form::{IriS, Object, SHACLPath, Severity, ValidationOutcome, ValidationResult};
 
-use crate::dto::{RudofReport, RudofResult, TermValue};
+use crate::dto::{LangString, RudofReport, RudofResult, TermValue};
 use crate::object_to_value;
 
 /// Map a façade [`ValidationOutcome`] into the ABI report DTO.
@@ -27,7 +27,17 @@ fn result_to_dto(r: &ValidationResult) -> RudofResult {
         focus_node: object_to_term(r.focus_node()),
         path: r.path().and_then(path_to_term),
         value: r.value().map(object_to_term),
-        message: r.message().messages().values().cloned().collect(),
+        // Preserve the language key of each message: `Some(lang)` → its tag,
+        // `None` (engine default / untagged) → "". The JS side selects by locale.
+        message: r
+            .message()
+            .messages()
+            .iter()
+            .map(|(lang, value)| LangString {
+                value: value.clone(),
+                language: lang.as_ref().map(|l| l.as_str().to_string()).unwrap_or_default(),
+            })
+            .collect(),
         severity: Some(severity_iri(r.severity())),
         source_constraint_component: object_iri(r.constraint_component()),
     }

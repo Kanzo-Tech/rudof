@@ -23,7 +23,6 @@ pub struct ASTPropertyShape {
     reifier_info: Option<ReifierInfo>,
     closed: bool,
     // ignored_properties: Vec<IriRef>,
-    deactivated: bool,
     message: Option<MessageMap>,
     severity: Option<Severity>,
     name: MessageMap,
@@ -53,7 +52,6 @@ impl ASTPropertyShape {
             targets: Vec::new(),
             property_shapes: Vec::new(),
             closed: false,
-            deactivated: false,
             message: None,
             severity: None,
             name: MessageMap::new(),
@@ -163,8 +161,19 @@ impl ASTPropertyShape {
         &self.closed
     }
 
+    /// `sh:deactivated true` (SHACL 2.1.6): every RDF term conforms to this
+    /// shape, so it must raise no results at all.
+    ///
+    /// Derived from the parsed components, exactly as `ASTNodeShape` does. It used
+    /// to read a `deactivated: bool` field that the RDF parser never assigned, so
+    /// it always answered `false` and `sh:deactivated` on a property shape was
+    /// silently ignored by the whole validator: the `Deactivated` component
+    /// short-circuits itself, but the shape's other constraints (`sh:minCount`,
+    /// ...) kept reporting. The dead field is gone.
     pub fn is_deactivated(&self) -> bool {
-        self.deactivated
+        self.components
+            .iter()
+            .any(|component| matches!(component, ASTComponent::Deactivated(true)))
     }
 
     pub fn severity(&self) -> Option<&Severity> {

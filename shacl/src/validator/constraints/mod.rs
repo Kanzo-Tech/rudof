@@ -20,17 +20,28 @@ use rudof_rdf::term::Object;
 use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
-/// Merge the shape's own `sh:message` over a component-supplied default.
+/// The `sh:resultMessage` set for a result: the shape's own `sh:message` when it
+/// declares any, else the component-supplied default.
 ///
 /// `sh:message` is declared on the *shape*, so every component that emits a
 /// [`ValidationResult`] owes the author their text — language tags included.
-/// Author messages win (`over = true`) over the engine's built-in English
-/// wording; components that build their results by hand call this instead of
-/// re-deriving the rule.
+/// The spec is exact about how much it owes: "If a shape has at least one value
+/// for `sh:message` in the shapes graph, then all validation results produced as
+/// a result of the shape will have **exactly these messages** as their value of
+/// `sh:resultMessage`" (SHACL §2.1.5), and the engine may invent wording only
+/// "in cases where a constraint does not have any values for `sh:message`"
+/// (§3.6.2.7).
+///
+/// So the author's set *replaces* the engine's built-in English; it is not
+/// merged over it. Merging used to leave "MinCount(1) not satisfied" sitting
+/// under the untagged key beside the author's three languages — one message more
+/// than the shape declares, and the one a consumer falling back to "untagged"
+/// would show in place of the text the profile actually wrote. Components that
+/// build their results by hand call this instead of re-deriving the rule.
 pub(crate) fn with_shape_message(base: MessageMap, shape: &IRShape) -> MessageMap {
     match shape.message() {
-        Some(m) => base.merge(m.to_owned(), true),
-        None => base,
+        Some(m) if !m.messages().is_empty() => m.to_owned(),
+        _ => base,
     }
 }
 

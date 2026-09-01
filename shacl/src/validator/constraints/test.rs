@@ -113,6 +113,26 @@ prefix : <http://example.org/>
         assert_eq!(results_len(shapes), 0);
     }
 
+    /// `sh:deactivated true` on a *property* shape (SHACL §2.1.6): every RDF term
+    /// conforms to it, so it must raise nothing — not even the `sh:minCount` the
+    /// same shape declares. Locks in the `ASTPropertyShape::is_deactivated` fix:
+    /// it used to read a `deactivated: bool` field the RDF parser never assigned,
+    /// so it always answered `false` and the switch was silently ignored.
+    #[test]
+    fn deactivated_property_shape_reports_nothing() {
+        const SHAPE: &str = r#"
+prefix sh: <http://www.w3.org/ns/shacl#>
+prefix : <http://example.org/>
+
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:minCount 1 SWITCH ] .
+:n a :C .
+"#;
+        // The control: live, the very same shape reports its missing :p.
+        assert_eq!(results_len(&SHAPE.replace("SWITCH", "")), 1);
+        assert_eq!(results_len(&SHAPE.replace("SWITCH", "; sh:deactivated true")), 0);
+    }
+
     // -- sh:message reaches the report, whatever the component ---------------
     //
     // `sh:message` is declared on the shape, so *every* component that emits a
@@ -309,25 +329,56 @@ prefix : <http://example.org/>
         );
     }
 
-    /// The author's message wins over the engine's built-in English wording,
-    /// which stays available under the default (untagged) key.
+    /// SHACL §2.1.5 — "If a shape has at least one value for `sh:message` in the
+    /// shapes graph, then all validation results produced as a result of the
+    /// shape will have **exactly these messages** as their value of
+    /// `sh:resultMessage`". The engine's own wording ("MinCount(1) not
+    /// satisfied") is therefore suppressed, not merged in under the untagged key
+    /// beside the author's three languages.
     #[test]
-    fn author_message_overrides_builtin_and_keeps_default() {
+    fn shape_message_replaces_the_generated_one() {
         let msgs = messages(
             r#"
 :S a sh:NodeShape ; sh:targetClass :C ;
-  sh:property [ sh:path :p ; sh:node :Inner ; sh:message "mensaje del autor"@es ] .
+  sh:property [ sh:path :p ; sh:minCount 1 ;
+    sh:message "mensaje del autor"@es , "author message"@en , "missatge de l'autor"@ca ] .
+:n a :C .
+"#,
+        );
+        let m = msgs.first().expect("expected one violation, got none");
+        assert_eq!(
+            m.messages().len(),
+            3,
+            "expected exactly the shape's three messages, got {m}"
+        );
+        for tag in ["es", "en", "ca"] {
+            assert!(
+                m.get(Some(&Lang::new(tag).unwrap())).is_some(),
+                "the shape's {tag} message is missing from {m}"
+            );
+        }
+        assert_eq!(
+            m.get(None),
+            None,
+            "the engine's generated message leaked in beside the shape's: {m}"
+        );
+    }
+
+    /// The mirror case: a shape declaring no `sh:message` leaves the engine free
+    /// to generate one (§3.6.2.7) — and `sh:node` reports the shape's *id*, never
+    /// a `Display` dump of the IR.
+    #[test]
+    fn generated_message_stands_when_the_shape_is_silent() {
+        let msgs = messages(
+            r#"
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :p ; sh:node :Inner ] .
 :Inner a sh:NodeShape ; sh:property [ sh:path :q ; sh:minCount 1 ] .
 :n a :C ; :p :x .
 "#,
         );
         let m = msgs.first().unwrap();
-        assert_eq!(
-            m.get(Some(&Lang::new("es").unwrap())).map(String::as_str),
-            Some("mensaje del autor")
-        );
-        let default = m.get(None).expect("built-in message still there under the default key");
-        // sh:node reports the shape's *id*, never a Display dump of the IR.
+        let default = m.get(None).expect("the engine's own wording, under the default key");
         assert!(
             default.contains("http://example.org/Inner"),
             "expected the node shape id, got {default}"

@@ -593,6 +593,12 @@ impl TryFrom<ResultShaclValidationFormat> for RDFFormat {
             ResultShaclValidationFormat::TriG => Ok(RDFFormat::TriG),
             ResultShaclValidationFormat::N3 => Ok(RDFFormat::N3),
             ResultShaclValidationFormat::NQuads => Ok(RDFFormat::NQuads),
+            // A SHACL validation report *is* an RDF graph (SHACL §3.6), so its
+            // JSON serialization is JSON-LD — the same mapping `RDFFormat` itself
+            // already publishes ("json" is one of `RDFFormat::JsonLd`'s
+            // extensions). Nothing else here is a JSON of the report; it is a
+            // JSON of some other, invented, shape.
+            ResultShaclValidationFormat::Json => Ok(RDFFormat::JsonLd),
             other => Err(ValidationError::UnsupportedConversionToRDFFormat {
                 format: other.to_string(),
             }),

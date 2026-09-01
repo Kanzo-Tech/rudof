@@ -7,6 +7,7 @@ use rudof_lib::form::{IriS, Object, SHACLPath, Severity, ValidationOutcome, Vali
 
 use crate::dto::{LangString, RudofReport, RudofResult, TermValue};
 use crate::object_to_value;
+use crate::shapes::path_key;
 
 /// Map a façade [`ValidationOutcome`] into the ABI report DTO.
 pub fn report_from_outcome(outcome: &ValidationOutcome) -> RudofReport {
@@ -26,6 +27,11 @@ fn result_to_dto(r: &ValidationResult) -> RudofResult {
     RudofResult {
         focus_node: object_to_term(r.focus_node()),
         path: r.path().and_then(path_to_term),
+        // Never re-derived here. `shapes::path_key` is the one that produced the
+        // keys the fields are indexed by, so calling anything else — however
+        // identical it looked — would file errors under keys no field has, and
+        // would do it silently.
+        path_key: r.path().map(path_key),
         value: r.value().map(object_to_term),
         // Preserve the language key of each message: `Some(lang)` → its tag,
         // `None` (engine default / untagged) → "". The JS side selects by locale.

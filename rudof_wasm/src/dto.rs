@@ -172,6 +172,12 @@ pub struct PropertyShapeIR {
     pub node: Option<String>,
     pub presentation: PresentationHints,
     pub components: Vec<ComponentIR>,
+    /// `sh:deactivated true` (SHACL 2.1.6): the shape is switched off, so every
+    /// term conforms to it and the validator reports nothing for it. Emitted so a
+    /// form consumer can render nothing for it rather than collecting input that
+    /// is never validated. `None` when the shape is active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deactivated: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -184,8 +190,24 @@ pub struct NodeShapeIR {
     pub properties: Vec<PropertyShapeIR>,
     #[serde(default)]
     pub conditionals: Vec<ConditionalIR>,
+    /// `sh:closed true` (SHACL 4.8.1): the focus node may carry no property
+    /// beyond those the shape declares. `None` when open (`sh:closed` absent, or
+    /// stated `false`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<bool>,
+    /// `sh:ignoredProperties`: the predicates a closed shape permits anyway
+    /// (`rdf:type` being the usual one). Meaningless without `closed`, and
+    /// inseparable from it — SHACL parses the two as a single component, and a
+    /// consumer enforcing `closed` without these would reject exactly what the
+    /// profile went out of its way to allow. Sorted, so the payload is stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignored_properties: Vec<String>,
+    /// `sh:deactivated true` (SHACL 2.1.6): the shape is switched off, so every
+    /// term conforms to it and the validator reports nothing for it. Emitted so a
+    /// form consumer can render nothing for it rather than collecting input that
+    /// is never validated. `None` when the shape is active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deactivated: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -243,6 +265,19 @@ pub struct RudofResult {
     pub focus_node: TermValue,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<TermValue>,
+    /// The path as its canonical key — the SAME string `shapes::path_key` gives
+    /// the projection, because the consumer files an error under
+    /// `${focusNode}|${pathKey}` and a field it cannot match is an error that
+    /// silently becomes node-level.
+    ///
+    /// `path` above carries only a predicate, so every inverse, sequence,
+    /// alternative and quantified path reported its violation with no path at
+    /// all. That was survivable while those fields were read-only. It is not
+    /// now: hundreds of alternative-path fields carry `sh:minCount 1`, and a
+    /// required field whose error cannot point at it is a form that says
+    /// "something in here is wrong" and nothing else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<TermValue>,
     /// Lang-tagged messages: the engine's default (untagged, `language: ""`)

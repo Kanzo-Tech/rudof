@@ -28,3 +28,12 @@ console_error_panic_hook = "0.1"
 # in the wasm-clean SHACL/RDF stack (shacl without the `sparql` feature, which
 # runs the native engine) so the binding no longer reaches into those internals.
 rudof_lib = { path = "../rudof_lib" }
+
+[dev-dependencies]
+# The crate compiles only for wasm32 (`rudof_lib::form` is gated to that family),
+# so its tests run under wasm-bindgen-test — which CI's `wasm-test` job already
+# invokes: `cargo test -p rudof_wasm --target wasm32-unknown-unknown`. Pinned to
+# the release paired with the `wasm-bindgen = "=0.2.120"` pin above; the two share
+# `wasm-bindgen-test-shared`, so a floating "0.3" would resolve to a newer pair
+# that cannot link against 0.2.120.
+wasm-bindgen-test = "=0.3.70"

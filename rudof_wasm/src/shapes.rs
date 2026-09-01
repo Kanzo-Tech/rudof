@@ -162,14 +162,46 @@ fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &
         })
         .collect();
 
+    let (closed, ignored_properties) = closed_info(ns.components());
+
     NodeShapeIR {
         id: object_str(id),
         instance_class: target_classes.first().cloned(),
         target_classes,
         properties,
         conditionals,
-        closed: None,
+        closed,
+        ignored_properties,
+        deactivated: flag(ns.is_deactivated()),
     }
+}
+
+/// `true` -> `Some(true)`; `false` -> `None`, so an active shape adds nothing to
+/// the payload (the DTO skips `None`).
+fn flag(on: bool) -> Option<bool> {
+    on.then_some(true)
+}
+
+/// `sh:closed` and its `sh:ignoredProperties` escape hatch, read off the parsed
+/// `Closed` component — the two are one component in SHACL (§4.8.1) and are
+/// projected together, because `closed: true` alone would tell a consumer to
+/// reject exactly the properties the profile listed as permitted.
+///
+/// The parser stores the exemptions in a `HashSet`, whose iteration order varies
+/// run to run; sort so the emitted payload is stable.
+fn closed_info(components: &[ASTComponent]) -> (Option<bool>, Vec<String>) {
+    for c in components {
+        if let ASTComponent::Closed {
+            is_closed,
+            ignored_properties,
+        } = c
+        {
+            let mut ignored: Vec<String> = ignored_properties.iter().map(|i| i.as_str().to_string()).collect();
+            ignored.sort();
+            return (flag(*is_closed), ignored);
+        }
+    }
+    (None, Vec::new())
 }
 
 /// Resolve a `sh:then` / `sh:else` object to its property shapes: a node-shape
@@ -258,6 +290,7 @@ fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInM
         node,
         presentation,
         components: read_components(graph, ps.id()),
+        deactivated: flag(ps.is_deactivated()),
     }
 }
 
@@ -529,4 +562,79 @@ fn concrete_lexical(l: &ConcreteLiteral) -> String {
 
 fn concrete_f64(l: &ConcreteLiteral) -> Option<f64> {
     concrete_lexical(l).parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rudof_lib::form::{FormEngine, RDFFormat};
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    const RDF_TYPE_IRI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+
+    /// Parse `shapes` (Turtle) through the same façade `Session::loadShapes` uses
+    /// and project it, so a test sees exactly what JavaScript receives.
+    fn model(shapes: &str) -> ShapeModelJson {
+        let mut engine = FormEngine::new();
+        engine.load_shapes(shapes, &RDFFormat::Turtle).expect("shapes parse");
+        let ast = engine.shapes_ast().expect("shapes just loaded");
+        let graph = engine.shapes_graph().expect("shapes just loaded");
+        schema_to_json(ast, graph)
+    }
+
+    fn shape<'a>(model: &'a ShapeModelJson, id: &str) -> &'a NodeShapeIR {
+        model
+            .node_shapes
+            .iter()
+            .find(|n| n.id == id)
+            .unwrap_or_else(|| panic!("no node shape {id} in the projection"))
+    }
+
+    /// `sh:closed` reaches JavaScript, together with the `sh:ignoredProperties`
+    /// that make it usable. The projection used to hardcode `closed: None`, so a
+    /// closed profile crossed the boundary indistinguishable from an open one.
+    #[wasm_bindgen_test]
+    fn closed_and_its_ignored_properties_are_projected() {
+        let m = model(
+            r#"
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix : <http://example.org/> .
+
+:S a sh:NodeShape ;
+  sh:targetClass :C ;
+  sh:closed true ;
+  sh:ignoredProperties ( rdf:type ) ;
+  sh:property [ sh:path :p ] .
+"#,
+        );
+        let ns = shape(&m, "http://example.org/S");
+        assert_eq!(ns.closed, Some(true), "sh:closed never reached the payload");
+        assert_eq!(
+            ns.ignored_properties,
+            vec![RDF_TYPE_IRI.to_string()],
+            "sh:ignoredProperties never reached the payload"
+        );
+    }
+
+    /// The mirror case: a shape that says nothing about closedness projects
+    /// nothing, and neither does one that states `sh:closed false` — both are open
+    /// (the DTO skips a `None`, so the key is simply absent for JavaScript).
+    #[wasm_bindgen_test]
+    fn an_open_shape_projects_no_closed_flag() {
+        let m = model(
+            r#"
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix : <http://example.org/> .
+
+:Silent a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ] .
+:Explicit a sh:NodeShape ; sh:targetClass :D ; sh:closed false ; sh:property [ sh:path :p ] .
+"#,
+        );
+        for id in ["http://example.org/Silent", "http://example.org/Explicit"] {
+            let ns = shape(&m, id);
+            assert_eq!(ns.closed, None, "{id} is open, but projected a closed flag");
+            assert!(ns.ignored_properties.is_empty(), "{id} projected exemptions");
+        }
+    }
 }

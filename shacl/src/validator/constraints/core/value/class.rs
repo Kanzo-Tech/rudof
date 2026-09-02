@@ -19,7 +19,6 @@ use rudof_rdf::SHACLPath;
 #[cfg(feature = "sparql")]
 use rudof_rdf::query::QueryRDF;
 use rudof_rdf::term::{Object, Term};
-use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
 use std::fmt::Debug;
 
 /// `sh:class` — each value node is a SHACL instance of the given class.
@@ -32,24 +31,24 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Class<'_> {
         ValueNodeIteration
     }
 
+    /// <https://www.w3.org/TR/shacl/#ClassConstraintComponent>
+    ///
+    /// "Each value node is a SHACL instance of $class" (§4.4.1) — and §1.1 puts
+    /// the *SHACL superclasses* of a node's types among its SHACL types, so the
+    /// relation is the transitive `rdfs:subClassOf` closure, not one hop. A node
+    /// typed `:Officer`, where `:Officer rdfs:subClassOf :Role` and
+    /// `:Role rdfs:subClassOf skos:Concept`, conforms to `sh:class skos:Concept`;
+    /// this used to walk a single `rdfs:subClassOf` hop and report a violation.
+    ///
+    /// The set is the engine's own: [`Engine::is_shacl_instance`] is the same
+    /// closure `sh:targetClass` selects with, so a shape cannot target a node
+    /// through the hierarchy and then deny it the class it was targeted by.
     fn check<E: Engine<S>>(&self, vn: &S::Term, cx: &mut CheckCtx<'_, S, E>) -> Result<Check, ValidationError> {
+        // A literal has no `rdf:type` triples, so it is nobody's SHACL instance.
         if vn.is_literal() {
             return Ok(Check::Violate);
         }
-        let term = S::object_as_term(self.0);
-        let conforms = cx
-            .store
-            .objects_for(vn, &RdfVocab::rdf_type().into())
-            .unwrap_or_default()
-            .iter()
-            .any(|ctype| {
-                ctype == &term
-                    || cx
-                        .store
-                        .objects_for(ctype, &RdfsVocab::rdfs_subclass_of_str().into())
-                        .unwrap_or_default()
-                        .contains(&term)
-            });
+        let conforms = cx.engine.is_shacl_instance(cx.store, vn, self.0)?;
         Ok(if conforms { Check::Hold } else { Check::Violate })
     }
 

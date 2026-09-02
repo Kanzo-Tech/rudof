@@ -59,25 +59,36 @@ impl ClassIndex {
     }
 
     /// Returns the set of direct instances of the given class
-    pub fn instances_of(&self, class: &Object) -> impl Iterator<Item = &Object> {
+    pub fn instances_of<'a>(&'a self, class: &Object) -> impl Iterator<Item = &'a Object> {
         self.class_instances.get(class).into_iter().flat_map(|set| set.iter())
     }
 
     /// Returns the set of direct subclasses of the given class
-    pub fn subclasses_of(&self, class: &Object) -> impl Iterator<Item = &Object> {
+    pub fn subclasses_of<'a>(&'a self, class: &Object) -> impl Iterator<Item = &'a Object> {
         self.subclass_map.get(class).into_iter().flat_map(|set| set.iter())
     }
 
-    /// Returns instances of the class and instances of all its direct subclasses.
-    pub fn instances_of_with_subclasses(&self, class: &Object) -> HashSet<&Object> {
-        let mut result: HashSet<_> = self.instances_of(class).collect();
+    /// Returns the SHACL instances of the given class.
+    ///
+    /// SHACL §1.1 defines the SHACL types of a node as its `rdf:type` values
+    /// *plus the SHACL superclasses of those values* — the `rdfs:subClassOf`
+    /// closure. The SHACL instances of a class are therefore the instances of
+    /// the class itself together with those of every *transitive* subclass, not
+    /// only the direct ones. The walk carries a `seen` set, so a cyclic class
+    /// hierarchy terminates.
+    pub fn shacl_instances_of<'a>(&'a self, class: &'a Object) -> HashSet<&'a Object> {
+        let mut instances: HashSet<&'a Object> = HashSet::new();
+        let mut seen: HashSet<&'a Object> = HashSet::new();
+        let mut pending: Vec<&'a Object> = vec![class];
 
-        for subclass in self.subclasses_of(class) {
-            for instance in self.instances_of(subclass) {
-                result.insert(instance);
+        while let Some(cls) = pending.pop() {
+            if !seen.insert(cls) {
+                continue;
             }
+            instances.extend(self.instances_of(cls));
+            pending.extend(self.subclasses_of(cls));
         }
 
-        result
+        instances
     }
 }

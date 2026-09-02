@@ -388,4 +388,105 @@ prefix : <http://example.org/>
             "IR dump leaked into the message: {default}"
         );
     }
+
+    // ---- sh:class is transitive (SHACL §4.4.1 + §1.1) -----------------------
+    //
+    // "Each value node is a SHACL instance of $class" (§4.4.1), and the SHACL
+    // types of a term are its `rdf:type` values *plus the SHACL superclasses of
+    // those values* (§1.1) — the transitive `rdfs:subClassOf` closure. The
+    // native check used to walk exactly one hop, so a value typed two classes
+    // below the constrained one was reported as a violation.
+
+    /// A `sh:class` shapes/data graph: `:node :role :value`, checked against
+    /// `sh:class skos:Concept`, over whatever class hierarchy `hierarchy` states.
+    fn class_graph(hierarchy: &str, typing: &str) -> String {
+        format!(
+            r#"
+prefix sh: <http://www.w3.org/ns/shacl#>
+prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+prefix skos: <http://www.w3.org/2004/02/skos/core#>
+prefix : <http://example.org/>
+
+:S a sh:NodeShape ;
+  sh:targetNode :node ;
+  sh:property [ sh:path :role ; sh:class skos:Concept ] .
+
+:node :role :value .
+{hierarchy}
+{typing}
+"#
+        )
+    }
+
+    #[test]
+    fn sh_class_holds_for_a_directly_typed_value() {
+        assert_eq!(results_len(&class_graph("", ":value a skos:Concept .")), 0);
+    }
+
+    #[test]
+    fn sh_class_holds_one_subclass_hop_away() {
+        assert_eq!(
+            results_len(&class_graph(":Role rdfs:subClassOf skos:Concept .", ":value a :Role .")),
+            0,
+            "a value typed with a subclass of the constrained class is a SHACL instance of it"
+        );
+    }
+
+    #[test]
+    fn sh_class_holds_two_subclass_hops_away() {
+        assert_eq!(
+            results_len(&class_graph(
+                ":Role rdfs:subClassOf skos:Concept .\n:Officer rdfs:subClassOf :Role .",
+                ":value a :Officer .",
+            )),
+            0,
+            "the subclass closure is transitive, not one hop"
+        );
+    }
+
+    #[test]
+    fn sh_class_terminates_on_a_cyclic_class_hierarchy() {
+        assert_eq!(
+            results_len(&class_graph(
+                ":Role rdfs:subClassOf skos:Concept .\n:Officer rdfs:subClassOf :Role .\n:Role rdfs:subClassOf :Officer .",
+                ":value a :Officer .",
+            )),
+            0,
+            "a class cycle must not spin the closure walk"
+        );
+    }
+
+    #[test]
+    fn sh_class_violates_for_a_class_outside_the_hierarchy() {
+        assert_eq!(
+            results_len(&class_graph(
+                ":Role rdfs:subClassOf skos:Concept .",
+                ":value a :Unrelated ."
+            )),
+            1,
+            "transitivity must not make sh:class vacuous"
+        );
+    }
+
+    #[test]
+    fn sh_class_does_not_walk_the_hierarchy_upwards() {
+        // `:Role rdfs:subClassOf skos:Concept` makes every `:Role` a
+        // `skos:Concept`, never the reverse: a value typed only `skos:Concept`
+        // is not a SHACL instance of `:Role`.
+        const GRAPH: &str = r#"
+prefix sh: <http://www.w3.org/ns/shacl#>
+prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+prefix skos: <http://www.w3.org/2004/02/skos/core#>
+prefix : <http://example.org/>
+
+:S a sh:NodeShape ;
+  sh:targetNode :node ;
+  sh:property [ sh:path :role ; sh:class :Role ] .
+
+:node :role :value .
+:Role rdfs:subClassOf skos:Concept .
+:value a skos:Concept .
+"#;
+        assert_eq!(results_len(GRAPH), 1, "subclass closure runs downwards only");
+    }
 }

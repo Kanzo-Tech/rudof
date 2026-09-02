@@ -2,6 +2,7 @@ mod focus_nodes_ops;
 mod native;
 #[cfg(feature = "sparql")]
 mod sparql;
+mod test;
 mod validate;
 mod value_nodes_ops;
 
@@ -79,6 +80,26 @@ pub trait Engine<S: NeighsRDF>: Sized {
     fn target_object_of(&self, store: &S, predicate: &IriS) -> Result<FocusNodes<S>, ValidationError>;
 
     fn implicit_target_class(&self, store: &S, shape: &Object) -> Result<FocusNodes<S>, ValidationError>;
+
+    /// Whether `node` is a **SHACL instance** of `class`.
+    ///
+    /// SHACL §1.1 defines the SHACL types of a term as its `rdf:type` values
+    /// together with the SHACL superclasses of those values — the transitive
+    /// `rdfs:subClassOf` closure — and a term is a SHACL instance of a class
+    /// when that class is among its SHACL types.
+    ///
+    /// Deliberately expressed through [`target_class`](Engine::target_class)
+    /// rather than by a traversal of its own. `sh:targetClass` selects exactly
+    /// the SHACL instances of its class (§2.1.3.2) and `sh:class` requires
+    /// exactly that its value nodes *be* SHACL instances of its class (§4.4.1):
+    /// one fact, so one implementation, and no way for target selection and
+    /// value checking to drift apart on how far the class hierarchy reaches.
+    /// Each engine therefore answers with whatever machinery it already uses to
+    /// select targets — the native engine's cycle-safe closure over the
+    /// pre-built class index, the SPARQL engine's `rdfs:subClassOf*` path.
+    fn is_shacl_instance(&self, store: &S, node: &S::Term, class: &Object) -> Result<bool, ValidationError> {
+        Ok(self.target_class(store, class)?.iter().any(|t| t == node))
+    }
 
     fn path(&self, store: &S, shape: &IRPropertyShape, focus_node: &S::Term) -> Result<FocusNodes<S>, ValidationError> {
         let nodes = store.objects_for_shacl_path(focus_node, shape.path())?;

@@ -10,6 +10,7 @@ use rudof_iri::IriS;
 use rudof_rdf::term::{Object, Term, Triple};
 use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
 use rudof_rdf::{NeighsRDF, SHACLPath};
+use std::collections::HashSet;
 use std::fmt::Debug;
 
 /// Native (in-memory) validation engine.
@@ -31,6 +32,41 @@ impl<'e> NativeEngine<'e> {
             class_index,
             cache: ValidationCache::default(),
         }
+    }
+
+    /// The SHACL instances of `class` (SHACL §1.1): every node whose `rdf:type`
+    /// is `class` or any *transitive* `rdfs:subClassOf` subclass of it.
+    ///
+    /// Backs both `sh:targetClass` and the implicit class target, which select
+    /// exactly this set (§2.1.3.2, §2.1.3.3).
+    fn shacl_instances<RDF: NeighsRDF>(&self, store: &RDF, class: &Object) -> Result<FocusNodes<RDF>, ValidationError> {
+        // Pre-built class index: the closure is walked over the index maps.
+        if let Some(index) = self.class_index {
+            let focus_nodes = index
+                .shacl_instances_of(class)
+                .into_iter()
+                .map(|obj| -> RDF::Term { obj.clone().into() });
+            return Ok(FocusNodes::from_iter(focus_nodes));
+        }
+
+        // Fallback: walk the graph (for backwards compatibility if index wasn't built).
+        let rdf_type: RDF::IRI = RdfVocab::rdf_type().into();
+        let subclass_of: RDF::IRI = RdfsVocab::rdfs_subclass_of_str().into();
+
+        let mut instances: HashSet<RDF::Term> = HashSet::new();
+        let mut seen: HashSet<RDF::Term> = HashSet::new();
+        let mut pending: Vec<RDF::Term> = vec![class.clone().into()];
+
+        // `seen` also makes a cyclic class hierarchy terminate.
+        while let Some(cls) = pending.pop() {
+            if !seen.insert(cls.clone()) {
+                continue;
+            }
+            instances.extend(store.subjects_for(&rdf_type, &cls)?);
+            pending.extend(store.subjects_for(&subclass_of, &cls)?);
+        }
+
+        Ok(FocusNodes::from_iter(instances))
     }
 }
 
@@ -76,21 +112,13 @@ impl<RDF: NeighsRDF + Debug> Engine<RDF> for NativeEngine<'_> {
         }
     }
 
+    /// https://www.w3.org/TR/shacl/#targetClass
+    ///
+    /// The targets are the *SHACL instances* of the class (§2.1.3.2), which by
+    /// §1.1 include the instances of every transitive `rdfs:subClassOf`
+    /// subclass, not only the directly typed nodes.
     fn target_class(&self, store: &RDF, class: &Object) -> Result<FocusNodes<RDF>, ValidationError> {
-        // use the pre-built class index (O(1) lookup)
-        if let Some(index) = self.class_index {
-            let focus_nodes = index.instances_of(class).map(|obj| -> RDF::Term { obj.clone().into() });
-            return Ok(FocusNodes::from_iter(focus_nodes));
-        }
-
-        // Fallback: full graph scan (for backwards compatibility if index wasn't built)
-        let cls: RDF::Term = class.clone().into();
-        let focus_nodes = store
-            .shacl_instances_of(&cls)
-            .map_err(ValidationError::new_graph_error::<RDF>)?
-            .map(|s| RDF::subject_as_term(&s));
-
-        Ok(FocusNodes::from_iter(focus_nodes))
+        self.shacl_instances(store, class)
     }
 
     fn target_subject_of(&self, store: &RDF, predicate: &IriS) -> Result<FocusNodes<RDF>, ValidationError> {
@@ -112,29 +140,11 @@ impl<RDF: NeighsRDF + Debug> Engine<RDF> for NativeEngine<'_> {
         Ok(FocusNodes::from_iter(objects))
     }
 
+    /// https://www.w3.org/TR/shacl/#implicit-targetClass
+    ///
+    /// Same target set as `sh:targetClass`, the shape itself playing the class.
     fn implicit_target_class(&self, store: &RDF, shape: &Object) -> Result<FocusNodes<RDF>, ValidationError> {
-        // use the pre-built class index (O(1) lookup)
-        if let Some(index) = self.class_index {
-            let instances = index.instances_of_with_subclasses(shape);
-            let focus_nodes = instances.into_iter().map(|obj| -> RDF::Term { obj.clone().into() });
-            return Ok(FocusNodes::from_iter(focus_nodes));
-        }
-
-        // Fallback: full graph scan (for backwards compatibility if index wasn't built)
-        let term: RDF::Term = shape.clone().into();
-        let targets = store.subjects_for(&RdfVocab::rdf_type().into(), &term)?;
-
-        let subclass_targets = store
-            .subjects_for(&RdfsVocab::rdfs_subclass_of_str().into(), &term)?
-            .into_iter()
-            .flat_map(move |subclass| {
-                store
-                    .subjects_for(&RdfVocab::rdf_type().into(), &subclass)
-                    .into_iter()
-                    .flatten()
-            });
-
-        Ok(FocusNodes::from_iter(targets.into_iter().chain(subclass_targets)))
+        self.shacl_instances(store, shape)
     }
 
     fn record_validation(&mut self, node: Object, shape_idx: ShapeLabelIdx, results: Vec<ValidationResult>) {

@@ -35,6 +35,8 @@ pub use shacl::types::{NodeKind, Severity, Target, Value};
 pub use shacl::validator::report::ValidationResult;
 pub use shacl::vocab::shui;
 
+pub use crate::base::STRING_BASE;
+
 use shacl::ir::{IRSchema, ShapeLabelIdx};
 use shacl::rdf::ShaclParser;
 use shacl::validator::ShaclValidationMode;
@@ -82,9 +84,33 @@ impl FormEngine {
         Self::default()
     }
 
-    /// Parse RDF text into an in-memory graph (lenient reader).
-    pub fn parse_graph(text: &str, format: &RDFFormat) -> Result<OxigraphInMemory, FormError> {
-        OxigraphInMemory::from_str(text, format, None, &ReaderMode::Lax).map_err(|e| FormError::Parse(e.to_string()))
+    /// Parse RDF text into an in-memory graph, resolving relative IRIs against
+    /// `base`.
+    ///
+    /// Deliberately [`ReaderMode::Strict`]: under [`ReaderMode::Lax`] a triple
+    /// whose IRI is malformed (Turtle's `IRIREF` production excludes `|`, `<`,
+    /// `{`, …) is *dropped* and the parse still reports success, so a document
+    /// could be made to conform simply by embedding a bad IRI. A syntax error
+    /// has to reach the caller rather than show up as a missing triple.
+    ///
+    /// Strictness makes the base load-bearing. A **relative** IRI is not a
+    /// syntax error — Turtle defines it as a reference resolved against the
+    /// document base (RDF 1.2 Turtle §6.3) — so rejecting one is a bug, not a
+    /// conformance win. Which is why no loading path in this workspace parses
+    /// without a base: `load_data` takes `base: IriS`, not an `Option`, filled
+    /// from the caller's `--base-data` / `--base-shapes` or, failing that, from
+    /// wherever the document came from (`InputSpec::guess_base`: a `file://`
+    /// URL for a path, the endpoint URL for a URL, `stdin://` for stdin).
+    ///
+    /// This façade follows that convention rather than inventing a third one:
+    /// the caller supplies the base when it knows one (the wasm binding takes it
+    /// as an optional argument on `loadData` / `loadShapes`), and when it does
+    /// not, a string has no location to derive a base from, so the parse falls
+    /// back to the workspace's own synthetic string base, [`STRING_BASE`].
+    pub fn parse_graph(text: &str, format: &RDFFormat, base: Option<&str>) -> Result<OxigraphInMemory, FormError> {
+        let base = base.unwrap_or(STRING_BASE);
+        OxigraphInMemory::from_str(text, format, Some(base), &ReaderMode::Strict)
+            .map_err(|e| FormError::Parse(e.to_string()))
     }
 
     // ---- shapes --------------------------------------------------------------
@@ -92,8 +118,8 @@ impl FormEngine {
     /// Parse `text` as a SHACL shapes graph and load it: stores both the raw
     /// graph (annotation reads) and the parsed validation AST. Returns the AST so
     /// the binding can project its form-IR JSON without re-parsing.
-    pub fn load_shapes(&mut self, text: &str, format: &RDFFormat) -> Result<&ASTSchema, FormError> {
-        let graph = Self::parse_graph(text, format)?;
+    pub fn load_shapes(&mut self, text: &str, format: &RDFFormat, base: Option<&str>) -> Result<&ASTSchema, FormError> {
+        let graph = Self::parse_graph(text, format, base)?;
         let schema = ShaclParser::new(graph.clone())
             .parse()
             .map_err(|e| FormError::Parse(e.to_string()))?;
@@ -114,9 +140,10 @@ impl FormEngine {
 
     // ---- data ----------------------------------------------------------------
 
-    /// Replace the live data graph with the parse of `text`.
-    pub fn load_data(&mut self, text: &str, format: &RDFFormat) -> Result<(), FormError> {
-        self.data = Self::parse_graph(text, format)?;
+    /// Replace the live data graph with the parse of `text`, resolving its
+    /// relative IRIs against `base` (see [`FormEngine::parse_graph`]).
+    pub fn load_data(&mut self, text: &str, format: &RDFFormat, base: Option<&str>) -> Result<(), FormError> {
+        self.data = Self::parse_graph(text, format, base)?;
         Ok(())
     }
 

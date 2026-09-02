@@ -664,7 +664,9 @@ mod tests {
     /// and project it, so a test sees exactly what JavaScript receives.
     fn model(shapes: &str) -> ShapeModelJson {
         let mut engine = FormEngine::new();
-        engine.load_shapes(shapes, &RDFFormat::Turtle).expect("shapes parse");
+        engine
+            .load_shapes(shapes, &RDFFormat::Turtle, None)
+            .expect("shapes parse");
         let ast = engine.shapes_ast().expect("shapes just loaded");
         let graph = engine.shapes_graph().expect("shapes just loaded");
         schema_to_json(ast, graph)

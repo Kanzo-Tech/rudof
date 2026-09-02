@@ -164,12 +164,18 @@ fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &
 
     let (closed, ignored_properties) = closed_info(ns.components());
 
+    // A node shape may be a combination of shapes as readily as a property shape
+    // may. Reading them here is what lets a consumer see through a `sh:node` that
+    // points at a shape whose whole content is an `sh:or`.
+    let logical = shape_core(ns.components(), schema, graph, 0).logical;
+
     NodeShapeIR {
         id: object_str(id),
         instance_class: target_classes.first().cloned(),
         target_classes,
         properties,
         conditionals,
+        logical,
         closed,
         ignored_properties,
         deactivated: flag(ns.is_deactivated()),
@@ -227,13 +233,32 @@ pub(crate) fn resolve_then_else(
     }
 }
 
-fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInMemory) -> PropertyShapeIR {
+/// The constraints a shape carries, read off its component list — the one thing a
+/// node shape and a property shape have in common, and everything a disjunction
+/// branch consists of.
+#[derive(Default)]
+struct ShapeCore {
+    value: ValueConstraints,
+    logical: LogicalConstraints,
+    cardinality: Cardinality,
+    node: Option<String>,
+}
+
+/// How deep a chain of shapes referring to shapes is followed.
+///
+/// Anonymous `sh:or` lists cannot be cyclic, but named shapes can refer to each
+/// other, and since branches may now be node shapes the walk can reach one. A cap
+/// rather than a visited set because the depth a real profile uses is 1: DCAT-AP's
+/// helper shapes are one hop, and nothing in the corpus goes past two.
+const MAX_SHAPE_DEPTH: u8 = 8;
+
+fn shape_core(components: &[ASTComponent], schema: &ASTSchema, graph: &OxigraphInMemory, depth: u8) -> ShapeCore {
     let mut value = ValueConstraints::default();
     let mut logical = LogicalConstraints::default();
     let mut cardinality = Cardinality::default();
     let mut node = None;
 
-    for c in ps.components() {
+    for c in components {
         match c {
             ASTComponent::Datatype(iri) => value.datatype = Some(iriref_str(iri)),
             ASTComponent::Class(o) => value.class_iri = object_iri(o),
@@ -257,17 +282,40 @@ fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInM
             ASTComponent::In(vals) => value.in_values = Some(vals.iter().map(value_to_term).collect()),
             ASTComponent::HasValue(v) => value.has_value = Some(value_to_term(v)),
             ASTComponent::Node(o) => node = object_iri(o),
-            ASTComponent::Or(refs) => logical.or = Some(resolve_branches(refs, schema, graph)),
-            ASTComponent::Xone(refs) => logical.xone = Some(resolve_branches(refs, schema, graph)),
-            ASTComponent::And(refs) => logical.and = Some(resolve_branches(refs, schema, graph)),
+            ASTComponent::Or(refs) => logical.or = Some(resolve_branches(refs, schema, graph, depth)),
+            ASTComponent::Xone(refs) => logical.xone = Some(resolve_branches(refs, schema, graph, depth)),
+            ASTComponent::And(refs) => logical.and = Some(resolve_branches(refs, schema, graph, depth)),
             ASTComponent::Not(o) => {
-                if let Some(ASTShape::PropertyShape(b)) = schema.get_shape(o) {
-                    logical.not = Some(Box::new(property_to_ir(b, schema, graph)));
-                }
+                logical.not = branch_to_ir(o, schema, graph, depth).map(Box::new);
             },
             _ => {},
         }
     }
+
+    ShapeCore {
+        value,
+        logical,
+        cardinality,
+        node,
+    }
+}
+
+fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInMemory) -> PropertyShapeIR {
+    property_to_ir_at(ps, schema, graph, 0)
+}
+
+fn property_to_ir_at(
+    ps: &ASTPropertyShape,
+    schema: &ASTSchema,
+    graph: &OxigraphInMemory,
+    depth: u8,
+) -> PropertyShapeIR {
+    let ShapeCore {
+        mut value,
+        logical,
+        cardinality,
+        node,
+    } = shape_core(ps.components(), schema, graph, depth);
 
     // sh:defaultValue is an annotation, not a validation constraint, so rudof's
     // parser doesn't surface it — read it from the shapes graph like the others.
@@ -331,13 +379,53 @@ fn read_components(graph: &OxigraphInMemory, node: &Object) -> Vec<ComponentIR> 
         .collect()
 }
 
-fn resolve_branches(refs: &[Object], schema: &ASTSchema, graph: &OxigraphInMemory) -> Vec<PropertyShapeIR> {
+/// The members of an `sh:and` / `sh:or` / `sh:xone` list.
+///
+/// Both kinds of shape are kept. A member with no `sh:path` parses as a NODE
+/// shape — that is what SHACL says it is — and keeping only property shapes
+/// therefore discarded the entire common case: every `sh:or ( [sh:datatype …] … )`
+/// and `sh:or ( [sh:class …] … )` in a published profile arrived as an empty list,
+/// which is how a construct that is parsed, mapped and emitted still reached
+/// consumers saying nothing.
+fn resolve_branches(refs: &[Object], schema: &ASTSchema, graph: &OxigraphInMemory, depth: u8) -> Vec<ShapeIR> {
     refs.iter()
-        .filter_map(|o| match schema.get_shape(o) {
-            Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir(ps, schema, graph)),
-            _ => None,
-        })
+        .filter_map(|o| branch_to_ir(o, schema, graph, depth))
         .collect()
+}
+
+fn branch_to_ir(o: &Object, schema: &ASTSchema, graph: &OxigraphInMemory, depth: u8) -> Option<ShapeIR> {
+    if depth >= MAX_SHAPE_DEPTH {
+        return None;
+    }
+    let next = depth + 1;
+    match schema.get_shape(o) {
+        Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir_at(ps, schema, graph, next).into()),
+        Some(ASTShape::NodeShape(ns)) => {
+            let ShapeCore {
+                value,
+                logical,
+                cardinality,
+                node,
+            } = shape_core(ns.components(), schema, graph, next);
+            let mut presentation = presentation(graph, o);
+            if presentation.editor.is_none() {
+                presentation.editor = Some(resolve_default_editor(&value, &node, &logical).to_string());
+            }
+            Some(ShapeIR {
+                id: object_iri(o),
+                path: None,
+                path_key: None,
+                cardinality,
+                value,
+                logical,
+                node,
+                presentation,
+                components: read_components(graph, o),
+                deactivated: flag(ns.is_deactivated()),
+            })
+        },
+        _ => None,
+    }
 }
 
 // ---- annotations read from the shapes graph ---------------------------------

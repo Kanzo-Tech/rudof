@@ -120,16 +120,24 @@ pub struct ConditionalIR {
     pub els: Vec<PropertyShapeIR>,
 }
 
+/// `sh:and` / `sh:or` / `sh:xone` / `sh:not`.
+///
+/// The members are [`ShapeIR`], not [`PropertyShapeIR`], because SHACL 4.6 defines
+/// every one of these over *shapes* and a shape need not have a path. Pathless
+/// members are in fact the common case in published profiles — `sh:or ( [sh:datatype
+/// xsd:date] [sh:datatype xsd:dateTime] )` is one shape per datatype — so typing
+/// these as property shapes does not simplify the model, it makes the usual member
+/// unrepresentable and forces the mapper to drop it.
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct LogicalConstraints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub or: Option<Vec<PropertyShapeIR>>,
+    pub or: Option<Vec<ShapeIR>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub xone: Option<Vec<PropertyShapeIR>>,
+    pub xone: Option<Vec<ShapeIR>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub and: Option<Vec<PropertyShapeIR>>,
+    pub and: Option<Vec<ShapeIR>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub not: Option<Box<PropertyShapeIR>>,
+    pub not: Option<Box<ShapeIR>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
@@ -153,6 +161,55 @@ pub struct PresentationHints {
 pub struct ComponentIR {
     pub iri: String,
     pub params: HashMap<String, Vec<TermValue>>,
+}
+
+/// A shape: a set of constraints, plus what they are about.
+///
+/// `path` is what says which. With a path the shape constrains the values reached
+/// by it from the focus node — a property shape, and what a form builds a field
+/// from. Without one it constrains the focus node itself: "be an IRI", "be an
+/// `xsd:date`". The pathless form has no field of its own and appears only inside
+/// [`LogicalConstraints`], where the node in focus is a value of the enclosing
+/// property.
+///
+/// One struct rather than two, so a combinator can hold either kind without a
+/// conversion between them, and `serde` skips the absent path.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ShapeIR {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathExpr>,
+    /// Canonical SPARQL-ish path key. Absent exactly when `path` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_key: Option<String>,
+    pub cardinality: Cardinality,
+    pub value: ValueConstraints,
+    pub logical: LogicalConstraints,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
+    pub presentation: PresentationHints,
+    pub components: Vec<ComponentIR>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deactivated: Option<bool>,
+}
+
+impl From<PropertyShapeIR> for ShapeIR {
+    fn from(p: PropertyShapeIR) -> Self {
+        Self {
+            id: p.id,
+            path: Some(p.path),
+            path_key: Some(p.path_key),
+            cardinality: p.cardinality,
+            value: p.value,
+            logical: p.logical,
+            node: p.node,
+            presentation: p.presentation,
+            components: p.components,
+            deactivated: p.deactivated,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -190,6 +247,13 @@ pub struct NodeShapeIR {
     pub properties: Vec<PropertyShapeIR>,
     #[serde(default)]
     pub conditionals: Vec<ConditionalIR>,
+    /// Combinators declared on the node shape itself, constraining the focus node
+    /// rather than one of its properties. The same field as on a property shape,
+    /// because it is the same construct. Profiles use it to name a value kind once
+    /// and reuse it: DCAT-AP's `:DateOrDateTimeDataType_Shape` is nothing but an
+    /// `sh:or` of four datatypes, and a dozen properties reach it by `sh:node`.
+    #[serde(default)]
+    pub logical: LogicalConstraints,
     /// `sh:closed true` (SHACL 4.8.1): the focus node may carry no property
     /// beyond those the shape declares. `None` when open (`sh:closed` absent, or
     /// stated `false`).

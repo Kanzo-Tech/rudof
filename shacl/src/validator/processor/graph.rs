@@ -71,7 +71,7 @@ impl GraphValidation {
     #[cfg(not(target_family = "wasm"))]
     pub fn from_path<P: AsRef<Path>>(path: P, format: RDFFormat, base: Option<&str>) -> Result<Self, ValidationError> {
         let store = Graph::from_path(path.as_ref(), &format, base)?;
-        Ok(Self { store })
+        Ok(Self::new(store))
     }
 }
 

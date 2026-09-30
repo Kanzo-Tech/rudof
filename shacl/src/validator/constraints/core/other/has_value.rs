@@ -1,5 +1,7 @@
 use crate::error::ValidationError;
 use crate::ir::IRSchema;
+use crate::validator::constraints::Parameters;
+use crate::validator::constraints::display;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::FocusNodeIteration;
@@ -27,7 +29,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for HasValue<'_> {
         })
     }
 
-    fn message(&self, _schema: &IRSchema) -> String {
-        format!("HasValue({}) not satisfied", self.0)
+    fn parameters(&self, schema: &IRSchema) -> Parameters {
+        [("hasValue", display(schema, self.0))].into()
     }
 }

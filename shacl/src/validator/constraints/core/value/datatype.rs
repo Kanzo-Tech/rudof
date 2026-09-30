@@ -1,5 +1,6 @@
 use crate::error::ValidationError;
 use crate::ir::IRSchema;
+use crate::validator::constraints::Parameters;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
@@ -34,8 +35,15 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Datatype<'_> {
         Ok(if violates { Check::Violate } else { Check::Hold })
     }
 
-    fn message(&self, schema: &IRSchema) -> String {
-        let datatypes: Vec<String> = self.0.iter().map(|d| schema.prefix_map().qualify(d)).collect();
-        format!("Expected Datatype: {}", datatypes.join(" or "))
+    fn parameters(&self, schema: &IRSchema) -> Parameters {
+        [(
+            "datatype",
+            self.0
+                .iter()
+                .map(|d| schema.prefix_map().qualify(d))
+                .collect::<Vec<_>>()
+                .join(", "),
+        )]
+        .into()
     }
 }

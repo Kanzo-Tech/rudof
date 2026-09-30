@@ -1,12 +1,12 @@
 use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
-use crate::validator::constraints::with_shape_message;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
+use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
@@ -35,8 +35,9 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for UniqueLang {
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
+        schema: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
+        let component_iri = IriS::from(component);
         if !self.0 {
             return Ok(Default::default());
         }
@@ -55,15 +56,11 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for UniqueLang {
                 }
             }
 
-            for (k, v) in langs_map {
+            for v in langs_map.into_values() {
                 if v.len() > 1 {
-                    let msg = format!(
-                        "Unique lang failed for lang {k} with values: {}",
-                        v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ")
-                    );
                     let vr = ValidationResult::new(fnode_obj.clone(), component.clone(), shape.severity().clone())
                         .with_path(maybe_path.cloned())
-                        .with_message(with_shape_message(MessageMap::from(msg), shape))
+                        .with_message(result_message(schema, shape, &component_iri, &[], None))
                         .with_source(Some(shape.id().clone()));
                     validation_results.push(vr);
                 }

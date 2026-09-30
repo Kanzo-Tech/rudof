@@ -1,5 +1,6 @@
 use crate::error::ValidationError;
 use crate::ir::IRSchema;
+use crate::validator::constraints::Parameters;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::FocusNodeIteration;
@@ -29,7 +30,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for MinCount {
         })
     }
 
-    fn message(&self, _schema: &IRSchema) -> String {
-        format!("MinCount({}) not satisfied", self.0)
+    fn parameters(&self, _schema: &IRSchema) -> Parameters {
+        [("minCount", self.0.to_string())].into()
     }
 }

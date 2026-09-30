@@ -1,5 +1,7 @@
 use crate::error::ValidationError;
 use crate::ir::IRSchema;
+use crate::validator::constraints::Parameters;
+use crate::validator::constraints::display;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
@@ -26,7 +28,11 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for In<'_> {
         })
     }
 
-    fn message(&self, _schema: &IRSchema) -> String {
-        format!("In constraint not satisfied. Expected one of {:?}", self.0)
+    fn parameters(&self, schema: &IRSchema) -> Parameters {
+        [(
+            "in",
+            self.0.iter().map(|o| display(schema, o)).collect::<Vec<_>>().join(", "),
+        )]
+        .into()
     }
 }

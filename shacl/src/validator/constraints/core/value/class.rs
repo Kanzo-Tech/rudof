@@ -2,6 +2,8 @@ use crate::error::ValidationError;
 use crate::ir::IRSchema;
 #[cfg(feature = "sparql")]
 use crate::ir::{IRComponent, IRShape};
+use crate::validator::constraints::Parameters;
+use crate::validator::constraints::display;
 #[cfg(feature = "sparql")]
 use crate::validator::constraints::sparql_ask;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
@@ -52,8 +54,8 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Class<'_> {
         Ok(if conforms { Check::Hold } else { Check::Violate })
     }
 
-    fn message(&self, _schema: &IRSchema) -> String {
-        format!("Class constraint not satisfied for class {}", self.0)
+    fn parameters(&self, schema: &IRSchema) -> Parameters {
+        [("class", display(schema, self.0))].into()
     }
 
     #[cfg(feature = "sparql")]
@@ -65,7 +67,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Class<'_> {
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
+        schema: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError>
     where
         S: QueryRDF,
@@ -78,13 +80,15 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Class<'_> {
             ", vn, self.0
             }
         };
+        let parameters = <Self as ConstraintComponent<S>>::parameters(self, schema);
         sparql_ask(
             component,
             shape,
             store,
             value_nodes,
             query_fn,
-            &format!("Class constraint not satisfied for class {}", self.0),
+            schema,
+            &parameters,
             maybe_path,
         )
     }

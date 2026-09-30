@@ -1,8 +1,8 @@
 use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
-use crate::validator::constraints::with_shape_message;
+use crate::validator::constraints::display;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::Engine;
 use crate::validator::iteration::{IterationStrategy, ValueNodeIteration};
 use crate::validator::nodes::ValueNodes;
@@ -34,8 +34,9 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Disjoint<'_> {
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
+        schema: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
+        let component_iri = IriS::from(component);
         let violates = |f: &S::Term, vn: &S::Term| {
             let subject = S::term_as_subject(f).unwrap();
             let iri: S::IRI = self.0.clone().into();
@@ -55,7 +56,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Disjoint<'_> {
         };
 
         let strategy = ValueNodeIteration;
-        let msg = format!("Disjoint failed. Property {}", self.0);
+        let parameters = [("disjoint", display(schema, &Object::Iri(self.0.clone())))];
         let mut results = Vec::new();
         for (focus_node, item) in strategy.iterate(value_nodes) {
             let Ok(focus) = S::term_as_object(focus_node) else {
@@ -67,7 +68,13 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Disjoint<'_> {
                 results.push(
                     ValidationResult::new(focus, component_obj, shape.severity().clone())
                         .with_source(Some(shape.id().clone()))
-                        .with_message(with_shape_message(MessageMap::from(msg.as_str()), shape))
+                        .with_message(result_message(
+                            schema,
+                            shape,
+                            &component_iri,
+                            &parameters,
+                            value.as_ref(),
+                        ))
                         .with_path(maybe_path.cloned())
                         .with_value(value),
                 );

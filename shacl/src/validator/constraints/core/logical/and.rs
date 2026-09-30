@@ -1,13 +1,13 @@
 use crate::error::ValidationError;
 use crate::ir::components::And;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
-use crate::validator::constraints::with_shape_message;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::{Engine, Validate};
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
+use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
@@ -31,6 +31,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for And {
         maybe_path: Option<&SHACLPath>,
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
+        let component_iri = IriS::from(component);
         let mut validation_results = Vec::new();
         let componet_obj = Object::iri(component.into());
 
@@ -63,7 +64,13 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for And {
 
                     let vr = ValidationResult::new(fnode_obj.clone(), componet_obj.clone(), shape.severity().clone())
                         .with_source(Some(shape.id().clone()))
-                        .with_message(with_shape_message(MessageMap::default(), shape))
+                        .with_message(result_message(
+                            shapes_graph,
+                            shape,
+                            &component_iri,
+                            &[],
+                            node_obj.as_ref(),
+                        ))
                         .with_path(maybe_path.cloned())
                         .with_value(node_obj);
                     validation_results.push(vr);

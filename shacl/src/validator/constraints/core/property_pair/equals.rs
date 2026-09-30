@@ -1,8 +1,8 @@
 use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
-use crate::validator::constraints::with_shape_message;
+use crate::validator::constraints::display;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
@@ -35,8 +35,10 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Equals<'_> {
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
+        schema: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
+        let component_iri = IriS::from(component);
+        let parameters = [("equals", display(schema, &Object::Iri(self.0.clone())))];
         let component_obj = Object::iri(component.into());
         let mut results = Vec::new();
 
@@ -63,7 +65,13 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Equals<'_> {
                     let value = S::term_as_object(pv).ok();
                     let vr = ValidationResult::new(fnode_obj.clone(), component_obj.clone(), shape.severity().clone())
                         .with_source(Some(shape.id().clone()))
-                        .with_message(with_shape_message(MessageMap::default(), shape))
+                        .with_message(result_message(
+                            schema,
+                            shape,
+                            &component_iri,
+                            &parameters,
+                            value.as_ref(),
+                        ))
                         .with_path(maybe_path.cloned())
                         .with_value(value);
                     results.push(vr);
@@ -75,7 +83,13 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Equals<'_> {
                     let value = S::term_as_object(vn).ok();
                     let vr = ValidationResult::new(fnode_obj.clone(), component_obj.clone(), shape.severity().clone())
                         .with_source(Some(shape.id().clone()))
-                        .with_message(with_shape_message(MessageMap::default(), shape))
+                        .with_message(result_message(
+                            schema,
+                            shape,
+                            &component_iri,
+                            &parameters,
+                            value.as_ref(),
+                        ))
                         .with_path(maybe_path.cloned())
                         .with_value(value);
                     results.push(vr);

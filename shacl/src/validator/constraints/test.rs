@@ -1,6 +1,7 @@
 #[cfg(all(not(target_family = "wasm"), test))]
 mod tests {
     use crate::ir::IRSchema;
+    use crate::messages::MessageCatalog;
     use crate::rdf::ShaclParser;
     use crate::types::MessageMap;
     use crate::validator::ShaclValidationMode;
@@ -148,11 +149,16 @@ prefix : <http://example.org/>
 
     /// Validate `graph` (native engine) and return the results' messages.
     fn messages(graph: &str) -> Vec<MessageMap> {
+        messages_with(graph, MessageCatalog::builtin().clone())
+    }
+
+    /// As [`messages`], under a given message catalog.
+    fn messages_with(graph: &str, catalog: MessageCatalog) -> Vec<MessageMap> {
         let graph = format!("{PREFIXES}{graph}");
         let rdf = RdfData::from_str(&graph, &RDFFormat::Turtle, None, &ReaderMode::Strict).unwrap();
         let mut validator: DataValidation = rdf.clone().into();
         let schema = ShaclParser::new(rdf).parse().unwrap();
-        let schema_ir: IRSchema = schema.try_into().unwrap();
+        let schema_ir: IRSchema = IRSchema::try_from(schema).unwrap().with_messages(catalog);
         let report = validator.validate(&schema_ir, &ShaclValidationMode::Native).unwrap();
         report.results().iter().map(|r| r.message().clone()).collect()
     }
@@ -360,33 +366,164 @@ prefix : <http://example.org/>
         assert_eq!(
             m.get(None),
             None,
-            "the engine's generated message leaked in beside the shape's: {m}"
+            "the engine's message leaked in beside the shape's: {m}"
+        );
+        assert_eq!(
+            m.get(Some(&Lang::new("en").unwrap())).map(String::as_str),
+            Some("author message")
         );
     }
 
-    /// The mirror case: a shape declaring no `sh:message` leaves the engine free
-    /// to generate one (§3.6.2.7) — and `sh:node` reports the shape's *id*, never
-    /// a `Display` dump of the IR.
+    // -- default messages: generated from the catalog when the shape has none --
+    //
+    // SHACL §3.6.2.7: a processor "MAY automatically generate other values for
+    // sh:resultMessage" where the constraint has no `sh:message`. The wording is
+    // the catalog's (`messages/`), one message per language, placeholders filled.
+
+    /// The message of the one result `graph` produces, in `lang`.
+    fn one_message(graph: &str, lang: &str) -> String {
+        let msgs = messages(graph);
+        assert_eq!(msgs.len(), 1, "expected exactly one violation, got {msgs:?}");
+        msgs[0]
+            .get(Some(&Lang::new(lang).unwrap()))
+            .unwrap_or_else(|| panic!("no @{lang} message in {}", msgs[0]))
+            .clone()
+    }
+
+    /// A shape with one property constraint (`constraint`) and a focus node
+    /// whose `:p` values are `values`.
+    fn property_case(constraint: &str, values: &str) -> String {
+        format!(
+            "
+:S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; {constraint} ] .
+:n a :C ; {values} .
+"
+        )
+    }
+
     #[test]
-    fn generated_message_stands_when_the_shape_is_silent() {
-        let msgs = messages(
+    fn silent_shape_gets_one_message_per_catalog_language() {
+        let msgs = messages(&property_case("sh:minCount 2", ""));
+        let m = &msgs[0];
+        let mut langs: Vec<_> = m.iter().map(|(l, _)| l.as_ref().map(|l| l.as_str())).collect();
+        langs.sort();
+        assert_eq!(langs, [Some("ca"), Some("en"), Some("es")], "{m}");
+        assert_eq!(m.get(None), None, "no untagged debug string: {m}");
+    }
+
+    #[test]
+    fn parameters_fill_the_placeholders() {
+        let en = |constraint: &str, values: &str| one_message(&property_case(constraint, values), "en");
+        assert_eq!(en("sh:minCount 2", ":p 1"), "At least 2 value(s) required");
+        assert_eq!(en("sh:maxCount 1", ":p 1, 2"), "At most 1 value(s) allowed");
+        assert_eq!(
+            en("sh:datatype xsd:integer", ":p \"x\""),
+            "“x” is not of type xsd:integer"
+        );
+        assert_eq!(en("sh:class :K", ":p :v"), "Value must be an instance of :K");
+        assert_eq!(en("sh:nodeKind sh:IRI", ":p \"x\""), "Expected kind of value: Iri");
+        assert_eq!(
+            en("sh:pattern \"^a\"", ":p \"b\""),
+            "Value does not match the pattern ^a"
+        );
+        assert_eq!(en("sh:minLength 3", ":p \"b\""), "At least 3 character(s) required");
+        assert_eq!(en("sh:maxLength 1", ":p \"bb\""), "At most 1 character(s) allowed");
+        assert_eq!(en("sh:in (1 2)", ":p 3"), "“3” is not one of: 1, 2");
+        assert_eq!(en("sh:hasValue :v", ":p :w"), "Required value missing: :v");
+        assert_eq!(
+            en("sh:languageIn (\"en\" \"es\")", ":p \"x\"@fr"),
+            "Language must be one of: en, es"
+        );
+        assert_eq!(en("sh:minInclusive 5", ":p 1"), "Value must be at least 5");
+        assert_eq!(en("sh:maxExclusive 5", ":p 9"), "Value must be less than 5");
+        assert_eq!(
+            en("sh:uniqueLang true", ":p \"a\"@en, \"b\"@en"),
+            "Only one value per language is allowed"
+        );
+        assert_eq!(en("sh:equals :q", ":p 1"), "Values must be the same as those of :q");
+        assert_eq!(
+            en("sh:not [ sh:datatype xsd:string ]", ":p \"s\""),
+            "This value is not allowed here"
+        );
+        assert_eq!(
+            en(
+                "sh:or ( [ sh:datatype xsd:integer ] [ sh:datatype xsd:boolean ] )",
+                ":p \"s\""
+            ),
+            "Value must meet at least one of the alternatives"
+        );
+        assert_eq!(
+            en(
+                "sh:qualifiedValueShape [ sh:datatype xsd:integer ] ; sh:qualifiedMinCount 2",
+                ":p 1"
+            ),
+            "At least 2 matching value(s) required"
+        );
+    }
+
+    #[test]
+    fn languages_share_the_parameters() {
+        let graph = property_case("sh:minCount 2", "");
+        assert_eq!(one_message(&graph, "es"), "Se requieren al menos 2 valor(es)");
+        assert_eq!(one_message(&graph, "ca"), "Calen com a mínim 2 valor(s)");
+    }
+
+    #[test]
+    fn loaded_messages_add_a_language_and_override_a_wording() {
+        let mut catalog = MessageCatalog::builtin().clone();
+        catalog
+            .load(
+                r#"@prefix sh: <http://www.w3.org/ns/shacl#> .
+sh:MinCountConstraintComponent sh:message "Au moins {$minCount} valeur(s)"@fr , "Need {$minCount}!"@en ."#,
+                &RDFFormat::Turtle,
+            )
+            .unwrap();
+        let m = &messages_with(&property_case("sh:minCount 2", ""), catalog)[0];
+        assert_eq!(m.get(Some(&Lang::new("fr").unwrap())).unwrap(), "Au moins 2 valeur(s)");
+        assert_eq!(m.get(Some(&Lang::new("en").unwrap())).unwrap(), "Need 2!");
+        // Untouched languages keep the built-in wording.
+        assert_eq!(
+            m.get(Some(&Lang::new("es").unwrap())).unwrap(),
+            "Se requieren al menos 2 valor(es)"
+        );
+        assert_eq!(m.messages().len(), 4);
+    }
+
+    #[test]
+    fn unnamed_component_takes_the_generic_message_or_none() {
+        let mut catalog = MessageCatalog::default();
+        catalog
+            .load(
+                r#"@prefix sh: <http://www.w3.org/ns/shacl#> . sh:ConstraintComponent sh:message "Nope"@en ."#,
+                &RDFFormat::Turtle,
+            )
+            .unwrap();
+        let graph = property_case("sh:minCount 2", "");
+        assert_eq!(
+            messages_with(&graph, catalog)[0]
+                .get(Some(&Lang::new("en").unwrap()))
+                .unwrap(),
+            "Nope"
+        );
+        // No entry and no generic one: no message at all, never a debug string.
+        assert!(
+            messages_with(&graph, MessageCatalog::default())[0]
+                .messages()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn node_shape_result_is_generated_too() {
+        let m = one_message(
             r#"
-:S a sh:NodeShape ; sh:targetClass :C ;
-  sh:property [ sh:path :p ; sh:node :Inner ] .
+:S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; sh:node :Inner ] .
 :Inner a sh:NodeShape ; sh:property [ sh:path :q ; sh:minCount 1 ] .
 :n a :C ; :p :x .
 "#,
+            "en",
         );
-        let m = msgs.first().unwrap();
-        let default = m.get(None).expect("the engine's own wording, under the default key");
-        assert!(
-            default.contains("http://example.org/Inner"),
-            "expected the node shape id, got {default}"
-        );
-        assert!(
-            !default.contains("Property Shapes"),
-            "IR dump leaked into the message: {default}"
-        );
+        assert_eq!(m, "Value does not meet the requirements of the referenced shape");
     }
 
     // ---- sh:class is transitive (SHACL §4.4.1 + §1.1) -----------------------

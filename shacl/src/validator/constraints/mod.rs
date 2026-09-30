@@ -14,34 +14,60 @@ use crate::validator::iteration::IterationStrategy;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
+use rudof_iri::IriS;
 #[cfg(feature = "sparql")]
 use rudof_rdf::query::QueryRDF;
 use rudof_rdf::term::Object;
 use rudof_rdf::{NeighsRDF, SHACLPath};
 use std::fmt::Debug;
 
-/// The `sh:resultMessage` set for a result: the shape's own `sh:message` when it
-/// declares any, else the component-supplied default.
+/// The values a message template can name: a component's parameters, by the local
+/// name of the SHACL parameter (`minCount`, `datatype`, ...), already rendered as
+/// text. `{$value}` is not among them; it belongs to each result.
+pub(crate) type Parameters = Vec<(&'static str, String)>;
+
+/// A term as the text of a message: an IRI in its prefixed form when the shapes
+/// graph declares a prefix for it, a literal by its lexical form.
+pub(crate) fn display(schema: &IRSchema, term: &Object) -> String {
+    match term {
+        Object::Iri(iri) => schema.prefix_map().qualify(iri),
+        Object::Literal(lit) => lit.lexical_form(),
+        other => other.to_string(),
+    }
+}
+
+/// The `sh:resultMessage` set of a result of `component`.
 ///
 /// `sh:message` is declared on the *shape*, so every component that emits a
-/// [`ValidationResult`] owes the author their text — language tags included.
-/// The spec is exact about how much it owes: "If a shape has at least one value
-/// for `sh:message` in the shapes graph, then all validation results produced as
-/// a result of the shape will have **exactly these messages** as their value of
-/// `sh:resultMessage`" (SHACL §2.1.5), and the engine may invent wording only
-/// "in cases where a constraint does not have any values for `sh:message`"
-/// (§3.6.2.7).
+/// [`ValidationResult`] owes the author their text — language tags included. The
+/// spec is exact about how much it owes: "If a shape has at least one value for
+/// `sh:message` in the shapes graph, then all validation results produced as a
+/// result of the shape will have **exactly these messages** as their value of
+/// `sh:resultMessage`" (SHACL §2.1.5). So the author's set is copied and nothing
+/// is added to it.
 ///
-/// So the author's set *replaces* the engine's built-in English; it is not
-/// merged over it. Merging used to leave "MinCount(1) not satisfied" sitting
-/// under the untagged key beside the author's three languages — one message more
-/// than the shape declares, and the one a consumer falling back to "untagged"
-/// would show in place of the text the profile actually wrote. Components that
-/// build their results by hand call this instead of re-deriving the rule.
-pub(crate) fn with_shape_message(base: MessageMap, shape: &IRShape) -> MessageMap {
+/// Only "in cases where a constraint does not have any values for `sh:message`"
+/// may the processor "automatically generate other values" (§3.6.2.7): those come
+/// from the schema's [`MessageCatalog`](crate::messages::MessageCatalog), one per
+/// language it holds for the component, with `{$name}` replaced from `parameters`
+/// and `{$value}` from the value node.
+///
+/// The SHACL 1.2 rule that a `sh:message` on a reifier of the constraint's triple
+/// takes precedence over the shape's is not applied: the parser does not read
+/// reified constraints.
+pub(crate) fn result_message(
+    schema: &IRSchema,
+    shape: &IRShape,
+    component: &IriS,
+    parameters: &[(&str, String)],
+    value: Option<&Object>,
+) -> MessageMap {
     match shape.message() {
-        Some(m) if !m.messages().is_empty() => m.to_owned(),
-        _ => base,
+        Some(author) if !author.messages().is_empty() => author.clone(),
+        _ => schema.messages().render(component, |name| match name {
+            "value" => value.map(|v| display(schema, v)),
+            _ => parameters.iter().find(|(n, _)| *n == name).map(|(_, v)| v.clone()),
+        }),
     }
 }
 
@@ -73,14 +99,14 @@ pub(crate) struct CheckCtx<'a, S: NeighsRDF, E: Engine<S>> {
 /// A SHACL constraint component evaluated through a fixed **template method**.
 ///
 /// Regular components override only the three hooks — [`strategy`], [`check`],
-/// [`message`] — and inherit the iterate→check→emit→collect
+/// [`parameters`] — and inherit the iterate→check→emit→collect
 /// [`validate_native`](ConstraintComponent::validate_native) body. Components
 /// with bespoke shapes (whole-set scans, multi-result emits, engine recursion)
 /// override `validate_native` directly and leave the hooks at their defaults.
 ///
 /// [`strategy`]: ConstraintComponent::strategy
 /// [`check`]: ConstraintComponent::check
-/// [`message`]: ConstraintComponent::message
+/// [`parameters`]: ConstraintComponent::parameters
 pub(crate) trait ConstraintComponent<S: NeighsRDF + Debug> {
     /// How `value_nodes` is iterated (per focus node, or per value node).
     type Strategy: IterationStrategy<S>;
@@ -96,9 +122,10 @@ pub(crate) trait ConstraintComponent<S: NeighsRDF + Debug> {
         Ok(Check::Hold)
     }
 
-    /// `sh:resultMessage` text for a violation produced by the template.
-    fn message(&self, _schema: &IRSchema) -> String {
-        String::new()
+    /// The component's parameter values, for the placeholders of its message
+    /// template (see [`result_message`]). Read only when a result is produced.
+    fn parameters(&self, _schema: &IRSchema) -> Parameters {
+        Parameters::new()
     }
 
     /// Skip the whole component without iterating (e.g. `sh:minCount 0`).
@@ -122,7 +149,8 @@ pub(crate) trait ConstraintComponent<S: NeighsRDF + Debug> {
             return Ok(Vec::new());
         }
         let strategy = self.strategy();
-        let msg = self.message(shapes_graph);
+        let component_iri = IriS::from(component);
+        let mut parameters = None;
         let mut cx = CheckCtx {
             store,
             engine,
@@ -138,11 +166,11 @@ pub(crate) trait ConstraintComponent<S: NeighsRDF + Debug> {
             };
             // Real evaluator errors propagate (no silent drop).
             if let Check::Violate = self.check(item, &mut cx)? {
-                let component_obj = Object::iri(component.into());
                 let value = strategy.to_object(item);
-                let message = with_shape_message(MessageMap::from(msg.as_str()), shape);
+                let parameters = parameters.get_or_insert_with(|| self.parameters(shapes_graph));
+                let message = result_message(shapes_graph, shape, &component_iri, parameters, value.as_ref());
                 results.push(
-                    ValidationResult::new(focus, component_obj, shape.severity().clone())
+                    ValidationResult::new(focus, Object::Iri(component_iri.clone()), shape.severity().clone())
                         .with_source(Some(shape.id().clone()))
                         .with_message(message)
                         .with_path(maybe_path.cloned())
@@ -311,8 +339,8 @@ pub(crate) fn validate_sparql<S: QueryRDF + NeighsRDF + Debug>(
 
 /// Shared ASK skeleton for the SPARQL value-range / string / class / node-kind
 /// components: iterate value nodes, run the per-node ASK, emit a violation when
-/// it fails. Mirrors the native template's emit (message merged with the
-/// shape's `sh:message`).
+/// it fails. Mirrors the native template's emit (message from
+/// [`result_message`]).
 #[cfg(feature = "sparql")]
 pub(crate) fn sparql_ask<S: QueryRDF + NeighsRDF + Debug>(
     component: &IRComponent,
@@ -320,7 +348,8 @@ pub(crate) fn sparql_ask<S: QueryRDF + NeighsRDF + Debug>(
     store: &S,
     value_nodes: &ValueNodes<S>,
     eval_query: impl Fn(&S::Term) -> String,
-    msg: &str,
+    schema: &IRSchema,
+    parameters: &[(&str, String)],
     maybe_path: Option<&SHACLPath>,
 ) -> Result<Vec<ValidationResult>, ValidationError> {
     let strategy = ValueNodeIteration;
@@ -336,7 +365,7 @@ pub(crate) fn sparql_ask<S: QueryRDF + NeighsRDF + Debug>(
         if violates {
             let component_obj = Object::iri(component.into());
             let value = S::term_as_object(item).ok();
-            let message = with_shape_message(MessageMap::from(msg), shape);
+            let message = result_message(schema, shape, &IriS::from(component), parameters, value.as_ref());
             results.push(
                 ValidationResult::new(focus, component_obj, shape.severity().clone())
                     .with_source(Some(shape.id().clone()))

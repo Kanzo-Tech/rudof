@@ -1,8 +1,8 @@
 use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
-use crate::validator::constraints::with_shape_message;
+use crate::validator::constraints::display;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
@@ -34,8 +34,10 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for LessThan<'_> {
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
+        schema: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
+        let component_iri = IriS::from(component);
+        let parameters = [("lessThan", display(schema, &Object::Iri(self.0.clone())))];
         let mut validation_results = Vec::new();
         let component = Object::iri(component.into());
 
@@ -50,24 +52,23 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for LessThan<'_> {
                         let node1 = S::term_as_object(triple.obj())?;
                         for value in nodes.iter() {
                             let node2 = S::term_as_object(value)?;
-                            let msg = match node2.sparql_compare(&node1) {
-                                None => Some(format!(
-                                    "LessThan constraint violated: {node1} is not comparable to {node2}"
-                                )),
-                                Some(ord) if ord.is_ge() => Some(format!(
-                                    "LessThan constraint violated: {node1} is not less than {node2}"
-                                )),
-                                _ => None,
-                            };
+                            // Values that cannot be compared violate it too.
+                            let violates = node2.sparql_compare(&node1).is_none_or(|ord| ord.is_ge());
 
-                            if let Some(msg) = msg {
+                            if violates {
                                 let node_obj = S::term_as_object(value).ok();
                                 let vr = ValidationResult::new(
                                     fnode_obj.clone(),
                                     component.clone(),
                                     shape.severity().clone(),
                                 )
-                                .with_message(with_shape_message(MessageMap::from(msg), shape))
+                                .with_message(result_message(
+                                    schema,
+                                    shape,
+                                    &component_iri,
+                                    &parameters,
+                                    node_obj.as_ref(),
+                                ))
                                 .with_path(maybe_path.cloned())
                                 .with_source(Some(shape.id().clone()))
                                 .with_value(node_obj);
@@ -76,14 +77,10 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for LessThan<'_> {
                         }
                     }
                 },
-                Err(e) => {
-                    let msg = format!(
-                        "LessThan: Error trying to find triples for subject {subject} and predicate {}: {e}",
-                        self.0
-                    );
+                Err(_) => {
                     let vr = ValidationResult::new(fnode_obj, component.clone(), shape.severity().clone())
                         .with_path(maybe_path.cloned())
-                        .with_message(with_shape_message(MessageMap::from(msg), shape))
+                        .with_message(result_message(schema, shape, &component_iri, &parameters, None))
                         .with_source(Some(shape.id().clone()));
                     validation_results.push(vr);
                 },

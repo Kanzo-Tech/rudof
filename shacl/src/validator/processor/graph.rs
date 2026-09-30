@@ -27,11 +27,20 @@ use std::path::Path;
 /// The In-Memory Graph Validation algorithm
 pub struct GraphValidation {
     store: Graph,
+    /// The class index of `store`, built by the first scoped validation and kept:
+    /// it is a pass over the whole graph, and a caller validating many nodes
+    /// against one graph would otherwise repeat it for each.
+    #[cfg(not(feature = "sparql"))]
+    index: std::cell::OnceCell<ClassIndex>,
 }
 
 impl GraphValidation {
     pub fn new(store: Graph) -> Self {
-        Self { store }
+        Self {
+            store,
+            #[cfg(not(feature = "sparql"))]
+            index: std::cell::OnceCell::new(),
+        }
     }
 
     /// Returns an In-Memory Graph validation SHACL processor.
@@ -132,8 +141,14 @@ impl GraphValidation {
         focus: Option<&Object>,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
         let store = self.store.store();
-        let index = ClassIndex::build(store)?;
-        let mut engine = NativeEngine::new(Some(&index));
+        let index = match self.index.get() {
+            Some(index) => index,
+            None => {
+                let built = ClassIndex::build(store)?;
+                self.index.get_or_init(|| built)
+            },
+        };
+        let mut engine = NativeEngine::new(Some(index));
         match focus {
             Some(focus) => validate_focus(store, shapes_graph, &mut engine, shape_idx, focus),
             None => {

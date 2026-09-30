@@ -1,0 +1,40 @@
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+PREFIX shui: <http://www.w3.org/ns/shacl-ui/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+shui:HyperlinkViewer
+    a shui:SingleViewer ;
+    rdfs:label "Hyperlink Viewer"@en ;
+    rdfs:comment "A clickable hyperlink to the URL held by the value."@en ;
+.
+
+shui:hyperlinkViewerScore40
+    a shui:WidgetScore ;
+    shui:widget shui:HyperlinkViewer ;
+    shui:score 40 ;
+    shui:dataGraphShape shui:isAnyURIOrString ;
+    shui:shapesGraphShape shui:prefersHyperlinkViewer ;
+.
+
+shui:hyperlinkViewerScore20
+    a shui:WidgetScore ;
+    shui:widget shui:HyperlinkViewer ;
+    shui:score 20 ;
+    shui:dataGraphShape shui:isAnyURI ;
+.
+
+shui:hyperlinkViewerScore0
+    a shui:WidgetScore ;
+    shui:widget shui:HyperlinkViewer ;
+    shui:score 0 ;
+    shui:dataGraphShape shui:isString ;
+.
+
+shui:prefersHyperlinkViewer
+    a sh:NodeShape ;
+    sh:property [
+        sh:path shui:viewer ;
+        sh:hasValue shui:HyperlinkViewer ;
+    ] ;
+.

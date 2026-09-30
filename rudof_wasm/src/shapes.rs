@@ -149,16 +149,13 @@ fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &
         })
         .collect();
 
-    let conditionals = ns
-        .components()
-        .iter()
-        .filter_map(|c| match c {
-            ASTComponent::If { cond, then_, else_ } => Some(ConditionalIR {
-                condition_id: object_str(cond),
-                then: resolve_then_else(then_.as_ref(), schema, graph),
-                els: resolve_then_else(else_.as_ref(), schema, graph),
-            }),
-            _ => None,
+    let conditionals = conditionals_of(ns, schema)
+        .into_iter()
+        .map(|c| ConditionalIR {
+            condition_id: object_str(c.cond),
+            then_id: c.then.map(object_str),
+            then: resolve_then_else(c.then, schema, graph),
+            els: resolve_then_else(c.els, schema, graph),
         })
         .collect();
 
@@ -167,7 +164,17 @@ fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &
     // A node shape may be a combination of shapes as readily as a property shape
     // may. Reading them here is what lets a consumer see through a `sh:node` that
     // points at a shape whose whole content is an `sh:or`.
-    let logical = shape_core(ns.components(), schema, graph, 0).logical;
+    //
+    // An `sh:or` that states a conditional is left out: it is already reported in
+    // `conditionals`, and a consumer reading it again as a disjunction would offer
+    // "not the condition" as a kind of value to choose.
+    let plain: Vec<ASTComponent> = ns
+        .components()
+        .iter()
+        .filter(|c| !matches!(c, ASTComponent::Or(refs) if implication(refs, schema).is_some()))
+        .cloned()
+        .collect();
+    let logical = shape_core(&plain, schema, graph, 0).logical;
 
     NodeShapeIR {
         id: object_str(id),
@@ -210,27 +217,97 @@ fn closed_info(components: &[ASTComponent]) -> (Option<bool>, Vec<String>) {
     (None, Vec::new())
 }
 
-/// Resolve a `sh:then` / `sh:else` object to its property shapes: a node-shape
-/// target contributes each of its `property_shapes()`; a direct property shape
-/// contributes itself; anything unresolved/absent yields an empty vec.
-pub(crate) fn resolve_then_else(
-    obj: Option<&Object>,
-    schema: &ASTSchema,
-    graph: &OxigraphInMemory,
-) -> Vec<PropertyShapeIR> {
+/// A conditional requirement declared on a node shape: when the focus node
+/// conforms to `cond`, the property shapes of `then` apply; otherwise those of
+/// `els`.
+pub(crate) struct Conditional<'a> {
+    pub cond: &'a Object,
+    pub then: Option<&'a Object>,
+    pub els: Option<&'a Object>,
+}
+
+/// Every conditional a node shape declares — the one place that decides what
+/// counts as one, so the shapes projection and the value projection cannot
+/// disagree about it.
+///
+/// Two spellings are read. SHACL Core has no conditional component; what it has is
+/// `sh:or` and `sh:not` (§4.6.3, §4.6.1), and "if C then T" is written with them
+/// as the material implication `sh:or ( [ sh:not C ] T )`. That is the standard
+/// form. `sh:if` / `sh:then` / `sh:else` is this engine's own component and
+/// arrives here as the same record.
+pub(crate) fn conditionals_of<'a>(ns: &'a ASTNodeShape, schema: &'a ASTSchema) -> Vec<Conditional<'a>> {
+    ns.components()
+        .iter()
+        .filter_map(|c| match c {
+            ASTComponent::If { cond, then_, else_ } => Some(Conditional {
+                cond,
+                then: then_.as_ref(),
+                els: else_.as_ref(),
+            }),
+            ASTComponent::Or(refs) => implication(refs, schema),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Read `sh:or ( [ sh:not C ] T )`, in either order, as "if C then T".
+///
+/// Deliberately narrow, because every other `sh:or` is a disjunction and must stay
+/// one: exactly two branches, exactly one of them a negation and nothing else, and
+/// the other one a shape that contributes property shapes — the fields the
+/// condition brings in. A disjunction of value kinds has no such branch.
+fn implication<'a>(refs: &'a [Object], schema: &'a ASTSchema) -> Option<Conditional<'a>> {
+    let [a, b] = refs else { return None };
+    let (cond, then) = match (negated(a, schema), negated(b, schema)) {
+        (Some(cond), None) => (cond, b),
+        (None, Some(cond)) => (cond, a),
+        _ => return None,
+    };
+    if branch_property_shapes(Some(then), schema).is_empty() {
+        return None;
+    }
+    Some(Conditional {
+        cond,
+        then: Some(then),
+        els: None,
+    })
+}
+
+/// The shape `o` negates, when negating it is all `o` does.
+fn negated<'a>(o: &Object, schema: &'a ASTSchema) -> Option<&'a Object> {
+    match schema.get_shape(o)? {
+        ASTShape::NodeShape(ns) if ns.property_shapes().is_empty() => match ns.components().as_slice() {
+            [ASTComponent::Not(c)] => Some(c),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The property shapes a conditional branch contributes: a node shape contributes
+/// each of its `property_shapes()`; a property shape contributes itself; anything
+/// unresolved or absent contributes none.
+pub(crate) fn branch_property_shapes<'a>(obj: Option<&Object>, schema: &'a ASTSchema) -> Vec<&'a ASTPropertyShape> {
     let Some(obj) = obj else { return Vec::new() };
     match schema.get_shape(obj) {
         Some(ASTShape::NodeShape(ns)) => ns
             .property_shapes()
             .iter()
             .filter_map(|pref| match schema.get_shape(pref) {
-                Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir(ps, schema, graph)),
+                Some(ASTShape::PropertyShape(ps)) => Some(ps.as_ref()),
                 _ => None,
             })
             .collect(),
-        Some(ASTShape::PropertyShape(ps)) => vec![property_to_ir(ps, schema, graph)],
+        Some(ASTShape::PropertyShape(ps)) => vec![ps.as_ref()],
         _ => Vec::new(),
     }
+}
+
+fn resolve_then_else(obj: Option<&Object>, schema: &ASTSchema, graph: &OxigraphInMemory) -> Vec<PropertyShapeIR> {
+    branch_property_shapes(obj, schema)
+        .into_iter()
+        .map(|ps| property_to_ir(ps, schema, graph))
+        .collect()
 }
 
 /// The constraints a shape carries, read off its component list — the one thing a
@@ -726,5 +803,247 @@ mod tests {
             assert_eq!(ns.closed, None, "{id} is open, but projected a closed flag");
             assert!(ns.ignored_properties.is_empty(), "{id} projected exemptions");
         }
+    }
+
+    // ---- conditionals ---------------------------------------------------------
+
+    const COND_PREFIXES: &str = r#"
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix : <http://example.org/> .
+"#;
+
+    /// "If the access is restricted, a justification is required", stated with
+    /// named shapes. `{OR}` is where the implication goes, so each test writes it
+    /// the way it needs.
+    fn restricted(or: &str) -> String {
+        format!(
+            r#"{COND_PREFIXES}
+:S a sh:NodeShape ;
+  sh:targetClass :Dataset ;
+  sh:property [ sh:path :access ] ;
+  {or} .
+
+:Restricted a sh:NodeShape ;
+  sh:property [ sh:path :access ; sh:hasValue :RESTRICTED ] .
+
+:Justified a sh:NodeShape ;
+  sh:property [
+    sh:path :justification ;
+    sh:minCount 1 ;
+    sh:message "Falta la justificación."@es , "Falta la justificació."@ca ;
+  ] .
+"#
+        )
+    }
+
+    const JUSTIFICATION: &str = "http://example.org/justification";
+
+    fn then_paths(c: &ConditionalIR) -> Vec<&str> {
+        c.then.iter().map(|p| p.path_key.as_str()).collect()
+    }
+
+    /// SHACL Core has no conditional component; `sh:or ( [ sh:not C ] T )` is how
+    /// one is written. It reaches the payload as a conditional, whichever branch
+    /// comes first, and no longer as a disjunction — a consumer that read it as one
+    /// would offer "not restricted" as a kind of value.
+    #[wasm_bindgen_test]
+    fn an_implication_is_a_conditional_in_either_order() {
+        for or in [
+            "sh:or ( [ sh:not :Restricted ] :Justified )",
+            "sh:or ( :Justified [ sh:not :Restricted ] )",
+        ] {
+            let m = model(&restricted(or));
+            let ns = shape(&m, "http://example.org/S");
+            assert_eq!(ns.conditionals.len(), 1, "{or}: not read as a conditional");
+            let c = &ns.conditionals[0];
+            assert_eq!(c.condition_id, "http://example.org/Restricted");
+            assert_eq!(c.then_id.as_deref(), Some("http://example.org/Justified"));
+            assert_eq!(then_paths(c), vec![JUSTIFICATION]);
+            assert!(c.els.is_empty());
+            assert!(ns.logical.or.is_none(), "{or}: also projected as a disjunction");
+        }
+    }
+
+    /// The branches need no names: the ids handed out for anonymous shapes are the
+    /// ones `projectForm` and `validateFocus` accept.
+    #[wasm_bindgen_test]
+    fn an_implication_between_anonymous_shapes_is_a_conditional() {
+        let m = model(&format!(
+            r#"{COND_PREFIXES}
+:S a sh:NodeShape ;
+  sh:targetClass :Dataset ;
+  sh:or (
+    [ sh:not [ sh:property [ sh:path :access ; sh:hasValue :RESTRICTED ] ] ]
+    [ sh:property [ sh:path :justification ; sh:minCount 1 ] ]
+  ) .
+"#
+        ));
+        let ns = shape(&m, "http://example.org/S");
+        assert_eq!(ns.conditionals.len(), 1);
+        let c = &ns.conditionals[0];
+        assert!(c.condition_id.starts_with("_:"), "condition id: {}", c.condition_id);
+        assert!(c.then_id.as_deref().is_some_and(|id| id.starts_with("_:")));
+        assert_eq!(then_paths(c), vec![JUSTIFICATION]);
+    }
+
+    /// Each `sh:or` on a shape is its own requirement, so two implications are two
+    /// conditionals.
+    #[wasm_bindgen_test]
+    fn two_implications_on_one_shape_are_two_conditionals() {
+        let m = model(&format!(
+            r#"{}
+:S sh:or ( [ sh:not :Open ] :Licensed ) .
+:Open a sh:NodeShape ; sh:property [ sh:path :access ; sh:hasValue :PUBLIC ] .
+:Licensed a sh:NodeShape ; sh:property [ sh:path :licence ; sh:minCount 1 ] .
+"#,
+            restricted("sh:or ( [ sh:not :Restricted ] :Justified )")
+        ));
+        let ns = shape(&m, "http://example.org/S");
+        let mut conditions: Vec<&str> = ns.conditionals.iter().map(|c| c.condition_id.as_str()).collect();
+        conditions.sort();
+        assert_eq!(
+            conditions,
+            vec!["http://example.org/Open", "http://example.org/Restricted"]
+        );
+    }
+
+    /// A disjunction of value kinds is not a conditional and stays what it was —
+    /// the shape DCAT-AP names once and points a dozen properties at.
+    #[wasm_bindgen_test]
+    fn a_disjunction_of_value_kinds_stays_a_disjunction() {
+        let m = model(&format!(
+            r#"{COND_PREFIXES}
+:DateOrDateTime a sh:NodeShape ;
+  sh:or ( [ sh:datatype xsd:date ] [ sh:datatype xsd:dateTime ] [ sh:datatype xsd:gYear ] ) .
+"#
+        ));
+        let ns = shape(&m, "http://example.org/DateOrDateTime");
+        assert!(ns.conditionals.is_empty());
+        assert_eq!(ns.logical.or.as_ref().map(Vec::len), Some(3));
+    }
+
+    /// What is not exactly an implication is left alone: a negating branch that
+    /// also constrains, two negations, a third branch, or a consequent that brings
+    /// in no property shape.
+    #[wasm_bindgen_test]
+    fn what_is_not_exactly_an_implication_stays_a_disjunction() {
+        for or in [
+            "sh:or ( [ sh:not :Restricted ; sh:nodeKind sh:IRI ] :Justified )",
+            "sh:or ( [ sh:not :Restricted ] [ sh:not :Justified ] )",
+            "sh:or ( [ sh:not :Restricted ] :Justified [ sh:nodeKind sh:IRI ] )",
+            "sh:or ( [ sh:not :Restricted ] [ sh:nodeKind sh:IRI ] )",
+        ] {
+            let m = model(&restricted(or));
+            let ns = shape(&m, "http://example.org/S");
+            assert!(ns.conditionals.is_empty(), "{or}: read as a conditional");
+            assert!(ns.logical.or.is_some(), "{or}: the disjunction was lost");
+        }
+    }
+
+    fn session(shapes: &str, data: &str) -> FormEngine {
+        let mut engine = FormEngine::new();
+        engine
+            .load_shapes(shapes, &RDFFormat::Turtle, None)
+            .expect("shapes parse");
+        engine.load_data(data, &RDFFormat::Turtle, None).expect("data parses");
+        engine
+    }
+
+    fn dataset(triples: &str) -> String {
+        format!("@prefix : <http://example.org/> .\n:d a :Dataset {triples} .")
+    }
+
+    fn project(engine: &FormEngine) -> ProjectedForm {
+        crate::project::project_form(
+            engine,
+            engine.shapes_ast().expect("shapes loaded"),
+            &TermValue::named("http://example.org/d"),
+            "http://example.org/S",
+        )
+    }
+
+    /// Whether the condition holds is the validator's call, reported per focus —
+    /// and the consequent's values are projected either way, so they are there the
+    /// moment it starts to hold.
+    #[wasm_bindgen_test]
+    fn the_condition_is_satisfied_exactly_when_the_focus_conforms_to_it() {
+        let shapes = restricted("sh:or ( [ sh:not :Restricted ] :Justified )");
+
+        let open = project(&session(&shapes, &dataset("; :access :PUBLIC")));
+        assert!(open.satisfied.is_empty());
+        assert!(open.properties.iter().any(|p| p.path_key == JUSTIFICATION));
+
+        let restricted = project(&session(
+            &shapes,
+            &dataset("; :access :RESTRICTED ; :justification \"because\""),
+        ));
+        assert_eq!(restricted.satisfied, vec!["http://example.org/Restricted".to_string()]);
+        let justification = restricted
+            .properties
+            .iter()
+            .find(|p| p.path_key == JUSTIFICATION)
+            .expect("the consequent's path is projected");
+        assert_eq!(justification.values.len(), 1);
+    }
+
+    /// Validating the focus against the consequent alone names the path at fault
+    /// and carries the author's messages, language tags included. Validating the
+    /// disjunction says only that the node failed.
+    #[wasm_bindgen_test]
+    fn the_consequent_can_be_validated_on_its_own() {
+        let shapes = restricted("sh:or ( [ sh:not :Restricted ] :Justified )");
+        let engine = session(&shapes, &dataset("; :access :RESTRICTED"));
+        let focus = Object::iri(rudof_lib::form::IriS::new_unchecked("http://example.org/d"));
+
+        let whole = engine
+            .validate_focus("http://example.org/S", &focus)
+            .expect("validates");
+        assert_eq!(whole.results.len(), 1);
+        assert!(whole.results[0].path().is_none());
+
+        let m = model(&shapes);
+        let then_id = shape(&m, "http://example.org/S").conditionals[0]
+            .then_id
+            .clone()
+            .expect("a then id");
+        let report = crate::validate::report_from_outcome(&engine.validate_focus(&then_id, &focus).expect("validates"));
+        assert_eq!(report.results.len(), 1);
+        let result = &report.results[0];
+        assert_eq!(result.path_key.as_deref(), Some(JUSTIFICATION));
+        let mut languages: Vec<&str> = result.message.iter().map(|m| m.language.as_str()).collect();
+        languages.retain(|l| !l.is_empty());
+        languages.sort();
+        assert_eq!(languages, vec!["ca", "es"]);
+    }
+
+    /// The same, when the consequent has no name: the `_:` id the projection hands
+    /// out is one the validator resolves.
+    #[wasm_bindgen_test]
+    fn an_anonymous_consequent_can_be_validated_by_its_id() {
+        let shapes = format!(
+            r#"{COND_PREFIXES}
+:S a sh:NodeShape ;
+  sh:targetClass :Dataset ;
+  sh:or (
+    [ sh:not [ sh:property [ sh:path :access ; sh:hasValue :RESTRICTED ] ] ]
+    [ sh:property [ sh:path :justification ; sh:minCount 1 ] ]
+  ) .
+"#
+        );
+        let engine = session(&shapes, &dataset("; :access :RESTRICTED"));
+        let ast = engine.shapes_ast().expect("shapes loaded");
+        let graph = engine.shapes_graph().expect("shapes loaded");
+        let m = schema_to_json(ast, graph);
+        let c = &shape(&m, "http://example.org/S").conditionals[0];
+
+        assert_eq!(project(&engine).satisfied, vec![c.condition_id.clone()]);
+
+        let focus = Object::iri(rudof_lib::form::IriS::new_unchecked("http://example.org/d"));
+        let outcome = engine
+            .validate_focus(c.then_id.as_deref().expect("a then id"), &focus)
+            .expect("an anonymous shape id resolves");
+        assert_eq!(outcome.results.len(), 1);
+        assert!(outcome.results[0].path().is_some());
     }
 }

@@ -297,9 +297,13 @@ impl FormEngine {
     }
 }
 
-/// Resolve a shape's IRI string to its arena index in the compiled schema.
+/// Resolve a shape's id — an IRI, or `_:label` for an anonymous shape — to its
+/// arena index in the compiled schema.
 fn resolve_idx(ir: &IRSchema, shape_id: &str) -> Result<ShapeLabelIdx, FormError> {
-    let shape_ref = Object::iri(IriS::new_unchecked(shape_id));
+    let shape_ref = match shape_id.strip_prefix("_:") {
+        Some(label) => Object::bnode(label.to_string()),
+        None => Object::iri(IriS::new_unchecked(shape_id)),
+    };
     ir.get_idx(&shape_ref)
         .copied()
         .ok_or_else(|| FormError::ShapeNotFound(shape_id.to_string()))

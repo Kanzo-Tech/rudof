@@ -107,13 +107,19 @@ pub struct ValueConstraints {
     pub language_in: Option<Vec<String>>,
 }
 
-/// A node-shape-level `sh:if` / `sh:then` / `sh:else` conditional. The `then`/`else`
+/// A conditional requirement on a node shape: `sh:or ( [ sh:not C ] T )` in SHACL
+/// Core, or this engine's own `sh:if` / `sh:then` / `sh:else`. The `then`/`else`
 /// property shapes are the fields shown when the condition (does not) hold.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ConditionalIR {
-    /// stable id of the sh:if condition shape (IRI, or "_:b" for a blank node).
+    /// stable id of the condition shape (IRI, or "_:b" for a blank node).
     pub condition_id: String,
+    /// id of the shape the `then` property shapes come from, so a consumer can
+    /// validate a focus against that branch alone and get results that name the
+    /// path at fault. A failed disjunction reports only that the node failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub then_id: Option<String>,
     #[serde(default)]
     pub then: Vec<PropertyShapeIR>,
     #[serde(default, rename = "else")]
@@ -310,7 +316,7 @@ pub struct ProjectedProperty {
 pub struct ProjectedForm {
     pub focus: TermValue,
     pub properties: Vec<ProjectedProperty>,
-    /// condition_ids (matching `ConditionalIR.condition_id`) whose `sh:if`
+    /// condition_ids (matching `ConditionalIR.condition_id`) whose
     /// condition the focus currently conforms to — the live "satisfied" flag.
     #[serde(default)]
     pub satisfied: Vec<String>,

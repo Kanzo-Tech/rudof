@@ -4,6 +4,7 @@ use crate::ir::dg::{DependencyGraph, PosNeg};
 use crate::ir::error::IRError;
 use crate::ir::shape::IRShape;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
+use crate::messages::MessageCatalog;
 use crate::rdf::ShaclParser;
 use prefixmap::PrefixMap;
 use rudof_iri::IriS;
@@ -11,6 +12,7 @@ use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use rudof_rdf::term::Object;
 use rudof_rdf::vocab::{RdfVocab, RdfVocabulary, ShaclVocab, XsdVocab};
 use rudof_rdf::{BuildRDF, RDFFormat};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::io::{Cursor, Read};
@@ -27,6 +29,8 @@ pub struct IRSchema {
     base: Option<IriS>,
     dependency_graph: DependencyGraph,
     shape_label_counter: usize,
+    /// The wording of the results of shapes that declare no `sh:message`.
+    messages: Cow<'static, MessageCatalog>,
 }
 
 impl IRSchema {
@@ -38,6 +42,7 @@ impl IRSchema {
             base: None,
             dependency_graph: DependencyGraph::new(),
             shape_label_counter: 0,
+            messages: Cow::Borrowed(MessageCatalog::builtin()),
         }
     }
 
@@ -67,6 +72,16 @@ impl IRSchema {
     pub fn with_base(mut self, base: Option<IriS>) -> Self {
         self.base = base;
         self
+    }
+
+    /// Replace the message catalog (the built-in one by default).
+    pub fn with_messages(mut self, messages: MessageCatalog) -> Self {
+        self.messages = Cow::Owned(messages);
+        self
+    }
+
+    pub fn messages(&self) -> &MessageCatalog {
+        &self.messages
     }
 
     pub fn prefix_map(&self) -> &PrefixMap {

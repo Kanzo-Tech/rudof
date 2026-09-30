@@ -1,0 +1,75 @@
+# Default validation messages of the SHACL engine, as RDF.
+#
+# WHY THIS IS DATA, AND WHY IT IS `sh:message`
+#
+# SHACL 1.0 §3.6.2.7 (unchanged in SHACL 1.2 Core) on `sh:resultMessage`:
+#   "These values are produced by a validation engine based on the values of
+#    sh:message of the constraints in the shapes graph [...] In cases where a
+#    constraint does not have any values for sh:message in the shapes graph the
+#    SHACL processor MAY automatically generate other values for sh:resultMessage."
+# and: "While sh:resultMessage may have multiple values, there should not be two
+#    values with the same language tag."
+#
+# SHACL-SPARQL §6 (and SHACL 1.2 SPARQL Extensions) already lets a constraint
+# *component* declare the wording of the results it produces:
+#   "For SPARQL-based constraint components: The values of sh:message of the
+#    SPARQL-based constraint component. [...] These message literals may include
+#    the names of any SELECT result variables via {?varName} or {$varName}. If the
+#    constraint is based on a SPARQL-based constraint component, then the
+#    component's parameter names can also be used. These {?varName} and {$varName}
+#    blocks SHOULD be replaced with suitable string representations of the values
+#    of said variables."
+# Its own example declares a core component that way
+# (`sh:PatternConstraintComponent ... sh:message "Value does not match pattern {$pattern}"`),
+# and TopBraid's SHACL API ships the messages of the core components exactly so
+# (dash.ttl: `sh:MinCountConstraintComponent sh:message "Fewer than {$minCount} values"`).
+#
+# This engine applies that mechanism to the core components, under the "MAY
+# automatically generate" clause. Normative: the MAY, the one-value-per-language
+# rule, the `{$name}` / `{?name}` syntax and the SHOULD to substitute. This
+# engine's choice: reading `sh:message` off the core components, the wording, and
+# the parameter placeholders (named after the parameters declared in the SHACL
+# vocabulary, `sh:minCount`, `sh:datatype`, ...; `{$value}` is the value node).
+#
+# When a shape has `sh:message`, the results carry exactly those and none of this.
+# `sh:ConstraintComponent` (the class of all components) holds the message for a
+# component this catalog does not name. More triples, in the same shape, add a
+# language or reword a message: the caller loads them after this catalog.
+#
+# One file per language: messages.en.ttl (this one), messages.es.ttl, messages.ca.ttl.
+# Language: English.
+
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+sh:MinCountConstraintComponent sh:message "At least {$minCount} value(s) required"@en .
+sh:MaxCountConstraintComponent sh:message "At most {$maxCount} value(s) allowed"@en .
+sh:DatatypeConstraintComponent sh:message "“{$value}” is not of type {$datatype}"@en .
+sh:ClassConstraintComponent sh:message "Value must be an instance of {$class}"@en .
+sh:NodeKindConstraintComponent sh:message "Expected kind of value: {$nodeKind}"@en .
+sh:PatternConstraintComponent sh:message "Value does not match the pattern {$pattern}"@en .
+sh:MinLengthConstraintComponent sh:message "At least {$minLength} character(s) required"@en .
+sh:MaxLengthConstraintComponent sh:message "At most {$maxLength} character(s) allowed"@en .
+sh:MinInclusiveConstraintComponent sh:message "Value must be at least {$minInclusive}"@en .
+sh:MinExclusiveConstraintComponent sh:message "Value must be greater than {$minExclusive}"@en .
+sh:MaxInclusiveConstraintComponent sh:message "Value must be at most {$maxInclusive}"@en .
+sh:MaxExclusiveConstraintComponent sh:message "Value must be less than {$maxExclusive}"@en .
+sh:LanguageInConstraintComponent sh:message "Language must be one of: {$languageIn}"@en .
+sh:UniqueLangConstraintComponent sh:message "Only one value per language is allowed"@en .
+sh:EqualsConstraintComponent sh:message "Values must be the same as those of {$equals}"@en .
+sh:DisjointConstraintComponent sh:message "Values must differ from those of {$disjoint}"@en .
+sh:LessThanConstraintComponent sh:message "Values must be less than those of {$lessThan}"@en .
+sh:LessThanOrEqualsConstraintComponent sh:message "Values must be less than or equal to those of {$lessThanOrEquals}"@en .
+sh:HasValueConstraintComponent sh:message "Required value missing: {$hasValue}"@en .
+sh:InConstraintComponent sh:message "“{$value}” is not one of: {$in}"@en .
+sh:NodeConstraintComponent sh:message "Value does not meet the requirements of the referenced shape"@en .
+sh:NotConstraintComponent sh:message "This value is not allowed here"@en .
+sh:AndConstraintComponent sh:message "Value must meet all the requirements"@en .
+sh:OrConstraintComponent sh:message "Value must meet at least one of the alternatives"@en .
+sh:XoneConstraintComponent sh:message "Value must meet exactly one of the alternatives"@en .
+sh:IfConstraintComponent sh:message "Value does not meet the requirement that applies here"@en .
+sh:QualifiedValueShapeConstraintComponent sh:message "Some values are not what is expected here"@en .
+sh:QualifiedMinCountConstraintComponent sh:message "At least {$qualifiedMinCount} matching value(s) required"@en .
+sh:QualifiedMaxCountConstraintComponent sh:message "At most {$qualifiedMaxCount} matching value(s) allowed"@en .
+sh:ClosedConstraintComponent sh:message "This property is not allowed here"@en .
+sh:ReifierShapeConstraintComponent sh:message "Details about this statement are missing"@en .
+sh:SPARQLConstraintComponent sh:message "Value does not meet a custom requirement"@en .
+sh:ConstraintComponent sh:message "Invalid value"@en .

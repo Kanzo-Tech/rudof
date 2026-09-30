@@ -47,8 +47,9 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
     /// The text is:
     /// A shape is an IRI or blank node s that fulfills at least one of the following conditions in the shapes graph:
     /// - s is a SHACL instance of sh:NodeShape or sh:PropertyShape.
-    /// - s is subject of a triple that has sh:targetClass, sh:targetNode, sh:targetObjectsOf or sh:targetSubjectsOf as predicate.
+    /// - s is subject of a triple that has sh:targetClass, sh:targetNode, sh:targetObjectsOf, sh:targetSubjectsOf or sh:targetWhere as predicate.
     /// - s is subject of a triple that has a parameter as predicate.
+    /// - s is a value of sh:targetWhere (SHACL 1.2).
     /// - s is a value of a shape-expecting, non-list-taking parameter such as sh:node,
     ///   or a member of a SHACL list that is a value of a shape-expecting and list-taking parameter such as sh:or.
     fn shapes_candidates(&mut self) -> Result<Vec<Object>, ShaclParserError> {
@@ -79,10 +80,15 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
         // subjects of sh:targetObjectsOf
         let subjects_target_objects_of =
             self.get_triples::<_, RDF::IRI, _>(&Any, &ShaclVocab::sh_target_objects_of().into(), &Any)?;
+        // subjects of sh:targetWhere
+        let subjects_target_where =
+            self.get_triples::<_, RDF::IRI, _>(&Any, &ShaclVocab::sh_target_where().into(), &Any)?;
         // subjects of sh:targetNode
         let subjects_target_node =
             self.get_triples::<_, RDF::IRI, _>(&Any, &ShaclVocab::sh_target_node().into(), &Any)?;
         // Search shape expecting parameters: https://www.w3.org/TR/shacl12-core/#dfn-shape-expecting
+        // values of `sh:targetWhere`, which are shapes
+        let target_where_values = self.objects_with_predicate(&ShaclVocab::sh_target_where().into())?;
         // elements of `sh:and` list
         let sh_and_values = self.get_triples_list(&ShaclVocab::sh_and().into(), "sh:and", |v, ctx| {
             ShaclParserError::ValueNotExpected {
@@ -129,6 +135,8 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
         node_shapes_instances.extend(subjects_target_subjects_of);
         node_shapes_instances.extend(subjects_target_objects_of);
         node_shapes_instances.extend(subjects_target_node);
+        node_shapes_instances.extend(subjects_target_where);
+        node_shapes_instances.extend(target_where_values);
         node_shapes_instances.extend(sh_and_values);
         node_shapes_instances.extend(sh_or_values);
         node_shapes_instances.extend(sh_not_values);

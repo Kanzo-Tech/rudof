@@ -144,6 +144,7 @@ impl Shacl2ShEx {
             Target::SubjectsOf(_) => Ok(None),
             Target::ObjectsOf(_) => Ok(None),
             Target::ImplicitClass(_) => Ok(None),
+            Target::Where(_) => Ok(None),
             Target::WrongNode(_) => todo!(),
             Target::WrongClass(_) => todo!(),
             Target::WrongSubjectsOf(_) => todo!(),

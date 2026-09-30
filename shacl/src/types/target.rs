@@ -14,6 +14,8 @@ pub enum Target {
     SubjectsOf(IriS),
     ObjectsOf(IriS),
     ImplicitClass(Object),
+    /// SHACL 1.2 `sh:targetWhere`: the shape whose conforming nodes are the targets.
+    Where(Object),
 
     // The following target declaration are not well-formed, but we keep them
     // to generate violation errors for them
@@ -42,6 +44,7 @@ impl Target {
             Target::WrongSubjectsOf(s) => graph.add_triple(node, ShaclVocab::sh_target_subjects_of(), s.clone()),
             Target::ObjectsOf(o) => graph.add_triple(node, ShaclVocab::sh_target_objects_of(), o.clone()),
             Target::WrongObjectsOf(o) => graph.add_triple(node, ShaclVocab::sh_target_objects_of(), o.clone()),
+            Target::Where(w) => graph.add_triple(node, ShaclVocab::sh_target_where(), w.clone()),
             // TODO - In SHACL 1.2, add sh_shape_class ?
             Target::ImplicitClass(_) | Target::WrongImplicitClass(_) => {
                 graph.add_triple(node, RdfVocab::rdf_type().clone(), RdfsVocab::rdfs_class())
@@ -60,6 +63,7 @@ impl Display for Target {
             Target::SubjectsOf(iri) => write!(f, "targetSubjectsOf({iri})"),
             Target::ObjectsOf(iri) => write!(f, "targetObjectsOf({iri})"),
             Target::ImplicitClass(o) => write!(f, "targetImplicitClass({o})"),
+            Target::Where(o) => write!(f, "targetWhere({o})"),
             Target::WrongNode(o) => write!(f, "targetNode({o})"),
             Target::WrongClass(o) => write!(f, "targetClass({o})"),
             Target::WrongSubjectsOf(iri) => write!(f, "targetSubjectsOf({iri})"),

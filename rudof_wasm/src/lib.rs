@@ -11,6 +11,7 @@ use rudof_lib::form::{BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNod
 
 mod dto;
 mod project;
+mod scoring;
 mod shapes;
 mod validate;
 use dto::*;

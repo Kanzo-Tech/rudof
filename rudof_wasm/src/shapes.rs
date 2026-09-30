@@ -4,7 +4,6 @@
 //! (`sh:name`/`order`/`group`, `shui:editor`/`viewer`) read from the shapes
 //! graph. Emitting JSON here keeps the JS side from re-parsing SHACL.
 
-use rudof_lib::form::shui::editors;
 use rudof_lib::form::{
     ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape, BlankNode, ConcreteLiteral, IriRef, NamedNode,
     NamedOrBlankNode, NodeKind, Object, OxigraphInMemory, SHACLPath, Target, Term as OxTerm, Value,
@@ -13,109 +12,26 @@ use std::collections::HashMap;
 
 use crate::dto::*;
 use crate::object_to_value;
+use crate::scoring::Scoring;
 
 const SH: &str = "http://www.w3.org/ns/shacl#";
 const XSD: &str = "http://www.w3.org/2001/XMLSchema#";
 const SHUI: &str = "http://www.w3.org/ns/shacl-ui/";
 const RDFS: &str = "http://www.w3.org/2000/01/rdf-schema#";
 const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-const RDF_HTML: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML";
-const RDF_LANGSTRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
-const SH_IRI: &str = "http://www.w3.org/ns/shacl#IRI";
-
-/// xsd numeric datatypes (local names) → NumberFieldEditor.
-const NUMERIC: &[&str] = &[
-    "integer",
-    "decimal",
-    "float",
-    "double",
-    "long",
-    "int",
-    "short",
-    "byte",
-    "nonNegativeInteger",
-    "positiveInteger",
-    "nonPositiveInteger",
-    "negativeInteger",
-    "unsignedLong",
-    "unsignedInt",
-    "unsignedShort",
-    "unsignedByte",
-];
-
-/// Resolve an editor IRI from a property's own type facts (no fallbacks),
-/// mirroring the SHACL-UI default-editor rules. Returns a `shui:` editor class
-/// IRI from the canonical `shui::editors` table; the IRI→widget interpretation
-/// stays in the UI consumer — rudof never knows about widgets.
-fn editor_from_facts(value: &ValueConstraints, node: &Option<String>) -> Option<&'static str> {
-    if node.is_some() {
-        return Some(editors::DETAILS);
-    }
-    if value.in_values.as_ref().is_some_and(|v| !v.is_empty()) {
-        return Some(editors::ENUM_SELECT);
-    }
-    if let Some(dt) = value.datatype.as_deref() {
-        if dt == RDF_HTML {
-            return Some(editors::RICH_TEXT);
-        }
-        if dt == RDF_LANGSTRING {
-            return Some(editors::TEXT_FIELD_WITH_LANG);
-        }
-        if let Some(local) = dt.strip_prefix(XSD) {
-            match local {
-                "boolean" => return Some(editors::BOOLEAN),
-                "date" => return Some(editors::DATE_PICKER),
-                "dateTime" => return Some(editors::DATE_TIME_PICKER),
-                _ if NUMERIC.contains(&local) => return Some(editors::NUMBER_FIELD),
-                _ => {},
-            }
-        }
-    }
-    if value.class_iri.is_some() {
-        return Some(editors::AUTO_COMPLETE);
-    }
-    let is_any_uri = value.datatype.as_deref() == Some("http://www.w3.org/2001/XMLSchema#anyURI");
-    if value.node_kind.as_deref() == Some(SH_IRI) || is_any_uri {
-        return Some(editors::IRI);
-    }
-    None
-}
-
-/// The full default-editor resolution: own facts, else the first `sh:or`/`sh:xone`
-/// branch's facts, else a plain text field. Mirrors the downstream default rules
-/// so the UI can drop its own inference and just map the emitted IRI to a widget.
-fn resolve_default_editor(
-    value: &ValueConstraints,
-    node: &Option<String>,
-    logical: &LogicalConstraints,
-) -> &'static str {
-    if let Some(editor) = editor_from_facts(value, node) {
-        return editor;
-    }
-    // or-branch fallback: a property stating no own type facts derives its editor
-    // from its first sh:or / sh:xone branch. (A class_iri or sh:node already
-    // resolves an editor above, so only datatype + nodeKind gate "stateless".)
-    let stateless = value.datatype.is_none() && value.node_kind.is_none();
-    if stateless {
-        if let Some(branch) = logical.or.as_ref().or(logical.xone.as_ref()).and_then(|b| b.first()) {
-            if let Some(editor) = editor_from_facts(&branch.value, &branch.node) {
-                return editor;
-            }
-        }
-    }
-    editors::TEXT_FIELD
-}
 
 /// rudof's SHACL parser is validation-focused and does not populate the
 /// presentation/annotation terms (sh:name/description/order/group, shui:editor)
 /// or sh:PropertyGroup metadata. We read those directly from the shapes graph.
 pub fn schema_to_json(schema: &ASTSchema, graph: &OxigraphInMemory) -> ShapeModelJson {
+    // Prepared and compiled once, then asked about every property shape.
+    let scoring = Scoring::new(schema, graph);
     let mut node_shapes = Vec::new();
     let mut by_target_class = Vec::new();
 
     for (id, shape) in schema.iter() {
         if let ASTShape::NodeShape(ns) = shape {
-            let ir = node_shape_to_ir(id, ns, schema, graph);
+            let ir = node_shape_to_ir(id, ns, schema, graph, &scoring);
             for tc in &ir.target_classes {
                 by_target_class.push((tc.clone(), ir.id.clone()));
             }
@@ -130,7 +46,13 @@ pub fn schema_to_json(schema: &ASTSchema, graph: &OxigraphInMemory) -> ShapeMode
     }
 }
 
-fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &OxigraphInMemory) -> NodeShapeIR {
+fn node_shape_to_ir(
+    id: &Object,
+    ns: &ASTNodeShape,
+    schema: &ASTSchema,
+    graph: &OxigraphInMemory,
+    scoring: &Scoring,
+) -> NodeShapeIR {
     let target_classes: Vec<String> = ns
         .targets()
         .iter()
@@ -144,7 +66,7 @@ fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &
         .property_shapes()
         .iter()
         .filter_map(|pref| match schema.get_shape(pref) {
-            Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir(ps, schema, graph)),
+            Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir(ps, schema, graph, scoring)),
             _ => None,
         })
         .collect();
@@ -154,8 +76,8 @@ fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &
         .map(|c| ConditionalIR {
             condition_id: object_str(c.cond),
             then_id: c.then.map(object_str),
-            then: resolve_then_else(c.then, schema, graph),
-            els: resolve_then_else(c.els, schema, graph),
+            then: resolve_then_else(c.then, schema, graph, scoring),
+            els: resolve_then_else(c.els, schema, graph, scoring),
         })
         .collect();
 
@@ -174,7 +96,7 @@ fn node_shape_to_ir(id: &Object, ns: &ASTNodeShape, schema: &ASTSchema, graph: &
         .filter(|c| !matches!(c, ASTComponent::Or(refs) if implication(refs, schema).is_some()))
         .cloned()
         .collect();
-    let logical = shape_core(&plain, schema, graph, 0).logical;
+    let logical = shape_core(&plain, schema, graph, scoring, 0).logical;
 
     NodeShapeIR {
         id: object_str(id),
@@ -303,10 +225,15 @@ pub(crate) fn branch_property_shapes<'a>(obj: Option<&Object>, schema: &'a ASTSc
     }
 }
 
-fn resolve_then_else(obj: Option<&Object>, schema: &ASTSchema, graph: &OxigraphInMemory) -> Vec<PropertyShapeIR> {
+fn resolve_then_else(
+    obj: Option<&Object>,
+    schema: &ASTSchema,
+    graph: &OxigraphInMemory,
+    scoring: &Scoring,
+) -> Vec<PropertyShapeIR> {
     branch_property_shapes(obj, schema)
         .into_iter()
-        .map(|ps| property_to_ir(ps, schema, graph))
+        .map(|ps| property_to_ir(ps, schema, graph, scoring))
         .collect()
 }
 
@@ -329,7 +256,13 @@ struct ShapeCore {
 /// helper shapes are one hop, and nothing in the corpus goes past two.
 const MAX_SHAPE_DEPTH: u8 = 8;
 
-fn shape_core(components: &[ASTComponent], schema: &ASTSchema, graph: &OxigraphInMemory, depth: u8) -> ShapeCore {
+fn shape_core(
+    components: &[ASTComponent],
+    schema: &ASTSchema,
+    graph: &OxigraphInMemory,
+    scoring: &Scoring,
+    depth: u8,
+) -> ShapeCore {
     let mut value = ValueConstraints::default();
     let mut logical = LogicalConstraints::default();
     let mut cardinality = Cardinality::default();
@@ -365,11 +298,11 @@ fn shape_core(components: &[ASTComponent], schema: &ASTSchema, graph: &OxigraphI
             ASTComponent::In(vals) => value.in_values = Some(vals.iter().map(value_to_term).collect()),
             ASTComponent::HasValue(v) => value.has_value = Some(value_to_term(v)),
             ASTComponent::Node(o) => node = object_iri(o),
-            ASTComponent::Or(refs) => logical.or = Some(resolve_branches(refs, schema, graph, depth)),
-            ASTComponent::Xone(refs) => logical.xone = Some(resolve_branches(refs, schema, graph, depth)),
-            ASTComponent::And(refs) => logical.and = Some(resolve_branches(refs, schema, graph, depth)),
+            ASTComponent::Or(refs) => logical.or = Some(resolve_branches(refs, schema, graph, scoring, depth)),
+            ASTComponent::Xone(refs) => logical.xone = Some(resolve_branches(refs, schema, graph, scoring, depth)),
+            ASTComponent::And(refs) => logical.and = Some(resolve_branches(refs, schema, graph, scoring, depth)),
             ASTComponent::Not(o) => {
-                logical.not = branch_to_ir(o, schema, graph, depth).map(Box::new);
+                logical.not = branch_to_ir(o, schema, graph, scoring, depth).map(Box::new);
             },
             _ => {},
         }
@@ -383,14 +316,20 @@ fn shape_core(components: &[ASTComponent], schema: &ASTSchema, graph: &OxigraphI
     }
 }
 
-fn property_to_ir(ps: &ASTPropertyShape, schema: &ASTSchema, graph: &OxigraphInMemory) -> PropertyShapeIR {
-    property_to_ir_at(ps, schema, graph, 0)
+fn property_to_ir(
+    ps: &ASTPropertyShape,
+    schema: &ASTSchema,
+    graph: &OxigraphInMemory,
+    scoring: &Scoring,
+) -> PropertyShapeIR {
+    property_to_ir_at(ps, schema, graph, scoring, 0)
 }
 
 fn property_to_ir_at(
     ps: &ASTPropertyShape,
     schema: &ASTSchema,
     graph: &OxigraphInMemory,
+    scoring: &Scoring,
     depth: u8,
 ) -> PropertyShapeIR {
     let ShapeCore {
@@ -398,18 +337,13 @@ fn property_to_ir_at(
         logical,
         cardinality,
         node,
-    } = shape_core(ps.components(), schema, graph, depth);
+    } = shape_core(ps.components(), schema, graph, scoring, depth);
 
     // sh:defaultValue is an annotation, not a validation constraint, so rudof's
     // parser doesn't surface it — read it from the shapes graph like the others.
     value.default_value = default_value(graph, ps.id());
 
-    // Resolve the editor here so the UI consumer never re-infers it: an explicit
-    // shui:editor wins; otherwise pick a default from the property's facts.
-    let mut presentation = presentation(graph, ps.id());
-    if presentation.editor.is_none() {
-        presentation.editor = Some(resolve_default_editor(&value, &node, &logical).to_string());
-    }
+    let presentation = presentation(graph, scoring, ps.id(), ps.components());
 
     PropertyShapeIR {
         id: object_iri(ps.id()),
@@ -470,30 +404,39 @@ fn read_components(graph: &OxigraphInMemory, node: &Object) -> Vec<ComponentIR> 
 /// and `sh:or ( [sh:class …] … )` in a published profile arrived as an empty list,
 /// which is how a construct that is parsed, mapped and emitted still reached
 /// consumers saying nothing.
-fn resolve_branches(refs: &[Object], schema: &ASTSchema, graph: &OxigraphInMemory, depth: u8) -> Vec<ShapeIR> {
+fn resolve_branches(
+    refs: &[Object],
+    schema: &ASTSchema,
+    graph: &OxigraphInMemory,
+    scoring: &Scoring,
+    depth: u8,
+) -> Vec<ShapeIR> {
     refs.iter()
-        .filter_map(|o| branch_to_ir(o, schema, graph, depth))
+        .filter_map(|o| branch_to_ir(o, schema, graph, scoring, depth))
         .collect()
 }
 
-fn branch_to_ir(o: &Object, schema: &ASTSchema, graph: &OxigraphInMemory, depth: u8) -> Option<ShapeIR> {
+fn branch_to_ir(
+    o: &Object,
+    schema: &ASTSchema,
+    graph: &OxigraphInMemory,
+    scoring: &Scoring,
+    depth: u8,
+) -> Option<ShapeIR> {
     if depth >= MAX_SHAPE_DEPTH {
         return None;
     }
     let next = depth + 1;
     match schema.get_shape(o) {
-        Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir_at(ps, schema, graph, next).into()),
+        Some(ASTShape::PropertyShape(ps)) => Some(property_to_ir_at(ps, schema, graph, scoring, next).into()),
         Some(ASTShape::NodeShape(ns)) => {
             let ShapeCore {
                 value,
                 logical,
                 cardinality,
                 node,
-            } = shape_core(ns.components(), schema, graph, next);
-            let mut presentation = presentation(graph, o);
-            if presentation.editor.is_none() {
-                presentation.editor = Some(resolve_default_editor(&value, &node, &logical).to_string());
-            }
+            } = shape_core(ns.components(), schema, graph, scoring, next);
+            let presentation = presentation(graph, scoring, o, ns.components());
             Some(ShapeIR {
                 id: object_iri(o),
                 path: None,
@@ -521,9 +464,18 @@ fn object_to_subject(o: &Object) -> Option<NamedOrBlankNode> {
     }
 }
 
-/// Read sh:name / sh:description / sh:order / sh:group / shui:editor|viewer for a
-/// property-shape node from the shapes graph (rudof's AST omits these).
-fn presentation(graph: &OxigraphInMemory, node: &Object) -> PresentationHints {
+/// Read sh:name / sh:description / sh:order / sh:group / sh:singleLine /
+/// shui:viewer for a shape node from the shapes graph (rudof's AST omits these),
+/// and let the SHACL UI score function choose its editor.
+///
+/// `shui:editor` is not read here: a declared editor takes part in the scoring
+/// like every other candidate (see [`crate::scoring`]).
+fn presentation(
+    graph: &OxigraphInMemory,
+    scoring: &Scoring,
+    node: &Object,
+    components: &[ASTComponent],
+) -> PresentationHints {
     let mut p = PresentationHints::default();
     let Some(subj) = object_to_subject(node) else { return p };
 
@@ -544,12 +496,31 @@ fn presentation(graph: &OxigraphInMemory, node: &Object) -> PresentationHints {
             p.order = literal_value(&q.object).and_then(|v| v.parse().ok());
         } else if pred == format!("{SH}group") {
             p.group_id = iri_value(&q.object);
-        } else if pred == format!("{SHUI}editor") {
-            p.editor = iri_value(&q.object);
+        } else if pred == format!("{SH}singleLine") {
+            p.single_line = literal_value(&q.object).and_then(|v| v.parse().ok());
         } else if pred == format!("{SHUI}viewer") {
             p.viewer = iri_value(&q.object);
         }
     }
+
+    p.editors = scoring.editors(node);
+    if p.editors.is_empty() {
+        // A shape that states its type only through `sh:or` / `sh:xone` has nothing
+        // for an editor to be chosen by; it takes the editors of its first branch.
+        // This is not in SHACL UI, whose score function looks at the shape node
+        // alone.
+        let first_branch = [true, false].into_iter().find_map(|or| {
+            components.iter().find_map(|c| match c {
+                ASTComponent::Or(refs) if or => refs.first(),
+                ASTComponent::Xone(refs) if !or => refs.first(),
+                _ => None,
+            })
+        });
+        if let Some(branch) = first_branch {
+            p.editors = scoring.editors(branch);
+        }
+    }
+    p.editor = p.editors.first().map(|e| e.editor.clone());
     p
 }
 

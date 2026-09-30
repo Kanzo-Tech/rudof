@@ -155,12 +155,25 @@ pub struct PresentationHints {
     pub order: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
+    /// The best-scoring editor (`shui:` IRI), the first of `editors`. Absent when
+    /// no editor scores: the shape says nothing an editor is chosen by.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor: Option<String>,
+    /// Every editor the SHACL UI score function returns, best first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub editors: Vec<EditorScore>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_line: Option<bool>,
+}
+
+/// One result of the SHACL UI score function: an editor and the score of the
+/// `shui:WidgetScore` that matched.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct EditorScore {
+    pub editor: String,
+    pub score: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

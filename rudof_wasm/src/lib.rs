@@ -10,6 +10,7 @@ use wasm_bindgen::prelude::*;
 use rudof_lib::form::{BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm};
 
 mod dto;
+mod index;
 mod project;
 mod scoring;
 mod shapes;

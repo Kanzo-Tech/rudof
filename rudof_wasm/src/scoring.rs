@@ -23,6 +23,7 @@ use rudof_lib::form::{
 };
 
 use crate::dto::EditorScore;
+use crate::index::SubjectIndex;
 
 const SH: &str = "http://www.w3.org/ns/shacl#";
 const SHUI: &str = "http://www.w3.org/ns/shacl-ui/";
@@ -144,7 +145,7 @@ impl Scoring {
     fn try_new(schema: &ASTSchema, shapes: &OxigraphInMemory) -> Result<Self, FormError> {
         let mut scoring = FormEngine::parse_graph(SCORING_GRAPH, &RDFFormat::Turtle, None)?;
         let declared_editors = prepare(&mut scoring, shapes, schema)?;
-        let index = Index::new(&scoring);
+        let index = SubjectIndex::new(&scoring);
 
         let mut scores = index
             .instances(&shui("WidgetScore"))
@@ -239,7 +240,7 @@ fn prepare(
     shapes: &OxigraphInMemory,
     schema: &ASTSchema,
 ) -> Result<BTreeSet<String>, FormError> {
-    let index = Index::new(scoring);
+    let index = SubjectIndex::new(scoring);
     let scored: HashSet<String> = index
         .instances(&shui("WidgetScore"))
         .map(|s| index.widget(s))
@@ -319,33 +320,7 @@ fn subject_object(s: &NamedOrBlankNode) -> Option<Object> {
     }
 }
 
-/// The scoring graph read by subject, in one pass: a lookup by subject and
-/// predicate would otherwise scan the graph each time.
-struct Index {
-    by_subject: HashMap<NamedOrBlankNode, Vec<(String, Term)>>,
-}
-
-impl Index {
-    fn new(graph: &OxigraphInMemory) -> Self {
-        let mut by_subject: HashMap<NamedOrBlankNode, Vec<(String, Term)>> = HashMap::new();
-        for q in graph.quads() {
-            by_subject
-                .entry(q.subject)
-                .or_default()
-                .push((q.predicate.into_string(), q.object));
-        }
-        Self { by_subject }
-    }
-
-    fn values<'a>(&'a self, subject: &NamedOrBlankNode, predicate: &'a str) -> impl Iterator<Item = &'a Term> + 'a {
-        self.by_subject
-            .get(subject)
-            .into_iter()
-            .flatten()
-            .filter(move |(p, _)| p == predicate)
-            .map(|(_, o)| o)
-    }
-
+impl SubjectIndex {
     fn instances<'a>(&'a self, class: &'a str) -> impl Iterator<Item = &'a NamedOrBlankNode> + 'a {
         let class = NamedNode::new_unchecked(class);
         self.by_subject
@@ -418,7 +393,7 @@ impl Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::{PropertyShapeIR, ShapeModelJson};
+    use crate::dto::{EditorSource, PropertyShapeIR, ShapeModelJson};
     use rudof_lib::form::RDFFormat;
     use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -666,141 +641,204 @@ mod tests {
         assert_eq!(found, vec![pair("DatePickerEditor", 10.0)]);
     }
 
-    /// A shape that states its type only through `sh:or` takes the editors of its
+    /// A shape that states its type only through `sh:or` takes the editor of its
     /// first branch. This is not the specification's, which scores the shape node
-    /// alone (and would return nothing here).
+    /// alone and returns nothing here: the source says `branch`, and `editors`, which
+    /// holds only what the score function returned, is empty.
     #[wasm_bindgen_test]
-    fn a_disjunction_takes_the_editors_of_its_first_branch() {
+    fn a_disjunction_takes_the_editor_of_its_first_branch() {
         let p = &properties(&["sh:or ( [ sh:datatype xsd:date ] [ sh:datatype xsd:dateTime ] )"])[0];
-        assert_eq!(ranked(p), vec![pair("DatePickerEditor", 10.0)]);
+        assert_eq!(
+            p.presentation.editor.as_deref(),
+            Some("http://www.w3.org/ns/shacl-ui/DatePickerEditor")
+        );
+        assert_eq!(p.presentation.editor_source, Some(EditorSource::Branch));
+        assert!(p.presentation.editors.is_empty());
         let branches = p.logical.or.as_ref().expect("the branches are projected");
         assert_eq!(
             branches[1].presentation.editor.as_deref(),
             Some("http://www.w3.org/ns/shacl-ui/DateTimePickerEditor")
         );
+        assert_eq!(branches[1].presentation.editor_source, Some(EditorSource::Scored));
     }
 
-    /// Nothing in the shape for an editor to be chosen by: the score function
-    /// returns nothing and the IR carries no editor.
+    /// Nothing scores and there is no branch: our own rule, a nested form for
+    /// `sh:node` and a text field otherwise, and it says so.
     #[wasm_bindgen_test]
-    fn a_shape_with_nothing_to_go_on_has_no_editor() {
-        let p = &properties(&[""])[0];
-        assert!(p.presentation.editor.is_none());
-        assert!(p.presentation.editors.is_empty());
+    fn nothing_scored_falls_back_to_a_text_field_or_a_nested_form() {
+        let ps = properties(&["sh:minCount 1", "sh:node :Other"]);
+        for (p, editor) in ps.iter().zip(["TextFieldEditor", "DetailsEditor"]) {
+            assert_eq!(p.presentation.editor.as_deref().map(short).as_deref(), Some(editor));
+            assert_eq!(p.presentation.editor_source, Some(EditorSource::Fallback));
+            assert!(p.presentation.editors.is_empty());
+        }
+    }
+
+    /// An editor the shape declares has source `declared`; one the score function
+    /// picks has `scored`. A declared editor that does not win is not the source.
+    #[wasm_bindgen_test]
+    fn the_source_tells_declared_from_scored() {
+        let ps = properties(&[
+            "sh:datatype xsd:string ; shui:editor shui:TextAreaEditor",
+            "sh:datatype xsd:string",
+            "sh:datatype xsd:string ; sh:singleLine true ; shui:editor shui:TextAreaEditor",
+        ]);
+        let sources: Vec<_> = ps.iter().map(|p| p.presentation.editor_source).collect();
+        assert_eq!(
+            sources,
+            vec![
+                Some(EditorSource::Declared),
+                Some(EditorSource::Scored),
+                Some(EditorSource::Scored)
+            ]
+        );
+        // The third declares a text area that `sh:singleLine true` does not accept.
+        assert_eq!(
+            ps[2].presentation.editor.as_deref().map(short).as_deref(),
+            Some("TextFieldEditor")
+        );
+    }
+
+    /// The shapes graph's `rdfs:label`s of the path's predicate, with their language
+    /// tags (SHACL UI, Property Labels, step 3): only for a predicate path, only
+    /// that predicate's, and absent when there are none.
+    #[wasm_bindgen_test]
+    fn the_shapes_graphs_labels_of_the_predicate_are_projected() {
+        let model = project(
+            r#"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+:title rdfs:label "Title"@en, "Título"@es ; rdfs:comment "not a label" .
+:S a sh:NodeShape ; sh:targetClass :C ;
+  sh:property [ sh:path :title ], [ sh:path :other ], [ sh:path [ sh:inversePath :title ] ] ."#,
+        );
+        let ps = &model
+            .node_shapes
+            .iter()
+            .find(|n| n.id.ends_with("/S"))
+            .unwrap()
+            .properties;
+        let labels = |key: &str| -> Vec<(String, String)> {
+            ps.iter()
+                .find(|p| p.path_key.ends_with(key))
+                .unwrap()
+                .presentation
+                .path_labels
+                .iter()
+                .map(|l| (l.language.clone(), l.value.clone()))
+                .collect()
+        };
+        assert_eq!(
+            labels("/title"),
+            vec![
+                ("en".to_string(), "Title".to_string()),
+                ("es".to_string(), "Título".to_string())
+            ]
+        );
+        assert!(labels("/other").is_empty());
+        assert!(ps
+            .iter()
+            .find(|p| p.path_key.starts_with('^'))
+            .unwrap()
+            .presentation
+            .path_labels
+            .is_empty());
+    }
+
+    /// The data graph's `rdfs:label`s of the predicate come with the projection of a
+    /// focus node (SHACL UI, Property Labels, step 2).
+    #[wasm_bindgen_test]
+    fn the_data_graphs_labels_of_the_predicate_are_projected() {
+        let mut engine = FormEngine::new();
+        engine
+            .load_shapes(
+                &format!(
+                    "{PREFIXES}:S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :title ], [ sh:path :other ] ."
+                ),
+                &RDFFormat::Turtle,
+                None,
+            )
+            .expect("shapes parse");
+        engine
+            .load_data(
+                r#"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix : <http://example.org/> .
+:title rdfs:label "Titre"@fr . :d a :C ; :title "x" ."#,
+                &RDFFormat::Turtle,
+                None,
+            )
+            .expect("data parse");
+        let form = crate::project::project_form(
+            &engine,
+            engine.shapes_ast().expect("shapes loaded"),
+            &crate::dto::TermValue::named("http://example.org/d"),
+            "http://example.org/S",
+        );
+        let title = form.properties.iter().find(|p| p.path_key.ends_with("/title")).unwrap();
+        assert_eq!(title.path_labels.len(), 1);
+        assert_eq!(
+            (
+                title.path_labels[0].language.as_str(),
+                title.path_labels[0].value.as_str()
+            ),
+            ("fr", "Titre")
+        );
+        let other = form.properties.iter().find(|p| p.path_key.ends_with("/other")).unwrap();
+        assert!(other.path_labels.is_empty());
     }
 
     /// Every case where the editor of a property changed when the twelve
-    /// hand-written first-match rules gave way to the score function. `old` is what
-    /// those rules returned, recorded by running them on the same shapes (the
-    /// parent of this change, d14a85216); `None` in `new` is "no editor scores".
-    /// Rows with `old == new` are the ones that did not change.
+    /// hand-written first-match rules gave way to the score function and our own
+    /// fallback. `old` is what those rules returned, recorded by running them on the
+    /// same shapes (the commit before the score function, d14a85216). Rows with
+    /// `old == new` are the ones that did not change.
     #[wasm_bindgen_test]
     fn editor_selection_old_rules_against_the_score_function() {
-        // (shape body, old editor, new editor, new score)
-        let rows: &[(&str, &str, Option<(&str, f64)>)] = &[
-            (
-                "sh:datatype xsd:string",
-                "TextFieldEditor",
-                Some(("TextFieldEditor", 10.0)),
-            ),
-            (
-                "sh:datatype xsd:boolean",
-                "BooleanEditor",
-                Some(("BooleanEditor", 10.0)),
-            ),
-            (
-                "sh:datatype xsd:date",
-                "DatePickerEditor",
-                Some(("DatePickerEditor", 10.0)),
-            ),
-            (
-                "sh:datatype xsd:dateTime",
-                "DateTimePickerEditor",
-                Some(("DateTimePickerEditor", 10.0)),
-            ),
-            (
-                "sh:datatype xsd:integer",
-                "NumberFieldEditor",
-                Some(("NumberFieldEditor", 10.0)),
-            ),
-            (
-                "sh:datatype xsd:int",
-                "NumberFieldEditor",
-                Some(("NumberFieldEditor", 10.0)),
-            ),
-            ("sh:datatype xsd:positiveInteger", "NumberFieldEditor", None),
-            ("sh:datatype xsd:nonPositiveInteger", "NumberFieldEditor", None),
-            (
-                "sh:datatype rdf:langString",
-                "TextFieldWithLangEditor",
-                Some(("TextFieldWithLangEditor", 10.0)),
-            ),
-            ("sh:datatype rdf:HTML", "RichTextEditor", Some(("RichTextEditor", 10.0))),
-            ("sh:datatype xsd:anyURI", "IRIEditor", None),
-            ("sh:datatype xsd:gYear", "TextFieldEditor", None),
-            ("sh:datatype :MyType", "TextFieldEditor", Some(("TextFieldEditor", 0.0))),
-            ("sh:in ( 1 2 )", "EnumSelectEditor", Some(("EnumSelectEditor", 30.0))),
-            (
-                "sh:class :C",
-                "AutoCompleteEditor",
-                Some(("InstancesSelectEditor", 0.0)),
-            ),
-            (
-                "sh:class :C ; sh:nodeKind sh:IRI",
-                "AutoCompleteEditor",
-                Some(("AutoCompleteEditor", 10.0)),
-            ),
-            ("sh:nodeKind sh:IRI", "IRIEditor", Some(("IRIEditor", 20.0))),
-            (
-                "sh:nodeKind sh:Literal",
-                "TextFieldEditor",
-                Some(("TextFieldEditor", 0.0)),
-            ),
-            ("sh:nodeKind sh:BlankNode", "TextFieldEditor", None),
-            ("sh:node :Other", "DetailsEditor", None),
-            (
-                "sh:datatype xsd:string ; sh:singleLine false",
-                "TextFieldEditor",
-                Some(("TextAreaEditor", 30.0)),
-            ),
-            (
-                "sh:or ( [ sh:datatype xsd:date ] [ sh:datatype xsd:dateTime ] )",
-                "DatePickerEditor",
-                Some(("DatePickerEditor", 10.0)),
-            ),
-            (
-                "sh:datatype xsd:string ; shui:editor shui:TextAreaEditor",
-                "TextAreaEditor",
-                Some(("TextAreaEditor", 40.0)),
-            ),
-            ("sh:minCount 1", "TextFieldEditor", None),
+        use EditorSource::{Branch, Declared, Fallback, Scored};
+        // (shape body, old editor, new editor, score of the score function, source)
+        #[rustfmt::skip]
+        let rows: &[(&str, &str, &str, Option<f64>, EditorSource)] = &[
+            ("sh:datatype xsd:string", "TextFieldEditor", "TextFieldEditor", Some(10.0), Scored),
+            ("sh:datatype xsd:boolean", "BooleanEditor", "BooleanEditor", Some(10.0), Scored),
+            ("sh:datatype xsd:date", "DatePickerEditor", "DatePickerEditor", Some(10.0), Scored),
+            ("sh:datatype xsd:dateTime", "DateTimePickerEditor", "DateTimePickerEditor", Some(10.0), Scored),
+            ("sh:datatype xsd:integer", "NumberFieldEditor", "NumberFieldEditor", Some(10.0), Scored),
+            ("sh:datatype xsd:int", "NumberFieldEditor", "NumberFieldEditor", Some(10.0), Scored),
+            ("sh:datatype xsd:positiveInteger", "NumberFieldEditor", "TextFieldEditor", None, Fallback),
+            ("sh:datatype xsd:nonPositiveInteger", "NumberFieldEditor", "TextFieldEditor", None, Fallback),
+            ("sh:datatype rdf:langString", "TextFieldWithLangEditor", "TextFieldWithLangEditor", Some(10.0), Scored),
+            ("sh:datatype rdf:HTML", "RichTextEditor", "RichTextEditor", Some(10.0), Scored),
+            ("sh:datatype xsd:anyURI", "IRIEditor", "TextFieldEditor", None, Fallback),
+            ("sh:datatype xsd:gYear", "TextFieldEditor", "TextFieldEditor", None, Fallback),
+            ("sh:datatype :MyType", "TextFieldEditor", "TextFieldEditor", Some(0.0), Scored),
+            ("sh:in ( 1 2 )", "EnumSelectEditor", "EnumSelectEditor", Some(30.0), Scored),
+            ("sh:class :C", "AutoCompleteEditor", "InstancesSelectEditor", Some(0.0), Scored),
+            ("sh:class :C ; sh:nodeKind sh:IRI", "AutoCompleteEditor", "AutoCompleteEditor", Some(10.0), Scored),
+            ("sh:nodeKind sh:IRI", "IRIEditor", "IRIEditor", Some(20.0), Scored),
+            ("sh:nodeKind sh:Literal", "TextFieldEditor", "TextFieldEditor", Some(0.0), Scored),
+            ("sh:nodeKind sh:BlankNode", "TextFieldEditor", "TextFieldEditor", None, Fallback),
+            ("sh:node :Other", "DetailsEditor", "DetailsEditor", None, Fallback),
+            ("sh:datatype xsd:string ; sh:singleLine false", "TextFieldEditor", "TextAreaEditor", Some(30.0), Scored),
+            ("sh:or ( [ sh:datatype xsd:date ] [ sh:datatype xsd:dateTime ] )", "DatePickerEditor", "DatePickerEditor", None, Branch),
+            ("sh:datatype xsd:string ; shui:editor shui:TextAreaEditor", "TextAreaEditor", "TextAreaEditor", Some(40.0), Declared),
+            ("sh:minCount 1", "TextFieldEditor", "TextFieldEditor", None, Fallback),
         ];
         let bodies: Vec<&str> = rows.iter().map(|r| r.0).collect();
         let mut changed = Vec::new();
-        for ((body, old, new), p) in rows.iter().zip(properties(&bodies)) {
-            let got = p
-                .presentation
-                .editor
-                .as_deref()
-                .map(|e| (short(e), p.presentation.editors[0].score));
-            let want = new.map(|(e, s)| (e.to_string(), s));
-            assert_eq!(got, want, "{body}");
-            if want.as_ref().map(|w| w.0.as_str()) != Some(old) {
-                changed.push(format!("{body}: {old} -> {}", want.map_or("(none)".into(), |w| w.0)));
+        for ((body, old, new, score, source), p) in rows.iter().zip(properties(&bodies)) {
+            let got = p.presentation.editor.as_deref().map(short);
+            assert_eq!(got.as_deref(), Some(*new), "{body}");
+            assert_eq!(p.presentation.editor_source, Some(*source), "{body}");
+            assert_eq!(p.presentation.editors.first().map(|e| e.score), *score, "{body}");
+            if old != new {
+                changed.push(format!("{body}: {old} -> {new}"));
             }
         }
         assert_eq!(
             changed,
             vec![
-                "sh:datatype xsd:positiveInteger: NumberFieldEditor -> (none)",
-                "sh:datatype xsd:nonPositiveInteger: NumberFieldEditor -> (none)",
-                "sh:datatype xsd:anyURI: IRIEditor -> (none)",
-                "sh:datatype xsd:gYear: TextFieldEditor -> (none)",
+                "sh:datatype xsd:positiveInteger: NumberFieldEditor -> TextFieldEditor",
+                "sh:datatype xsd:nonPositiveInteger: NumberFieldEditor -> TextFieldEditor",
+                "sh:datatype xsd:anyURI: IRIEditor -> TextFieldEditor",
                 "sh:class :C: AutoCompleteEditor -> InstancesSelectEditor",
-                "sh:nodeKind sh:BlankNode: TextFieldEditor -> (none)",
-                "sh:node :Other: DetailsEditor -> (none)",
                 "sh:datatype xsd:string ; sh:singleLine false: TextFieldEditor -> TextAreaEditor",
-                "sh:minCount 1: TextFieldEditor -> (none)",
             ]
         );
     }

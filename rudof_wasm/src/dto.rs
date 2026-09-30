@@ -159,13 +159,39 @@ pub struct PresentationHints {
     /// no editor scores: the shape says nothing an editor is chosen by.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor: Option<String>,
-    /// Every editor the SHACL UI score function returns, best first.
+    /// Where `editor` comes from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor_source: Option<EditorSource>,
+    /// Every editor the SHACL UI score function returned for this shape node, best
+    /// first. Empty when `editor_source` is `branch` or `fallback`: those editors
+    /// were not scored.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub editors: Vec<EditorScore>,
+    /// The `rdfs:label`s the shapes graph holds for the predicate, when the path is
+    /// a predicate IRI (SHACL UI, Property Labels, step 3).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path_labels: Vec<LangString>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_line: Option<bool>,
+}
+
+/// Where a shape's editor comes from. `declared` and `scored` are SHACL UI's;
+/// `branch` and `fallback` are not.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum EditorSource {
+    /// An explicit `shui:editor` on the shape, which wins the score function.
+    Declared,
+    /// The best result of the score function over the specification's scoring data.
+    Scored,
+    /// The score function returned nothing for the shape; the editor is the best
+    /// for its first `sh:or` / `sh:xone` branch. Not in SHACL UI.
+    Branch,
+    /// Nothing scored, here or in a branch: the rule of `shapes::fallback_editor`.
+    /// Not in SHACL UI.
+    Fallback,
 }
 
 /// One result of the SHACL UI score function: an editor and the score of the
@@ -323,6 +349,10 @@ pub struct ProjectedValue {
 pub struct ProjectedProperty {
     pub path_key: String,
     pub values: Vec<ProjectedValue>,
+    /// The `rdfs:label`s the data graph holds for the predicate, when the path is a
+    /// predicate IRI (SHACL UI, Property Labels, step 2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path_labels: Vec<LangString>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

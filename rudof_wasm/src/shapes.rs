@@ -10,7 +10,10 @@ use rudof_lib::form::{
 };
 use std::collections::HashMap;
 
+use rudof_lib::form::shui::editors;
+
 use crate::dto::*;
+use crate::index::SubjectIndex;
 use crate::object_to_value;
 use crate::scoring::Scoring;
 
@@ -26,12 +29,13 @@ const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 pub fn schema_to_json(schema: &ASTSchema, graph: &OxigraphInMemory) -> ShapeModelJson {
     // Prepared and compiled once, then asked about every property shape.
     let scoring = Scoring::new(schema, graph);
+    let index = SubjectIndex::new(graph);
     let mut node_shapes = Vec::new();
     let mut by_target_class = Vec::new();
 
     for (id, shape) in schema.iter() {
         if let ASTShape::NodeShape(ns) = shape {
-            let ir = node_shape_to_ir(id, ns, schema, graph, &scoring);
+            let ir = node_shape_to_ir(id, ns, schema, &index, &scoring);
             for tc in &ir.target_classes {
                 by_target_class.push((tc.clone(), ir.id.clone()));
             }
@@ -50,7 +54,7 @@ fn node_shape_to_ir(
     id: &Object,
     ns: &ASTNodeShape,
     schema: &ASTSchema,
-    graph: &OxigraphInMemory,
+    graph: &SubjectIndex,
     scoring: &Scoring,
 ) -> NodeShapeIR {
     let target_classes: Vec<String> = ns
@@ -228,7 +232,7 @@ pub(crate) fn branch_property_shapes<'a>(obj: Option<&Object>, schema: &'a ASTSc
 fn resolve_then_else(
     obj: Option<&Object>,
     schema: &ASTSchema,
-    graph: &OxigraphInMemory,
+    graph: &SubjectIndex,
     scoring: &Scoring,
 ) -> Vec<PropertyShapeIR> {
     branch_property_shapes(obj, schema)
@@ -259,7 +263,7 @@ const MAX_SHAPE_DEPTH: u8 = 8;
 fn shape_core(
     components: &[ASTComponent],
     schema: &ASTSchema,
-    graph: &OxigraphInMemory,
+    graph: &SubjectIndex,
     scoring: &Scoring,
     depth: u8,
 ) -> ShapeCore {
@@ -319,7 +323,7 @@ fn shape_core(
 fn property_to_ir(
     ps: &ASTPropertyShape,
     schema: &ASTSchema,
-    graph: &OxigraphInMemory,
+    graph: &SubjectIndex,
     scoring: &Scoring,
 ) -> PropertyShapeIR {
     property_to_ir_at(ps, schema, graph, scoring, 0)
@@ -328,7 +332,7 @@ fn property_to_ir(
 fn property_to_ir_at(
     ps: &ASTPropertyShape,
     schema: &ASTSchema,
-    graph: &OxigraphInMemory,
+    graph: &SubjectIndex,
     scoring: &Scoring,
     depth: u8,
 ) -> PropertyShapeIR {
@@ -343,7 +347,10 @@ fn property_to_ir_at(
     // parser doesn't surface it — read it from the shapes graph like the others.
     value.default_value = default_value(graph, ps.id());
 
-    let presentation = presentation(graph, scoring, ps.id(), ps.components());
+    let mut presentation = presentation(graph, scoring, ps.id(), ps.components());
+    if let SHACLPath::Predicate { pred } = ps.path() {
+        presentation.path_labels = graph.labels().of(pred.as_str());
+    }
 
     PropertyShapeIR {
         id: object_iri(ps.id()),
@@ -360,31 +367,23 @@ fn property_to_ir_at(
 }
 
 /// Read sh:defaultValue for a property-shape node from the shapes graph.
-fn default_value(graph: &OxigraphInMemory, node: &Object) -> Option<TermValue> {
+fn default_value(graph: &SubjectIndex, node: &Object) -> Option<TermValue> {
     let subj = object_to_subject(node)?;
     let pred = format!("{SH}defaultValue");
-    graph
-        .quads()
-        .find(|q| q.subject == subj && q.predicate.as_str() == pred)
-        .map(|q| object_to_value(&q.object))
+    let value = graph.values(&subj, &pred).next().map(object_to_value);
+    value
 }
 
 /// Every (predicate, object) on the property-shape node, grouped by predicate IRI
 /// — the open extension point so rules/widgets can read terms the typed core does
 /// not model (custom vocab, new SHACL 1.2 components).
-fn read_components(graph: &OxigraphInMemory, node: &Object) -> Vec<ComponentIR> {
+fn read_components(graph: &SubjectIndex, node: &Object) -> Vec<ComponentIR> {
     let Some(subj) = object_to_subject(node) else {
         return Vec::new();
     };
     let mut by_pred: HashMap<String, Vec<TermValue>> = HashMap::new();
-    for q in graph.quads() {
-        if q.subject != subj {
-            continue;
-        }
-        by_pred
-            .entry(q.predicate.as_str().to_string())
-            .or_default()
-            .push(object_to_value(&q.object));
+    for (pred, object) in graph.about(&subj) {
+        by_pred.entry(pred.clone()).or_default().push(object_to_value(object));
     }
     by_pred
         .into_iter()
@@ -407,7 +406,7 @@ fn read_components(graph: &OxigraphInMemory, node: &Object) -> Vec<ComponentIR> 
 fn resolve_branches(
     refs: &[Object],
     schema: &ASTSchema,
-    graph: &OxigraphInMemory,
+    graph: &SubjectIndex,
     scoring: &Scoring,
     depth: u8,
 ) -> Vec<ShapeIR> {
@@ -416,13 +415,7 @@ fn resolve_branches(
         .collect()
 }
 
-fn branch_to_ir(
-    o: &Object,
-    schema: &ASTSchema,
-    graph: &OxigraphInMemory,
-    scoring: &Scoring,
-    depth: u8,
-) -> Option<ShapeIR> {
+fn branch_to_ir(o: &Object, schema: &ASTSchema, graph: &SubjectIndex, scoring: &Scoring, depth: u8) -> Option<ShapeIR> {
     if depth >= MAX_SHAPE_DEPTH {
         return None;
     }
@@ -466,12 +459,16 @@ fn object_to_subject(o: &Object) -> Option<NamedOrBlankNode> {
 
 /// Read sh:name / sh:description / sh:order / sh:group / sh:singleLine /
 /// shui:viewer for a shape node from the shapes graph (rudof's AST omits these),
-/// and let the SHACL UI score function choose its editor.
+/// and choose its editor.
 ///
-/// `shui:editor` is not read here: a declared editor takes part in the scoring
-/// like every other candidate (see [`crate::scoring`]).
+/// The editor is the best result of the SHACL UI score function for the shape node
+/// (see [`crate::scoring`]); `shui:editor` is not read here, since a declared
+/// editor takes part in the scoring like every other candidate. When the score
+/// function returns nothing, the two rules of our own apply, in order: the editor
+/// of the first `sh:or` / `sh:xone` branch, then [`fallback_editor`]. Neither is
+/// SHACL UI, and `editor_source` says which one produced the editor.
 fn presentation(
-    graph: &OxigraphInMemory,
+    graph: &SubjectIndex,
     scoring: &Scoring,
     node: &Object,
     components: &[ASTComponent],
@@ -479,49 +476,73 @@ fn presentation(
     let mut p = PresentationHints::default();
     let Some(subj) = object_to_subject(node) else { return p };
 
-    for q in graph.quads() {
-        if q.subject != subj {
-            continue;
-        }
-        let pred = q.predicate.as_str();
-        if pred == format!("{SH}name") {
-            if let Some(ls) = lang_string(&q.object) {
+    let mut declared = Vec::new();
+    for (pred, object) in graph.about(&subj) {
+        if pred == &format!("{SH}name") {
+            if let Some(ls) = lang_string(object) {
                 p.names.push(ls);
             }
-        } else if pred == format!("{SH}description") {
-            if let Some(ls) = lang_string(&q.object) {
+        } else if pred == &format!("{SH}description") {
+            if let Some(ls) = lang_string(object) {
                 p.descriptions.push(ls);
             }
-        } else if pred == format!("{SH}order") {
-            p.order = literal_value(&q.object).and_then(|v| v.parse().ok());
-        } else if pred == format!("{SH}group") {
-            p.group_id = iri_value(&q.object);
-        } else if pred == format!("{SH}singleLine") {
-            p.single_line = literal_value(&q.object).and_then(|v| v.parse().ok());
-        } else if pred == format!("{SHUI}viewer") {
-            p.viewer = iri_value(&q.object);
+        } else if pred == &format!("{SH}order") {
+            p.order = literal_value(object).and_then(|v| v.parse().ok());
+        } else if pred == &format!("{SH}group") {
+            p.group_id = iri_value(object);
+        } else if pred == &format!("{SH}singleLine") {
+            p.single_line = literal_value(object).and_then(|v| v.parse().ok());
+        } else if pred == &format!("{SHUI}viewer") {
+            p.viewer = iri_value(object);
+        } else if pred == &format!("{SHUI}editor") {
+            declared.extend(iri_value(object));
         }
     }
 
     p.editors = scoring.editors(node);
-    if p.editors.is_empty() {
-        // A shape that states its type only through `sh:or` / `sh:xone` has nothing
-        // for an editor to be chosen by; it takes the editors of its first branch.
-        // This is not in SHACL UI, whose score function looks at the shape node
-        // alone.
-        let first_branch = [true, false].into_iter().find_map(|or| {
-            components.iter().find_map(|c| match c {
-                ASTComponent::Or(refs) if or => refs.first(),
-                ASTComponent::Xone(refs) if !or => refs.first(),
-                _ => None,
-            })
-        });
-        if let Some(branch) = first_branch {
-            p.editors = scoring.editors(branch);
-        }
-    }
-    p.editor = p.editors.first().map(|e| e.editor.clone());
+    let (editor, source) = match p.editors.first() {
+        Some(best) if declared.contains(&best.editor) => (best.editor.clone(), EditorSource::Declared),
+        Some(best) => (best.editor.clone(), EditorSource::Scored),
+        None => match first_branch(components).and_then(|b| scoring.editors(b).into_iter().next()) {
+            Some(best) => (best.editor, EditorSource::Branch),
+            None => (fallback_editor(components).to_string(), EditorSource::Fallback),
+        },
+    };
+    p.editor = Some(editor);
+    p.editor_source = Some(source);
     p
+}
+
+/// The first `sh:or` branch, else the first `sh:xone` branch: a shape that states
+/// its type only through them has nothing for the score function to look at. This
+/// is not in SHACL UI, whose score function looks at the shape node alone.
+fn first_branch(components: &[ASTComponent]) -> Option<&Object> {
+    [true, false].into_iter().find_map(|or| {
+        components.iter().find_map(|c| match c {
+            ASTComponent::Or(refs) if or => refs.first(),
+            ASTComponent::Xone(refs) if !or => refs.first(),
+            _ => None,
+        })
+    })
+}
+
+/// The editor of a shape for which SHACL UI's score function returned nothing:
+/// a nested form (`shui:DetailsEditor`) if the shape has `sh:node`, a text field
+/// (`shui:TextFieldEditor`) otherwise.
+///
+/// THIS IS NOT PART OF SHACL UI. The Editor's Draft defines the score function's
+/// result as possibly empty — "The sequence is empty if no widget matches and is
+/// accepted." — and says no more about it. Its default rows need a value to look
+/// at ("the value is a blank node"), so for a shape alone they leave a property
+/// with only `sh:node`, or with no type fact at all, without an editor, and a form
+/// has to show something. The rule is ours, minimal, and reported as
+/// `editorSource: "fallback"` so that nobody takes it for the specification's.
+fn fallback_editor(components: &[ASTComponent]) -> &'static str {
+    if components.iter().any(|c| matches!(c, ASTComponent::Node(_))) {
+        editors::DETAILS
+    } else {
+        editors::TEXT_FIELD
+    }
 }
 
 fn read_groups(graph: &OxigraphInMemory) -> Vec<PropertyGroupIR> {

@@ -17,6 +17,7 @@ use rudof_lib::form::{
 };
 
 use crate::dto::{ProjectedForm, ProjectedProperty, ProjectedValue, TermValue};
+use crate::index::Labels;
 use crate::shapes::{branch_property_shapes, conditionals_of, object_str, path_key};
 use crate::{object_to_value, term_to_object};
 
@@ -25,12 +26,14 @@ pub fn project_form(engine: &FormEngine, ast: &ASTSchema, focus: &TermValue, sha
     let mut properties = Vec::new();
     let mut satisfied = Vec::new();
     let mut seen_keys: HashSet<String> = HashSet::new();
+    // One pass over the data graph, for every property's predicate labels.
+    let labels = Labels::from_quads(engine.quads());
 
     if let Some(node) = find_node_shape(ast, shape_id) {
         // Base: the node shape's direct property shapes.
         for pref in node.property_shapes() {
             if let Some(ASTShape::PropertyShape(ps)) = ast.get_shape(pref) {
-                project_property(engine, &focus_term, ps, &mut properties, &mut seen_keys);
+                project_property(engine, &focus_term, ps, &labels, &mut properties, &mut seen_keys);
             }
         }
 
@@ -43,7 +46,7 @@ pub fn project_form(engine: &FormEngine, ast: &ASTSchema, focus: &TermValue, sha
                 .into_iter()
                 .chain(branch_property_shapes(c.els, ast))
             {
-                project_property(engine, &focus_term, ps, &mut properties, &mut seen_keys);
+                project_property(engine, &focus_term, ps, &labels, &mut properties, &mut seen_keys);
             }
             if let Ok(focus_obj) = Object::try_from(focus_term.clone()) {
                 if engine.conforms_focus(c.cond, &focus_obj).unwrap_or(false) {
@@ -66,6 +69,7 @@ fn project_property(
     engine: &FormEngine,
     focus: &OxTerm,
     ps: &ASTPropertyShape,
+    labels: &Labels,
     properties: &mut Vec<ProjectedProperty>,
     seen_keys: &mut HashSet<String>,
 ) {
@@ -90,7 +94,15 @@ fn project_property(
             }
         })
         .collect();
-    properties.push(ProjectedProperty { path_key: key, values });
+    let path_labels = match path {
+        SHACLPath::Predicate { pred } => labels.of(pred.as_str()),
+        _ => Vec::new(),
+    };
+    properties.push(ProjectedProperty {
+        path_key: key,
+        values,
+        path_labels,
+    });
 }
 
 /// Find a node shape by the id the shapes projection gave it — an IRI, or `_:b…`

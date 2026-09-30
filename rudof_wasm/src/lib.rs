@@ -128,6 +128,19 @@ impl Session {
         to_js(&json)
     }
 
+    /// Add default validation messages: `sh:message` literals on constraint
+    /// components (`sh:MinCountConstraintComponent sh:message "..."@fr`, with
+    /// `{$minCount}`-style placeholders), used for results whose shape has no
+    /// `sh:message`. They extend the built-in English, Spanish and Catalan
+    /// messages; per component and language the later document wins. `media_type`
+    /// defaults to Turtle.
+    #[wasm_bindgen(js_name = loadMessages)]
+    pub fn load_messages(&mut self, text: String, media_type: Option<String>) -> Result<(), JsError> {
+        self.engine
+            .load_messages(&text, &format_of(media_type.as_deref().unwrap_or("text/turtle")))
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     /// Replace the live data graph with the parse of `text`.
     ///
     /// `base` is the document base relative IRIs in `text` resolve against — the

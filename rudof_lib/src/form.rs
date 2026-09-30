@@ -38,6 +38,7 @@ pub use shacl::vocab::shui;
 pub use crate::base::STRING_BASE;
 
 use shacl::ir::{IRSchema, ShapeLabelIdx};
+use shacl::messages::MessageCatalog;
 use shacl::rdf::ShaclParser;
 use shacl::validator::ShaclValidationMode;
 use shacl::validator::processor::{GraphValidation, ShaclProcessor};
@@ -78,6 +79,9 @@ pub struct FormEngine {
     data: OxigraphInMemory,
     shapes_graph: Option<OxigraphInMemory>,
     shapes_ast: Option<ASTSchema>,
+    /// The wording of results whose shape has no `sh:message`: the built-in
+    /// catalog until [`FormEngine::load_messages`] extends it.
+    messages: Option<MessageCatalog>,
 }
 
 impl FormEngine {
@@ -127,6 +131,23 @@ impl FormEngine {
         self.shapes_graph = Some(graph);
         self.shapes_ast = Some(schema);
         Ok(self.shapes_ast.as_ref().expect("just set"))
+    }
+
+    /// Add the `sh:message` literals of `text` to the message catalog that words
+    /// the results of shapes with no `sh:message` of their own (SHACL §3.6.2.7).
+    /// The built-in catalog (English, Spanish, Catalan) is the starting point; per
+    /// constraint component and language, the later document wins. Adding a
+    /// language needs no code. Nothing changes when `text` does not parse.
+    pub fn load_messages(&mut self, text: &str, format: &RDFFormat) -> Result<(), FormError> {
+        let mut catalog = self
+            .messages
+            .clone()
+            .unwrap_or_else(|| MessageCatalog::builtin().clone());
+        catalog
+            .load(text, format)
+            .map_err(|e| FormError::Parse(e.to_string()))?;
+        self.messages = Some(catalog);
+        Ok(())
     }
 
     /// The parsed shapes AST, if any (form-IR projection input).
@@ -294,7 +315,11 @@ impl FormEngine {
     /// Compile the loaded shapes AST into the validator's internal representation.
     fn compile(&self) -> Result<IRSchema, FormError> {
         let ast = self.shapes_ast.as_ref().ok_or(FormError::NoShapes)?;
-        IRSchema::try_from(ast).map_err(|e| FormError::Validation(e.to_string()))
+        let ir = IRSchema::try_from(ast).map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(match &self.messages {
+            Some(catalog) => ir.with_messages(catalog.clone()),
+            None => ir,
+        })
     }
 }
 

@@ -17,6 +17,7 @@ use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 #[cfg(feature = "sparql")]
 use crate::validator::report::ValidationResult;
+#[cfg(feature = "sparql")]
 use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 #[cfg(feature = "sparql")]

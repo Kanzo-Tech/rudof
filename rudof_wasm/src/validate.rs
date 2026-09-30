@@ -75,3 +75,80 @@ fn severity_iri(s: &Severity) -> String {
     let iri: IriS = s.into();
     iri.as_str().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rudof_lib::form::{FormEngine, RDFFormat};
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    const PREFIXES: &str = "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix : <http://example.org/> .\n";
+
+    /// One shape requiring `:p` twice, one node with none. `message` is the
+    /// shape's own `sh:message`, when it has one.
+    fn engine(message: &str) -> FormEngine {
+        let mut engine = FormEngine::new();
+        let shapes = format!(
+            "{PREFIXES}:S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; sh:minCount 2 {message} ] ."
+        );
+        engine.load_shapes(&shapes, &RDFFormat::Turtle, None).unwrap();
+        engine
+            .load_data(&format!("{PREFIXES}:n a :C ."), &RDFFormat::Turtle, None)
+            .unwrap();
+        engine
+    }
+
+    fn messages(engine: &FormEngine) -> Vec<(String, String)> {
+        let report = report_from_outcome(&engine.validate().unwrap());
+        assert_eq!(report.results.len(), 1);
+        let mut m: Vec<_> = report.results[0]
+            .message
+            .iter()
+            .map(|l| (l.language.clone(), l.value.clone()))
+            .collect();
+        m.sort();
+        m
+    }
+
+    fn pair(lang: &str, text: &str) -> (String, String) {
+        (lang.to_string(), text.to_string())
+    }
+
+    #[wasm_bindgen_test]
+    fn the_shapes_own_messages_are_the_only_ones() {
+        let m = messages(&engine("; sh:message \"Falta\"@es , \"Missing\"@en"));
+        assert_eq!(m, [pair("en", "Missing"), pair("es", "Falta")]);
+    }
+
+    #[wasm_bindgen_test]
+    fn a_silent_shape_gets_one_tagged_message_per_catalog_language() {
+        let m = messages(&engine(""));
+        assert_eq!(
+            m,
+            [
+                pair("ca", "Calen com a mínim 2 valor(s)"),
+                pair("en", "At least 2 value(s) required"),
+                pair("es", "Se requieren al menos 2 valor(es)"),
+            ]
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn loaded_messages_add_a_language_and_reword_one() {
+        let mut engine = engine("");
+        engine
+            .load_messages(
+                &format!(
+                    "{PREFIXES}sh:MinCountConstraintComponent sh:message \"Au moins {{$minCount}}\"@fr , \"Need {{$minCount}}\"@en ."
+                ),
+                &RDFFormat::Turtle,
+            )
+            .unwrap();
+        let m = messages(&engine);
+        assert_eq!(m.len(), 4);
+        assert!(m.contains(&pair("fr", "Au moins 2")));
+        assert!(m.contains(&pair("en", "Need 2")));
+        assert!(engine.load_messages("nonsense", &RDFFormat::Turtle).is_err());
+        assert_eq!(messages(&engine).len(), 4);
+    }
+}

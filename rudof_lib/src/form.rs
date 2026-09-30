@@ -42,6 +42,7 @@ use shacl::rdf::ShaclParser;
 use shacl::validator::ShaclValidationMode;
 use shacl::validator::processor::{GraphValidation, ShaclProcessor};
 use shacl::validator::store::Graph;
+use std::collections::HashSet;
 
 /// Errors surfaced by the form façade. Flat, `thiserror`-derived (no `Box<dyn>`):
 /// the binding renders them to a `JsError` via `Display`.
@@ -294,6 +295,63 @@ impl FormEngine {
     fn compile(&self) -> Result<IRSchema, FormError> {
         let ast = self.shapes_ast.as_ref().ok_or(FormError::NoShapes)?;
         IRSchema::try_from(ast).map_err(|e| FormError::Validation(e.to_string()))
+    }
+}
+
+/// Asks whether a node of one graph conforms to a shape of another: the shapes
+/// come from `shapes`, the node from `data`, and the two need not be related.
+///
+/// [`FormEngine`] cannot say this: it validates its own data graph against its own
+/// shapes. SHACL UI needs the split — its matcher shapes live in a *scoring
+/// graph* and are run against nodes of the application's *shapes graph* — so the
+/// two graphs are parameters here. The shapes are compiled, and the data graph
+/// loaded into the validator's store, once; each [`NodeChecker::conforms`] is then
+/// one scoped validation.
+pub struct NodeChecker {
+    shapes: IRSchema,
+    data: GraphValidation,
+    subjects: HashSet<NamedOrBlankNode>,
+}
+
+impl NodeChecker {
+    /// Compile `shapes` and take `data` as the graph whose nodes are checked.
+    pub fn new(shapes: &OxigraphInMemory, data: &OxigraphInMemory) -> Result<Self, FormError> {
+        let ast = ShaclParser::new(shapes.clone())
+            .parse()
+            .map_err(|e| FormError::Parse(e.to_string()))?;
+        let shapes = IRSchema::try_from(&ast).map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(Self {
+            shapes,
+            subjects: data.quads().map(|q| q.subject).collect(),
+            data: GraphValidation::new(Graph::from(data.clone())),
+        })
+    }
+
+    /// Does `focus` conform to `shape` — an IRI or blank node of the compiled
+    /// shapes graph?
+    ///
+    /// A node that is neither a literal nor a subject of `data` does not conform:
+    /// this is the SHACL UI *validation function*, which has that step before the
+    /// standard validation. A shape the shapes graph does not define is a
+    /// [`FormError::ShapeNotFound`].
+    pub fn conforms(&self, shape: &Object, focus: &Object) -> Result<bool, FormError> {
+        let known = match Term::from(focus.clone()) {
+            Term::Literal(_) => true,
+            node => as_subject(&node).is_some_and(|s| self.subjects.contains(&s)),
+        };
+        if !known {
+            return Ok(false);
+        }
+        let idx = self
+            .shapes
+            .get_idx(shape)
+            .copied()
+            .ok_or_else(|| FormError::ShapeNotFound(format!("{shape}")))?;
+        let results = self
+            .data
+            .validate_scoped(&self.shapes, idx, Some(focus))
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(results.is_empty())
     }
 }
 

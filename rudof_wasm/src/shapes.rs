@@ -16,7 +16,7 @@ use crate::object_to_value;
 
 const SH: &str = "http://www.w3.org/ns/shacl#";
 const XSD: &str = "http://www.w3.org/2001/XMLSchema#";
-const SHUI: &str = "http://www.w3.org/ns/shacl-ui#";
+const SHUI: &str = "http://www.w3.org/ns/shacl-ui/";
 const RDFS: &str = "http://www.w3.org/2000/01/rdf-schema#";
 const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const RDF_HTML: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#HTML";

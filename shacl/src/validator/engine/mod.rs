@@ -9,10 +9,10 @@ mod value_nodes_ops;
 use crate::ir::{IRComponent, IRPropertyShape, IRSchema, IRShape, ShapeLabelIdx};
 use crate::types::Target;
 use rudof_iri::IriS;
-use rudof_rdf::term::Object;
+use rudof_rdf::term::{Object, Triple};
 use rudof_rdf::{NeighsRDF, SHACLPath};
-#[cfg(feature = "sparql")]
 use std::collections::HashSet;
+use std::fmt::Debug;
 
 use crate::error::ValidationError;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
@@ -43,7 +43,15 @@ pub trait Engine<S: NeighsRDF>: Sized {
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError>;
 
-    fn focus_nodes(&self, store: &S, targets: &[Target]) -> Result<FocusNodes<S>, ValidationError> {
+    fn focus_nodes(
+        &mut self,
+        store: &S,
+        targets: &[Target],
+        shapes_graph: &IRSchema,
+    ) -> Result<FocusNodes<S>, ValidationError>
+    where
+        S: Debug,
+    {
         let mut acc: Vec<S::Term> = Vec::new();
         for target in targets {
             let resolved = match target {
@@ -52,6 +60,7 @@ pub trait Engine<S: NeighsRDF>: Sized {
                 Target::SubjectsOf(p) => self.target_subject_of(store, p)?,
                 Target::ObjectsOf(p) => self.target_object_of(store, p)?,
                 Target::ImplicitClass(n) => self.implicit_target_class(store, n)?,
+                Target::Where(w) => self.target_where(store, w, shapes_graph)?,
                 // Malformed targets propagate a typed error instead of panicking.
                 Target::WrongNode(_)
                 | Target::WrongClass(_)
@@ -80,6 +89,44 @@ pub trait Engine<S: NeighsRDF>: Sized {
     fn target_object_of(&self, store: &S, predicate: &IriS) -> Result<FocusNodes<S>, ValidationError>;
 
     fn implicit_target_class(&self, store: &S, shape: &Object) -> Result<FocusNodes<S>, ValidationError>;
+
+    /// SHACL 1.2 Core §3.1.3.6: if `s` has value `w` for `sh:targetWhere`, the
+    /// nodes of the data graph that conform to `w` are a target for `s`.
+    ///
+    /// The nodes of a graph are the subjects and objects of its triples
+    /// (RDF 1.2 Concepts), so literals are candidates and an IRI that only
+    /// occurs as a predicate is not. Conformance is scoped validation of one
+    /// node against `w` yielding no result, whatever its severity; `w`'s own
+    /// targets play no part, so a where shape that is itself targeted, or that
+    /// refers back, cannot recurse. One pass collects the candidates and `w`
+    /// is compiled once, in `shapes_graph`; the engine's cache is shared by
+    /// every candidate.
+    fn target_where(
+        &mut self,
+        store: &S,
+        shape: &Object,
+        shapes_graph: &IRSchema,
+    ) -> Result<FocusNodes<S>, ValidationError>
+    where
+        S: Debug,
+    {
+        let idx = *shapes_graph
+            .get_idx(shape)
+            .ok_or_else(|| ValidationError::MalformedTarget(format!("sh:targetWhere value {shape} is not a shape")))?;
+        let mut candidates: HashSet<S::Term> = HashSet::new();
+        for triple in store.triples().map_err(ValidationError::new_graph_error::<S>)? {
+            candidates.insert(triple.subj().clone().into());
+            candidates.insert(triple.obj().clone());
+        }
+        let mut conforming = HashSet::new();
+        for node in candidates {
+            let object = S::term_as_object(&node)?;
+            if validate_focus(store, shapes_graph, self, idx, &object)?.is_empty() {
+                conforming.insert(node);
+            }
+        }
+        Ok(FocusNodes::new(conforming))
+    }
 
     /// Whether `node` is a **SHACL instance** of `class`.
     ///

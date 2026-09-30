@@ -64,7 +64,7 @@ impl<RDF: NeighsRDF + Debug> Validate<RDF> for IRShape {
         let focus_nodes = match targets {
             Some(targets) => targets,
             None => {
-                computed_focus = self.focus_nodes(store, runner)?;
+                computed_focus = self.focus_nodes(store, runner, shapes_graph)?;
                 &computed_focus
             },
         };

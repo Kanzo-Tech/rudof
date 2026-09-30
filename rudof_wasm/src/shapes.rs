@@ -156,13 +156,22 @@ pub(crate) struct Conditional<'a> {
 /// counts as one, so the shapes projection and the value projection cannot
 /// disagree about it.
 ///
-/// Two spellings are read. SHACL Core has no conditional component; what it has is
-/// `sh:or` and `sh:not` (§4.6.3, §4.6.1), and "if C then T" is written with them
-/// as the material implication `sh:or ( [ sh:not C ] T )`. That is the standard
-/// form. `sh:if` / `sh:then` / `sh:else` is this engine's own component and
-/// arrives here as the same record.
+/// Three spellings are read. SHACL Core has no conditional component; what it has
+/// is `sh:or` and `sh:not` (§4.6.3, §4.6.1), and "if C then T" is written with them
+/// as the material implication `sh:or ( [ sh:not C ] T )`. That is the SHACL 1.0
+/// form. SHACL 1.2 Core adds `sh:targetWhere` (§3.1.3.6), the second standard one:
+/// a shape T with `sh:targetWhere C` requires whatever conforms to C to conform to
+/// T. `sh:if` / `sh:then` / `sh:else` is this engine's own component. All three
+/// arrive here as the same record.
+///
+/// A where target is global, it does not hang off a shape: the conditionals it
+/// contributes belong to every node shape of the schema, because the form of any
+/// focus node is subject to it, and it simply never holds for a focus that cannot
+/// conform to C. They are not attached to T, which is the consequent itself, nor
+/// to C, and one already stated by the shape's own implication is not repeated.
 pub(crate) fn conditionals_of<'a>(ns: &'a ASTNodeShape, schema: &'a ASTSchema) -> Vec<Conditional<'a>> {
-    ns.components()
+    let mut out: Vec<Conditional<'a>> = ns
+        .components()
         .iter()
         .filter_map(|c| match c {
             ASTComponent::If { cond, then_, else_ } => Some(Conditional {
@@ -173,7 +182,27 @@ pub(crate) fn conditionals_of<'a>(ns: &'a ASTNodeShape, schema: &'a ASTSchema) -
             ASTComponent::Or(refs) => implication(refs, schema),
             _ => None,
         })
-        .collect()
+        .collect();
+    for (id, shape) in schema.iter() {
+        let ASTShape::NodeShape(target) = shape else { continue };
+        if id == ns.id() || branch_property_shapes(Some(id), schema).is_empty() {
+            continue;
+        }
+        for cond in target.targets().iter().filter_map(|t| match t {
+            Target::Where(cond) => Some(cond),
+            _ => None,
+        }) {
+            let repeated = out.iter().any(|c| c.cond == cond && c.then == Some(id));
+            if cond != ns.id() && !repeated {
+                out.push(Conditional {
+                    cond,
+                    then: Some(id),
+                    els: None,
+                });
+            }
+        }
+    }
+    out
 }
 
 /// Read `sh:or ( [ sh:not C ] T )`, in either order, as "if C then T".
@@ -1043,5 +1072,120 @@ mod tests {
             .expect("an anonymous shape id resolves");
         assert_eq!(outcome.results.len(), 1);
         assert!(outcome.results[0].path().is_some());
+    }
+
+    // ---- sh:targetWhere -------------------------------------------------------
+
+    /// The same requirement as `restricted`, in SHACL 1.2: the consequent is the
+    /// shape with the where target, and no shape mentions the other.
+    fn restricted_where() -> String {
+        format!(
+            r#"{COND_PREFIXES}
+:S a sh:NodeShape ;
+  sh:targetClass :Dataset ;
+  sh:property [ sh:path :access ] .
+
+:Restricted a sh:NodeShape ;
+  sh:property [ sh:path :access ; sh:hasValue :RESTRICTED ] .
+
+:Justified a sh:NodeShape ;
+  sh:targetWhere :Restricted ;
+  sh:property [
+    sh:path :justification ;
+    sh:minCount 1 ;
+    sh:message "Falta la justificación."@es , "Falta la justificació."@ca ;
+  ] .
+"#
+        )
+    }
+
+    /// `sh:targetWhere C` on T is the conditional "when C, T", available to every
+    /// node shape but T and C themselves; it is not a disjunction.
+    #[wasm_bindgen_test]
+    fn a_where_target_is_a_conditional_of_every_other_node_shape() {
+        let m = model(&restricted_where());
+        let ns = shape(&m, "http://example.org/S");
+        assert_eq!(ns.conditionals.len(), 1);
+        let c = &ns.conditionals[0];
+        assert_eq!(c.condition_id, "http://example.org/Restricted");
+        assert_eq!(c.then_id.as_deref(), Some("http://example.org/Justified"));
+        assert_eq!(then_paths(c), vec![JUSTIFICATION]);
+        assert!(c.els.is_empty());
+        assert!(shape(&m, "http://example.org/Justified").conditionals.is_empty());
+        assert!(shape(&m, "http://example.org/Restricted").conditionals.is_empty());
+    }
+
+    /// An anonymous where shape is a condition all the same.
+    #[wasm_bindgen_test]
+    fn an_anonymous_where_shape_is_a_condition() {
+        let m = model(&format!(
+            r#"{COND_PREFIXES}
+:S a sh:NodeShape ; sh:targetClass :Dataset .
+:Justified a sh:NodeShape ;
+  sh:targetWhere [ sh:property [ sh:path :access ; sh:hasValue :RESTRICTED ] ] ;
+  sh:property [ sh:path :justification ; sh:minCount 1 ] .
+"#
+        ));
+        let c = &shape(&m, "http://example.org/S").conditionals[0];
+        assert!(c.condition_id.starts_with("_:"), "condition id: {}", c.condition_id);
+        assert_eq!(then_paths(c), vec![JUSTIFICATION]);
+    }
+
+    /// The requirement stated both ways is one conditional, not two.
+    #[wasm_bindgen_test]
+    fn the_same_requirement_stated_both_ways_is_one_conditional() {
+        let shapes = format!(
+            "{}\n:Justified sh:targetWhere :Restricted .",
+            restricted("sh:or ( [ sh:not :Restricted ] :Justified )")
+        );
+        let m = model(&shapes);
+        assert_eq!(shape(&m, "http://example.org/S").conditionals.len(), 1);
+    }
+
+    /// Projection and validation by id behave as for the implication.
+    #[wasm_bindgen_test]
+    fn a_where_conditional_is_satisfied_and_validated_like_an_implication() {
+        let shapes = restricted_where();
+
+        let open = project(&session(&shapes, &dataset("; :access :PUBLIC")));
+        assert!(open.satisfied.is_empty());
+        assert!(open.properties.iter().any(|p| p.path_key == JUSTIFICATION));
+
+        let engine = session(&shapes, &dataset("; :access :RESTRICTED"));
+        assert_eq!(
+            project(&engine).satisfied,
+            vec!["http://example.org/Restricted".to_string()]
+        );
+
+        let focus = Object::iri(rudof_lib::form::IriS::new_unchecked("http://example.org/d"));
+        let report = crate::validate::report_from_outcome(
+            &engine
+                .validate_focus("http://example.org/Justified", &focus)
+                .expect("validates"),
+        );
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[0].path_key.as_deref(), Some(JUSTIFICATION));
+    }
+
+    /// A form for a class whose nodes can never conform to the where shape still
+    /// works: the conditional is there and is never satisfied.
+    #[wasm_bindgen_test]
+    fn a_form_that_can_never_meet_the_where_shape_is_unaffected() {
+        let shapes = format!(
+            "{}\n:Other a sh:NodeShape ; sh:targetClass :Thing ; sh:property [ sh:path :label ] .",
+            restricted_where()
+        );
+        let engine = session(
+            &shapes,
+            "@prefix : <http://example.org/> . :t a :Thing ; :label \"x\" .",
+        );
+        let form = crate::project::project_form(
+            &engine,
+            engine.shapes_ast().expect("shapes loaded"),
+            &TermValue::named("http://example.org/t"),
+            "http://example.org/Other",
+        );
+        assert!(form.satisfied.is_empty());
+        assert!(form.properties.iter().any(|p| p.path_key == "http://example.org/label"));
     }
 }

@@ -28,7 +28,8 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone)]
 pub enum IRComponent {
     Class(Object),
-    Datatype(IriS),
+    /// The permitted datatypes: one, or the members of an `sh:datatype` list.
+    Datatype(Vec<IriS>),
     NodeKind(NodeKind),
     MinCount(isize),
     MaxCount(isize),
@@ -69,7 +70,9 @@ impl IRComponent {
     pub fn compile(component: &ASTComponent, ast: &ASTSchema, ir: &mut IRSchema) -> Result<Self, IRError> {
         let result = match component.clone() {
             ASTComponent::Class(object) => IRComponent::Class(object),
-            ASTComponent::Datatype(iri) => IRComponent::Datatype(convert_iri_ref(iri)?),
+            ASTComponent::Datatype(iris) => {
+                IRComponent::Datatype(iris.into_iter().map(convert_iri_ref).collect::<Result<Vec<_>, _>>()?)
+            },
             ASTComponent::NodeKind(nk) => IRComponent::NodeKind(nk),
             ASTComponent::MinCount(n) => IRComponent::MinCount(check_non_negative("sh:minCount", n)?),
             ASTComponent::MaxCount(n) => IRComponent::MaxCount(check_non_negative("sh:maxCount", n)?),
@@ -175,7 +178,11 @@ impl IRComponent {
     ) -> Result<(), IRError> {
         match self {
             IRComponent::Class(c) => register_term(&c.clone().into(), ShaclVocab::sh_class(), id, graph),
-            IRComponent::Datatype(iri) => register_iri(iri, ShaclVocab::sh_datatype(), id, graph),
+            // As `sh:in` and the other list-valued components do, the members are
+            // written as repeated values; the list form is not reconstructed.
+            IRComponent::Datatype(iris) => iris
+                .iter()
+                .try_for_each(|iri| register_iri(iri, ShaclVocab::sh_datatype(), id, graph)),
             IRComponent::NodeKind(nk) => {
                 let iri = match nk {
                     NodeKind::Iri => ShaclVocab::sh_iri_ref(),
@@ -532,7 +539,10 @@ impl Display for IRComponent {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             IRComponent::Class(cls) => write!(f, " Class: {cls}"),
-            IRComponent::Datatype(dt) => write!(f, " Datatype: {dt}"),
+            IRComponent::Datatype(dts) => {
+                let dts = dts.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(", ");
+                write!(f, " Datatype: {dts}")
+            },
             IRComponent::NodeKind(nk) => write!(f, " NodeKind: {nk:?}"),
             IRComponent::MinCount(n) => write!(f, " MinCount: {n}"),
             IRComponent::MaxCount(mn) => write!(f, " MaxCount: {mn}"),

@@ -316,9 +316,17 @@ impl Shacl2ShEx {
                 let se = self.create_class_constraint(cls)?;
                 Ok(se)
             },
-            IRComponent::Datatype(dt) => Ok(ShapeExpr::node_constraint(
-                NodeConstraint::new().with_datatype(dt.clone().into()),
-            )),
+            IRComponent::Datatype(dts) => {
+                // One datatype, or "one of these" for a SHACL 1.2 list: a disjunction.
+                let mut datatypes: Vec<ShapeExpr> = dts
+                    .iter()
+                    .map(|dt| ShapeExpr::node_constraint(NodeConstraint::new().with_datatype(dt.clone().into())))
+                    .collect();
+                match datatypes.len() {
+                    1 => Ok(datatypes.remove(0)),
+                    _ => Ok(ShapeExpr::or(datatypes)),
+                }
+            },
             IRComponent::NodeKind(_) => todo!(),
             IRComponent::MinCount(_) => todo!(),
             IRComponent::MaxCount(_) => todo!(),

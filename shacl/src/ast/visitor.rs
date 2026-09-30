@@ -34,7 +34,7 @@ pub trait ComponentVisitor {
     fn visit_class(&mut self, _class: &Object) -> Result<Self::Output, Self::Error> {
         self.default_component()
     }
-    fn visit_datatype(&mut self, _datatype: &IriRef) -> Result<Self::Output, Self::Error> {
+    fn visit_datatype(&mut self, _datatypes: &[IriRef]) -> Result<Self::Output, Self::Error> {
         self.default_component()
     }
     fn visit_node_kind(&mut self, _node_kind: &NodeKind) -> Result<Self::Output, Self::Error> {

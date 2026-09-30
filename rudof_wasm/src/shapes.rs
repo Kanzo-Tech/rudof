@@ -337,7 +337,13 @@ fn shape_core(components: &[ASTComponent], schema: &ASTSchema, graph: &OxigraphI
 
     for c in components {
         match c {
-            ASTComponent::Datatype(iri) => value.datatype = Some(iriref_str(iri)),
+            // `value.datatype` is one IRI. A list of datatypes (SHACL 1.2) is "one of
+            // these", which the payload has no field for yet, so it is not projected.
+            ASTComponent::Datatype(iris) => {
+                if let [iri] = iris.as_slice() {
+                    value.datatype = Some(iriref_str(iri));
+                }
+            },
             ASTComponent::Class(o) => value.class_iri = object_iri(o),
             ASTComponent::NodeKind(nk) => value.node_kind = Some(nodekind_iri(nk)),
             ASTComponent::MinCount(n) => cardinality.min = Some(*n as i64),

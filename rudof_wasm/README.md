@@ -30,6 +30,11 @@ session.add(subject, predicate, object);        // live graph editing
 const form = session.projectForm(focus, shapeId);
 const report = session.validate(null);           // { conforms, results }
 const ttl = session.serialize("text/turtle");
+
+// SHACL on the host's own SQL engine: compile once, run each check, read back.
+const plan = session.compileSql(mappingJson, "duckdb"); // { columns, checks: [{ sql, sourceShape, … }] }
+const rows = plan.checks.map((c) => runOnDuckDb(c.sql));  // string | null cells, in plan.columns order
+const sqlReport = session.reportFromRows(rows);           // same RudofReport as validate()
 ```
 
 ## Notes

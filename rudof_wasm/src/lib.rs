@@ -14,6 +14,7 @@ mod index;
 mod project;
 mod scoring;
 mod shapes;
+mod sql;
 mod validate;
 use dto::*;
 
@@ -252,6 +253,42 @@ impl Session {
         let outcome = self
             .engine
             .validate_focus(&shape_id, &focus)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&validate::report_from_outcome(&outcome))
+    }
+}
+
+#[wasm_bindgen]
+impl Session {
+    /// Compile the loaded shapes to SQL over the tables `mapping` describes
+    /// (JSON: `{"tripleTable": "<table>"}`, or the R2RML-like `Tables` DTO
+    /// `{classes, properties, subClassOf}`), in `dialect` (`"duckdb"`).
+    ///
+    /// Returns a `SqlPlanDto`: per check, the SQL text and the result metadata
+    /// (`sourceShape`, `sourceConstraintComponent`, `severity`, `path`). Run
+    /// every check on the host's engine and pass the rows to `reportFromRows`.
+    /// Shapes the engine refuses (recursive ones, `sh:sparql`,
+    /// `sh:targetWhere`) are an error here, never skipped.
+    #[wasm_bindgen(js_name = compileSql)]
+    pub fn compile_sql(&mut self, mapping: String, dialect: String) -> Result<JsValue, JsError> {
+        let plan = self
+            .engine
+            .compile_sql(&mapping, &dialect)
+            .map_err(|e| JsError::new(&e.to_string()))?
+            .clone();
+        to_js(&sql::plan_dto(&self.engine, &plan, &dialect))
+    }
+
+    /// The validation report of the rows of the last `compileSql` plan: one
+    /// array of rows per check, in plan order, each row an array of the plan's
+    /// `columns` (`string | null`). Returns a `RudofReport`, worded as the
+    /// native engine words it.
+    #[wasm_bindgen(js_name = reportFromRows)]
+    pub fn report_from_rows(&self, rows: JsValue) -> Result<JsValue, JsError> {
+        let rows: Vec<Vec<Vec<Option<String>>>> = from_js(rows)?;
+        let outcome = self
+            .engine
+            .report_from_rows(&rows)
             .map_err(|e| JsError::new(&e.to_string()))?;
         to_js(&validate::report_from_outcome(&outcome))
     }

@@ -33,6 +33,7 @@ pub use rudof_rdf::{BuildRDF, RDFFormat, SHACLPath};
 pub use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 pub use shacl::types::{NodeKind, Severity, Target, Value};
 pub use shacl::validator::report::ValidationResult;
+pub use shacl::validator::sql::{RESULT_COLUMNS, Row as SqlRow, SqlCheck, SqlMapping, SqlPlan};
 pub use shacl::vocab::shui;
 
 pub use crate::base::STRING_BASE;
@@ -82,6 +83,9 @@ pub struct FormEngine {
     /// The wording of results whose shape has no `sh:message`: the built-in
     /// catalog until [`FormEngine::load_messages`] extends it.
     messages: Option<MessageCatalog>,
+    /// The last [`FormEngine::compile_sql`] plan, with the compiled shapes its
+    /// report is read against.
+    sql: Option<(IRSchema, SqlPlan)>,
 }
 
 impl FormEngine {
@@ -310,6 +314,56 @@ impl FormEngine {
             .validate_scoped(&ir, idx, Some(focus))
             .map_err(|e| FormError::Validation(e.to_string()))?;
         Ok(results.is_empty())
+    }
+
+    /// Compile the loaded shapes into SQL checks over the tables `mapping_json`
+    /// describes ([`SqlMapping`]: `{"tripleTable": …}` or the `Tables` DTO), in
+    /// `dialect` (`duckdb`). The host runs each check's query on its own
+    /// engine and hands the rows to [`FormEngine::report_from_rows`]; the plan
+    /// is kept for that until the next compilation.
+    pub fn compile_sql(&mut self, mapping_json: &str, dialect: &str) -> Result<&SqlPlan, FormError> {
+        let mapping = SqlMapping::from_json(mapping_json).map_err(|e| FormError::Validation(e.to_string()))?;
+        let ir = self.compile()?;
+        let plan = match dialect.to_lowercase().as_str() {
+            "duckdb" => mapping.compile(&ir, &shacl::validator::sql::DuckDb),
+            other => {
+                return Err(FormError::Validation(format!(
+                    "unsupported SQL dialect '{other}' (supported: duckdb)"
+                )));
+            },
+        }
+        .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(&self.sql.insert((ir, plan)).1)
+    }
+
+    /// The report of the rows of the last [`FormEngine::compile_sql`] plan:
+    /// `rows[i]` are the rows of check `i`, each in [`RESULT_COLUMNS`] order.
+    /// Messages are worded as the native engine words them.
+    pub fn report_from_rows(&self, rows: &[Vec<SqlRow>]) -> Result<ValidationOutcome, FormError> {
+        let (ir, plan) = self
+            .sql
+            .as_ref()
+            .ok_or_else(|| FormError::Validation("no SQL plan; call compileSql first".to_owned()))?;
+        if rows.len() != plan.checks.len() {
+            return Err(FormError::Validation(format!(
+                "{} row sets for {} checks",
+                rows.len(),
+                plan.checks.len()
+            )));
+        }
+        let report = plan
+            .report(ir, rows)
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(ValidationOutcome {
+            conforms: report.conforms(),
+            results: report.results().clone(),
+        })
+    }
+
+    /// The shapes graph, compiled; the id of the shape `idx` in it.
+    pub fn sql_shape_id(&self, idx: &ShapeLabelIdx) -> Option<&Object> {
+        let (ir, _) = self.sql.as_ref()?;
+        ir.get_shape_from_idx(idx).map(|s| s.id())
     }
 
     /// Compile the loaded shapes AST into the validator's internal representation.

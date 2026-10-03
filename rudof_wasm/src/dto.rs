@@ -401,6 +401,9 @@ pub struct RudofResult {
     pub severity: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_constraint_component: Option<String>,
+    /// `sh:sourceShape`: the shape that declares the violated constraint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_shape: Option<TermValue>,
 }
 
 // The validation report crossing the ABI (also produced by the Node fake).
@@ -408,4 +411,41 @@ pub struct RudofResult {
 pub struct RudofReport {
     pub conforms: bool,
     pub results: Vec<RudofResult>,
+}
+
+/// One check of a SQL plan: a query whose rows are validation results, and
+/// what every one of those results carries besides its rows.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SqlCheckDto {
+    /// The query, rendered for the plan's dialect. Its columns are the plan's
+    /// `columns`.
+    pub sql: String,
+    /// `sh:sourceShape`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_shape: Option<TermValue>,
+    /// `sh:sourceConstraintComponent`.
+    pub source_constraint_component: String,
+    /// `sh:resultSeverity`.
+    pub severity: String,
+    /// `sh:resultPath`, for a predicate path (a row's `path` column overrides it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<TermValue>,
+    /// The path as its canonical key, as on [`RudofResult::path_key`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_key: Option<String>,
+}
+
+/// The SQL plan of the loaded shapes: one check per shape, constraint
+/// component and context. Run each `sql`, then hand the rows, one array per
+/// check and in this order, to `reportFromRows`.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SqlPlanDto {
+    pub dialect: String,
+    /// The columns of every check's rows: the focus term, the value term and
+    /// a path override, each term as kind (`I`/`B`/`L`), lexical form,
+    /// datatype and language.
+    pub columns: Vec<String>,
+    pub checks: Vec<SqlCheckDto>,
 }

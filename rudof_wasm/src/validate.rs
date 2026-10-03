@@ -46,12 +46,13 @@ fn result_to_dto(r: &ValidationResult) -> RudofResult {
             .collect(),
         severity: Some(severity_iri(r.severity())),
         source_constraint_component: object_iri(r.constraint_component()),
+        source_shape: r.source().map(object_to_term),
     }
 }
 
 /// rudof's `Object` term → ABI `TermValue`, via the existing oxrdf converter
 /// (`Term: From<Object>` is guaranteed by the `Rdf` trait).
-fn object_to_term(o: &Object) -> TermValue {
+pub(crate) fn object_to_term(o: &Object) -> TermValue {
     object_to_value(&o.clone().into())
 }
 
@@ -64,14 +65,14 @@ fn object_iri(o: &Object) -> Option<String> {
 
 /// Only a plain predicate path maps to a single result-path term; complex paths
 /// have no single-term representation in the report.
-fn path_to_term(p: &SHACLPath) -> Option<TermValue> {
+pub(crate) fn path_to_term(p: &SHACLPath) -> Option<TermValue> {
     match p {
         SHACLPath::Predicate { pred } => Some(TermValue::named(pred.as_str())),
         _ => None,
     }
 }
 
-fn severity_iri(s: &Severity) -> String {
+pub(crate) fn severity_iri(s: &Severity) -> String {
     let iri: IriS = s.into();
     iri.as_str().to_string()
 }

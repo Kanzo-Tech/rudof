@@ -7,6 +7,11 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 - `ShaclValidationMode::Sql` (shacl, rudof_lib, CLI `--mode sql` with the `duckdb` feature) and `Rudof::compile_sql`
 - wasm: `Session.compileSql` and `Session.reportFromRows`; validation results carry `sourceShape`
 ### Fixed
+- SHACL `sh:minLength` / `sh:maxLength` count characters (SPARQL `STRLEN`), not UTF-8 bytes
+- SHACL value ranges compare numerics by value across every XSD numeric type (e.g. `xsd:long` against `xsd:integer`); `xsd:int` literals are checked for well-formedness; `xsd:short` values keep their datatype in reports
+- SHACL `sh:closed` on a property shape checks its value nodes (SHACL §4.8.1), not the focus node
+- SQL engine: dateTimes with and without a timezone follow the XSD 1.1 partial order (determinate beyond 14 hours)
+- CI: clippy 1.99 findings; the wasm-bindgen CLI version is read from Cargo.lock
 ### Changed
 ### Removed
 

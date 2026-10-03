@@ -6,8 +6,8 @@
 # wasm-bindgen-cli (wasm-opt optional but recommended).
 #
 # Pinned tooling:
-#   wasm-bindgen-cli: 0.2.120 (must match the `wasm-bindgen = "=0.2.120"` lib pin)
-#   Install: cargo install --version 0.2.120 wasm-bindgen-cli
+#   wasm-bindgen-cli: exactly the `wasm-bindgen` version Cargo.lock resolves
+#   (rudof_wasm pins the lib with `=`). The script reads it from the lockfile.
 #
 # Package identity is overridable for publishing:
 #   PKG_NAME     npm name     (default: @kanzo-tech/rudof-wasm)
@@ -21,13 +21,14 @@ PKG_NAME="${PKG_NAME:-@kanzo-tech/rudof-wasm}"
 
 # ---- Preflight ----
 command -v cargo >/dev/null 2>&1 || { echo "error: cargo not found (install rustup)." >&2; exit 1; }
+WB_LOCKED=$(cd "$REPO_ROOT" && cargo pkgid -p wasm-bindgen | sed 's/.*@//')
 command -v wasm-bindgen >/dev/null 2>&1 || {
   echo "error: wasm-bindgen CLI not found." >&2
-  echo "  cargo install --version 0.2.120 wasm-bindgen-cli" >&2
+  echo "  cargo install --version $WB_LOCKED wasm-bindgen-cli" >&2
   exit 1
 }
 WB_VERSION=$(wasm-bindgen --version | awk '{print $2}')
-[ "$WB_VERSION" = "0.2.120" ] || echo "warning: wasm-bindgen CLI $WB_VERSION != 0.2.120 (pinned); output may be ABI-mismatched." >&2
+[ "$WB_VERSION" = "$WB_LOCKED" ] || echo "warning: wasm-bindgen CLI $WB_VERSION != $WB_LOCKED (Cargo.lock); output may be ABI-mismatched." >&2
 
 HAS_WASM_OPT=0
 command -v wasm-opt >/dev/null 2>&1 && HAS_WASM_OPT=1 || \

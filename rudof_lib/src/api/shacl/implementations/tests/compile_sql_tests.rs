@@ -117,14 +117,22 @@ fn test_validate_shacl_in_sql_mode() {
         None,
     )
     .unwrap();
-    let outcome = validate_shacl(&mut rudof, Some(&ShaclValidationMode::Sql));
-    if cfg!(feature = "duckdb") {
-        outcome.unwrap();
-        let report = rudof.shacl_validation_results.as_ref().unwrap();
-        // ex:bob has no ex:name.
-        assert_eq!(report.results().len(), 1);
-    } else {
-        // Without an engine linked, the mode says so instead of validating.
-        assert!(outcome.is_err());
+    // Whether a SQL engine is linked is a property of the build of `shacl`,
+    // not of this crate's features: `rudof_lib/duckdb` turns it on, and so
+    // does any other crate in the same build that enables `shacl/duckdb`
+    // (shacl's own tests do, under `cargo test --workspace`). So the test
+    // asks the outcome which build it is, and holds each answer to its spec.
+    match validate_shacl(&mut rudof, Some(&ShaclValidationMode::Sql)) {
+        Ok(()) => {
+            let report = rudof.shacl_validation_results.as_ref().unwrap();
+            // ex:bob has no ex:name.
+            assert_eq!(report.results().len(), 1);
+        },
+        Err(e) => {
+            assert!(!cfg!(feature = "duckdb"), "the duckdb feature links an engine: {e}");
+            // Without an engine the mode says so, and where to go instead.
+            let message = e.to_string();
+            assert!(message.contains("duckdb") && message.contains("compile_sql"), "{message}");
+        },
     }
 }

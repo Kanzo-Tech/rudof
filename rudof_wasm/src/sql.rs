@@ -40,11 +40,12 @@ mod tests {
     const SHAPES: &str = r#"@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix : <http://example.org/> .
 :S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; sh:minCount 1 ] ."#;
 
-    const TABLES: &str = r#"{
-      "classes": [ { "class": "http://example.org/C", "table": "c", "subject": { "column": "id" } } ],
-      "properties": [ { "predicate": "http://example.org/p", "table": "c",
-                        "subject": { "column": "id" }, "object": { "column": "p", "termType": "Literal" } } ]
-    }"#;
+    const TABLES: &str = r#"
+        @prefix rml: <http://w3id.org/rml/> . @prefix : <http://example.org/> .
+        <#C> rml:logicalSource [ rml:source [ a rml:Source ] ;
+                                 rml:referenceFormulation rml:SQL2008Table ; rml:iterator "c" ] ;
+            rml:subjectMap [ rml:reference "id" ; rml:class :C ] ;
+            rml:predicateObjectMap [ rml:predicate :p ; rml:objectMap [ rml:reference "p" ] ] ."#;
 
     fn row(focus: &str) -> SqlRow {
         let mut row: SqlRow = vec![
@@ -61,13 +62,13 @@ mod tests {
     fn the_plan_is_sql_text_with_the_metadata_of_each_check() {
         let mut engine = FormEngine::new();
         engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
-        let plan = engine.compile_sql(TABLES, "duckdb").unwrap().clone();
+        let plan = engine.compile_sql(TABLES, Some("corpus"), "duckdb").unwrap().clone();
         let dto = plan_dto(&engine, &plan, "DuckDB");
         assert_eq!(dto.dialect, "duckdb");
         assert_eq!(dto.columns.len(), 9);
         assert_eq!(dto.checks.len(), 1);
         let check = &dto.checks[0];
-        assert!(check.sql.contains("\"c\""), "{}", check.sql);
+        assert!(check.sql.contains("\"corpus\".\"c\""), "{}", check.sql);
         assert_eq!(
             check.source_constraint_component,
             "http://www.w3.org/ns/shacl#MinCountConstraintComponent"
@@ -82,7 +83,7 @@ mod tests {
     fn rows_come_back_as_the_native_report() {
         let mut engine = FormEngine::new();
         engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
-        engine.compile_sql(TABLES, "duckdb").unwrap();
+        engine.compile_sql(TABLES, Some("corpus"), "duckdb").unwrap();
         let outcome = engine.report_from_rows(&[vec![row("http://example.org/n")]]).unwrap();
         assert!(!outcome.conforms);
         assert_eq!(outcome.results.len(), 1);
@@ -95,6 +96,6 @@ mod tests {
     fn an_unknown_dialect_is_refused() {
         let mut engine = FormEngine::new();
         engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
-        assert!(engine.compile_sql(TABLES, "oracle").is_err());
+        assert!(engine.compile_sql(TABLES, None, "oracle").is_err());
     }
 }

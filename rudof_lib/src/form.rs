@@ -316,13 +316,17 @@ impl FormEngine {
         Ok(results.is_empty())
     }
 
-    /// Compile the loaded shapes into SQL checks over the tables `mapping_json`
-    /// describes ([`SqlMapping`]: `{"tripleTable": …}` or the `Tables` DTO), in
-    /// `dialect` (`duckdb`). The host runs each check's query on its own
-    /// engine and hands the rows to [`FormEngine::report_from_rows`]; the plan
-    /// is kept for that until the next compilation.
-    pub fn compile_sql(&mut self, mapping_json: &str, dialect: &str) -> Result<&SqlPlan, FormError> {
-        let mapping = SqlMapping::from_json(mapping_json).map_err(|e| FormError::Validation(e.to_string()))?;
+    /// Compile the loaded shapes into SQL checks over the tables the RML
+    /// mapping `rml` (Turtle) describes, in `dialect` (`duckdb`), its
+    /// unqualified table names resolved against `schema` when given. The host
+    /// runs each check's query on its own engine and hands the rows to
+    /// [`FormEngine::report_from_rows`]; the plan is kept for that until the
+    /// next compilation.
+    pub fn compile_sql(&mut self, rml: &str, schema: Option<&str>, dialect: &str) -> Result<&SqlPlan, FormError> {
+        let mapping = SqlMapping::Rml {
+            mapping: rml.to_owned(),
+            schema: schema.map(str::to_owned),
+        };
         let ir = self.compile()?;
         let plan = match dialect.to_lowercase().as_str() {
             "duckdb" => mapping.compile(&ir, &shacl::validator::sql::DuckDb),

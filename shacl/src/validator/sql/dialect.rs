@@ -7,7 +7,7 @@
 //! compiler does not change.
 
 use crate::validator::sql::SqlCompileError;
-use crate::validator::sql::ast::{cast, function, string};
+use crate::validator::sql::ast::{case, cast, function, in_list, string};
 use sqlparser::ast::{CastKind, DataType, Expr, Ident, ObjectName, Query};
 
 /// A type a lexical form is cast to, to compare it by value or to check that it
@@ -46,6 +46,12 @@ pub trait SqlDialect {
     fn char_length(&self, text: Expr) -> Expr {
         function("LENGTH", vec![text])
     }
+
+    /// The natural RDF literal of a column value (RML-Core §12.2, as R2RML
+    /// §10.2 defines it): its lexical form and its XSD datatype, both from the
+    /// value's SQL type — an integer is an `xsd:integer`, a boolean an
+    /// `xsd:boolean`, text an `xsd:string`, and so on.
+    fn natural_literal(&self, value: Expr) -> (Expr, Expr);
 
     /// `expr` as text: a host column becomes a lexical form.
     fn to_text(&self, expr: Expr) -> Expr {
@@ -141,6 +147,56 @@ impl SqlDialect for DuckDb {
     // DOUBLE that `epoch` returns ("No function matches (DOUBLE, INTEGER)").
     fn epoch_millis(&self, timestamp: Expr) -> Expr {
         function("epoch_ms", vec![timestamp])
+    }
+
+    // The type of a value is only known when the query runs, so the datatype
+    // is chosen by `typeof`. A TIMESTAMP's text has a space where XSD writes
+    // `T`; every other type's cast to VARCHAR is its XSD lexical form.
+    fn natural_literal(&self, value: Expr) -> (Expr, Expr) {
+        let ty = function("typeof", vec![value.clone()]);
+        let is = |names: &[&str]| in_list(ty.clone(), names.iter().map(|n| string(n)).collect());
+        let like = |prefix: &str| Expr::Like {
+            negated: false,
+            any: false,
+            expr: Box::new(ty.clone()),
+            pattern: Box::new(string(&format!("{prefix}%"))),
+            escape_char: None,
+        };
+        let xsd = |local: &str| string(&format!("http://www.w3.org/2001/XMLSchema#{local}"));
+        let datatype = case(
+            vec![
+                (
+                    is(&[
+                        "TINYINT",
+                        "SMALLINT",
+                        "INTEGER",
+                        "BIGINT",
+                        "HUGEINT",
+                        "UTINYINT",
+                        "USMALLINT",
+                        "UINTEGER",
+                        "UBIGINT",
+                        "UHUGEINT",
+                    ]),
+                    xsd("integer"),
+                ),
+                (is(&["DOUBLE", "FLOAT"]), xsd("double")),
+                (like("DECIMAL"), xsd("decimal")),
+                (is(&["BOOLEAN"]), xsd("boolean")),
+                (is(&["DATE"]), xsd("date")),
+                (like("TIMESTAMP"), xsd("dateTime")),
+            ],
+            xsd("string"),
+        );
+        let text = self.to_text(value);
+        let lexical = case(
+            vec![(
+                like("TIMESTAMP"),
+                function("replace", vec![text.clone(), string(" "), string("T")]),
+            )],
+            text,
+        );
+        (lexical, datatype)
     }
 
     fn try_cast(&self, expr: Expr, target: CastTarget) -> Expr {

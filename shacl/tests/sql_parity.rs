@@ -1,5 +1,5 @@
 //! The SQL engine reads the same report from one dataset whether it sits in a
-//! triple table or in ordinary tables described by a `Tables` mapping — and
+//! triple table or in ordinary tables described by an RML mapping — and
 //! that report is the native engine's.
 #![cfg(not(target_family = "wasm"))]
 
@@ -40,53 +40,83 @@ ex:erin a ex:Person .
 ex:Student rdfs:subClassOf ex:Person .
 "#;
 
-/// The same data, as the tables a host would hold.
+/// The same data, as the tables a host would hold: vertices with surrogate
+/// keys, and an edge table `knows(src, dst)` that refers to them by key.
 const TABLES: &str = r#"
-CREATE TABLE person (id VARCHAR, name VARCHAR, age INTEGER, email VARCHAR);
+CREATE TABLE node (id INTEGER, iri VARCHAR);
+INSERT INTO node VALUES
+    (1, 'http://example.org/alice'), (2, 'http://example.org/bob'), (3, 'http://example.org/carol'),
+    (4, 'http://example.org/dave'), (5, 'http://example.org/erin');
+CREATE TABLE person (id INTEGER, iri VARCHAR, name VARCHAR, age INTEGER, email VARCHAR);
 INSERT INTO person VALUES
-    ('http://example.org/alice', 'Alice', 30, NULL),
-    ('http://example.org/bob', 'Bob', 17, NULL),
-    ('http://example.org/dave', NULL, 40, 'dave@example.org'),
-    ('http://example.org/erin', NULL, NULL, NULL);
-CREATE TABLE student (id VARCHAR, name VARCHAR, age INTEGER);
-INSERT INTO student VALUES ('http://example.org/carol', 'carol', 21);
-CREATE TABLE knows (src VARCHAR, dst VARCHAR);
-INSERT INTO knows VALUES
-    ('http://example.org/alice', 'http://example.org/bob'),
-    ('http://example.org/alice', 'http://example.org/carol'),
-    ('http://example.org/alice', 'http://example.org/dave'),
-    ('http://example.org/alice', 'http://example.org/erin'),
-    ('http://example.org/bob', 'http://example.org/alice'),
-    ('http://example.org/bob', 'http://example.org/erin'),
-    ('http://example.org/carol', 'http://example.org/dave');
+    (1, 'http://example.org/alice', 'Alice', 30, NULL),
+    (2, 'http://example.org/bob', 'Bob', 17, NULL),
+    (4, 'http://example.org/dave', NULL, 40, 'dave@example.org'),
+    (5, 'http://example.org/erin', NULL, NULL, NULL);
+CREATE TABLE student (id INTEGER, iri VARCHAR, name VARCHAR, age INTEGER);
+INSERT INTO student VALUES (3, 'http://example.org/carol', 'carol', 21);
+CREATE TABLE knows (src INTEGER, dst INTEGER);
+INSERT INTO knows VALUES (1, 2), (1, 3), (1, 4), (1, 5), (2, 1), (2, 5), (3, 4);
 "#;
 
-/// Where those tables' terms are: classes, literal columns, an edge table.
-const MAPPING: &str = r#"{
-  "classes": [
-    { "class": "http://example.org/Person", "table": "person", "subject": { "column": "id" } },
-    { "class": "http://example.org/Student", "table": "student", "subject": { "column": "id" } }
-  ],
-  "properties": [
-    { "predicate": "http://example.org/name", "table": "person",
-      "subject": { "column": "id" }, "object": { "column": "name", "termType": "Literal" } },
-    { "predicate": "http://example.org/name", "table": "student",
-      "subject": { "column": "id" }, "object": { "column": "name", "termType": "Literal" } },
-    { "predicate": "http://example.org/age", "table": "person",
-      "subject": { "column": "id" },
-      "object": { "column": "age", "termType": "Literal",
-                  "datatype": "http://www.w3.org/2001/XMLSchema#integer" } },
-    { "predicate": "http://example.org/age", "table": "student",
-      "subject": { "column": "id" },
-      "object": { "column": "age", "termType": "Literal",
-                  "datatype": "http://www.w3.org/2001/XMLSchema#integer" } },
-    { "predicate": "http://example.org/email", "table": "person",
-      "subject": { "column": "id" }, "object": { "column": "email", "termType": "Literal" } },
-    { "predicate": "http://example.org/knows", "table": "knows",
-      "subject": { "column": "src" }, "object": { "column": "dst" } }
-  ],
-  "subClassOf": [ { "sub": "http://example.org/Student", "super": "http://example.org/Person" } ]
-}"#;
+/// Where those tables' terms are, in RML: classes and literal columns, an edge
+/// table whose source key is resolved by a logical view with an inner join to
+/// the vertex table, and whose target is a referencing object map joined on
+/// the target key. The subclass triple comes from a constant triples map.
+const MAPPING: &str = r#"
+@prefix rml:  <http://w3id.org/rml/> .
+@prefix ex:   <http://example.org/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<#db> a rml:Source .
+
+<#nodes> a rml:LogicalSource ; rml:source <#db> ;
+    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "node" .
+<#persons> a rml:LogicalSource ; rml:source <#db> ;
+    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "person" .
+<#students> a rml:LogicalSource ; rml:source <#db> ;
+    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "student" .
+<#edges> a rml:LogicalSource ; rml:source <#db> ;
+    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "knows" .
+
+<#nodeView> a rml:LogicalView ; rml:viewOn <#nodes> ;
+    rml:field [ a rml:ExpressionField ; rml:fieldName "id" ; rml:reference "id" ] ,
+              [ a rml:ExpressionField ; rml:fieldName "iri" ; rml:reference "iri" ] .
+
+<#knowsView> a rml:LogicalView ; rml:viewOn <#edges> ;
+    rml:field [ a rml:ExpressionField ; rml:fieldName "src" ; rml:reference "src" ] ,
+              [ a rml:ExpressionField ; rml:fieldName "dst" ; rml:reference "dst" ] ;
+    rml:innerJoin [
+        rml:parentLogicalView <#nodeView> ;
+        rml:joinCondition [ rml:child "src" ; rml:parent "id" ] ;
+        rml:field [ a rml:ExpressionField ; rml:fieldName "src_iri" ; rml:reference "iri" ]
+    ] .
+
+<#Node> a rml:TriplesMap ; rml:logicalSource <#nodes> ;
+    rml:subjectMap [ rml:reference "iri" ] .
+
+<#Person> a rml:TriplesMap ; rml:logicalSource <#persons> ;
+    rml:subjectMap [ rml:reference "iri" ; rml:class ex:Person ] ;
+    rml:predicateObjectMap [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ;
+    rml:predicateObjectMap [ rml:predicate ex:age ; rml:objectMap [ rml:reference "age" ] ] ;
+    rml:predicateObjectMap [ rml:predicate ex:email ; rml:objectMap [ rml:reference "email" ] ] .
+
+<#Student> a rml:TriplesMap ; rml:logicalSource <#students> ;
+    rml:subjectMap [ rml:reference "iri" ; rml:class ex:Student ] ;
+    rml:predicateObjectMap [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ;
+    rml:predicateObjectMap [ rml:predicate ex:age ; rml:objectMap [ rml:reference "age" ] ] .
+
+<#Knows> a rml:TriplesMap ; rml:logicalSource <#knowsView> ;
+    rml:subjectMap [ rml:reference "src_iri" ] ;
+    rml:predicateObjectMap [
+        rml:predicate ex:knows ;
+        rml:objectMap [ rml:parentTriplesMap <#Node> ; rml:joinCondition [ rml:child "dst" ; rml:parent "id" ] ]
+    ] .
+
+<#Hierarchy> a rml:TriplesMap ;
+    rml:subject ex:Student ;
+    rml:predicateObjectMap [ rml:predicate rdfs:subClassOf ; rml:object ex:Person ] .
+"#;
 
 /// Shapes over classes, literal columns and edges: targets with subclasses,
 /// cardinality, ranges, patterns, a path over the edge table, a closure, a
@@ -118,10 +148,21 @@ fn native(data: &OxigraphInMemory, schema: &IRSchema) -> ValidationReport {
         .0
 }
 
-fn through_tables(schema: &IRSchema) -> ValidationReport {
+/// Validates through the RML mapping, with the tables in `db_schema` (the
+/// mapping's table names unqualified) when one is given.
+fn through_tables(schema: &IRSchema, db_schema: Option<&str>) -> ValidationReport {
     let executor = DuckDbExecutor::in_memory().expect("duckdb opens");
-    executor.connection().execute_batch(TABLES).expect("tables load");
-    let mapping = Tables::from_json(MAPPING, DuckDb).expect("mapping parses");
+    let ddl = match db_schema {
+        Some(name) => format!(
+            "CREATE SCHEMA {name};\n{}",
+            TABLES
+                .replace("TABLE ", &format!("TABLE {name}."))
+                .replace("INTO ", &format!("INTO {name}."))
+        ),
+        None => TABLES.to_owned(),
+    };
+    executor.connection().execute_batch(&ddl).expect("tables load");
+    let mapping = Tables::from_rml(MAPPING, db_schema, DuckDb).expect("mapping reads");
     let plan: SqlPlan = compile_sql(schema, &mapping, &DuckDb).expect("shapes compile");
     plan.validate(schema, &executor).expect("plan runs")
 }
@@ -135,7 +176,8 @@ fn tables_and_triple_table_yield_the_native_report() {
 
     let native = native(&data, &schema);
     let triples = validate_with_duckdb(&data, &schema).expect("triple table validates");
-    let tables = through_tables(&schema);
+    let tables = through_tables(&schema, None);
+    let in_a_schema = through_tables(&schema, Some("corpus"));
 
     assert!(
         native.results().len() > 15,
@@ -143,6 +185,7 @@ fn tables_and_triple_table_yield_the_native_report() {
     );
     assert_eq!(triples, native, "triple table vs native\n{triples}\n---\n{native}");
     assert_eq!(tables, native, "tables vs native\n{tables}\n---\n{native}");
+    assert_eq!(in_a_schema, native, "tables in a schema vs native");
 }
 
 #[test]
@@ -181,7 +224,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:property [ sh:path ex:knows ; sh:node ex:S ] .
 "#,
     );
-    let mapping = Tables::from_json(MAPPING, DuckDb).expect("mapping parses");
+    let mapping = Tables::from_rml(MAPPING, None, DuckDb).expect("mapping reads");
     let refused = compile_sql(&schema, &mapping, &DuckDb).expect_err("recursion is refused");
     assert!(matches!(refused, SqlCompileError::RecursiveShapes(_)), "{refused}");
 }
@@ -194,7 +237,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:sparql [ sh:select "SELECT $this WHERE { $this ?p ?o }" ] .
 "#,
     );
-    let mapping = Tables::from_json(MAPPING, DuckDb).expect("mapping parses");
+    let mapping = Tables::from_rml(MAPPING, None, DuckDb).expect("mapping reads");
     let refused = compile_sql(&schema, &mapping, &DuckDb).expect_err("sh:sparql is refused");
     assert!(matches!(refused, SqlCompileError::Unsupported(_)), "{refused}");
 }
@@ -207,7 +250,7 @@ ex:S a sh:NodeShape ; sh:targetWhere ex:W ; sh:property [ sh:path ex:name ; sh:m
 ex:W a sh:NodeShape ; sh:class ex:Person .
 "#,
     );
-    let mapping = Tables::from_json(MAPPING, DuckDb).expect("mapping parses");
+    let mapping = Tables::from_rml(MAPPING, None, DuckDb).expect("mapping reads");
     let refused = compile_sql(&schema, &mapping, &DuckDb).expect_err("sh:targetWhere is refused");
     assert!(matches!(refused, SqlCompileError::Unsupported(_)), "{refused}");
 }

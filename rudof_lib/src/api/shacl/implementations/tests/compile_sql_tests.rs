@@ -41,20 +41,24 @@ fn test_compile_sql_over_a_triple_table() {
 }
 
 #[test]
-fn test_compile_sql_over_tables() {
+fn test_compile_sql_over_an_rml_mapping() {
     let rudof = rudof_with(SHAPES);
-    let mapping = SqlMapping::from_json(
-        r#"{
-          "classes": [ { "class": "http://example.org/Person", "table": "person", "subject": { "column": "id" } } ],
-          "properties": [ { "predicate": "http://example.org/name", "table": "person",
-                            "subject": { "column": "id" },
-                            "object": { "column": "name", "termType": "Literal" } } ]
-        }"#,
-    )
-    .unwrap();
+    let mapping = SqlMapping::Rml {
+        mapping: r#"
+            @prefix rml: <http://w3id.org/rml/> . @prefix ex: <http://example.org/> .
+            <#Person> a rml:TriplesMap ;
+                rml:logicalSource [ rml:source [ a rml:Source ] ;
+                                    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "person" ] ;
+                rml:subjectMap [ rml:reference "id" ; rml:class ex:Person ] ;
+                rml:predicateObjectMap [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] .
+        "#
+        .to_string(),
+        schema: Some("corpus".to_string()),
+    };
     let plan = rudof.compile_sql(&mapping).execute().unwrap();
     assert_eq!(plan.checks.len(), 2);
-    assert!(plan.checks.iter().all(|c| c.sql().contains("\"person\"")));
+    // The unqualified table name resolves against the schema.
+    assert!(plan.checks.iter().all(|c| c.sql().contains("\"corpus\".\"person\"")));
 }
 
 #[test]

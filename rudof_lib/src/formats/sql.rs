@@ -32,6 +32,6 @@ impl FromStr for SqlDialectFormat {
 }
 
 /// Where the RDF terms live in tables, for the SHACL SQL engine: a triple
-/// table, or ordinary tables under an R2RML-like mapping. Its JSON is
-/// `{"tripleTable": "<table>"}` or the `Tables` DTO.
+/// table, or ordinary tables described by an RML mapping (Turtle), with the
+/// schema its unqualified table names resolve against.
 pub use shacl::validator::sql::SqlMapping;

@@ -260,9 +260,11 @@ impl Session {
 
 #[wasm_bindgen]
 impl Session {
-    /// Compile the loaded shapes to SQL over the tables `mapping` describes
-    /// (JSON: `{"tripleTable": "<table>"}`, or the R2RML-like `Tables` DTO
-    /// `{classes, properties, subClassOf}`), in `dialect` (`"duckdb"`).
+    /// Compile the loaded shapes to SQL over the tables the RML mapping `rml`
+    /// (Turtle; RML-Core + RML-IO SQL tables + RML-LV views) describes, in
+    /// `dialect` (`"duckdb"`). Unqualified table names resolve against
+    /// `schema` (the catalog or schema the tables are attached under) when it
+    /// is given. RML terms outside the subset read are an error naming them.
     ///
     /// Returns a `SqlPlanDto`: per check, the SQL text and the result metadata
     /// (`sourceShape`, `sourceConstraintComponent`, `severity`, `path`). Run
@@ -270,10 +272,10 @@ impl Session {
     /// Shapes the engine refuses (recursive ones, `sh:sparql`,
     /// `sh:targetWhere`) are an error here, never skipped.
     #[wasm_bindgen(js_name = compileSql)]
-    pub fn compile_sql(&mut self, mapping: String, dialect: String) -> Result<JsValue, JsError> {
+    pub fn compile_sql(&mut self, rml: String, schema: Option<String>, dialect: String) -> Result<JsValue, JsError> {
         let plan = self
             .engine
-            .compile_sql(&mapping, &dialect)
+            .compile_sql(&rml, schema.as_deref(), &dialect)
             .map_err(|e| JsError::new(&e.to_string()))?
             .clone();
         to_js(&sql::plan_dto(&self.engine, &plan, &dialect))

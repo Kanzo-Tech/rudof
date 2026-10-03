@@ -15,7 +15,7 @@
 //!
 //! - [`RelationalMapping`] says where the RDF terms live: [`TripleTable`] for
 //!   arbitrary RDF in one `(s, p, o)` table, [`Tables`] for ordinary tables
-//!   described by an R2RML-like DTO ([`TablesSpec`]).
+//!   described by an RML mapping ([`Tables::from_rml`]).
 //! - [`SqlDialect`] holds what differs between engines; [`DuckDb`] is the
 //!   first.
 //! - The queries are `sqlparser` ASTs, never text; a host renders them.
@@ -39,21 +39,23 @@ mod duckdb_host;
 mod mapping;
 mod path;
 mod plan;
+mod rml;
 mod shape;
+mod tables;
 mod target;
 mod term;
+mod triple_table;
 
 pub use context::RESULT_COLUMNS;
 pub use coverage::{COVERAGE, Coverage};
 pub use dialect::{CastTarget, DuckDb, SqlDialect};
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 pub use duckdb_host::{DuckDbExecutor, validate_with_duckdb};
-pub use mapping::{
-    ClassMap, PREDICATE_COLUMN, PredicateRel, PropertyMap, Relation, RelationalMapping, SqlMapping, SubClassOf,
-    TRIPLE_TABLE_COLUMNS, Tables, TablesSpec, TermMap, TermType, TripleTable,
-};
+pub use mapping::{PREDICATE_COLUMN, PredicateRel, Relation, RelationalMapping, SqlMapping};
 pub use plan::{Row, SqlCheck, SqlExecutor, SqlPlan, SqlRowError, SqlRunError};
+pub use tables::Tables;
 pub use term::{EncodedTerm, decode, encode};
+pub use triple_table::{TRIPLE_TABLE_COLUMNS, TripleTable};
 
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::types::Target;
@@ -75,6 +77,9 @@ pub enum SqlCompileError {
     MalformedTarget(String),
     #[error("invalid relational mapping: {0}")]
     Mapping(String),
+    /// An RML term outside the subset the engine reads, named first.
+    #[error("the SQL engine does not read the RML term {0}")]
+    UnsupportedRml(String),
     #[error("invalid data: {0}")]
     Data(String),
     #[error("internal error of the SQL compiler: {0}")]

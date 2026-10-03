@@ -311,6 +311,13 @@ impl SelectBuilder {
         }
     }
 
+    /// Replaces the projection.
+    #[must_use]
+    pub fn with_projection(mut self, projection: Vec<SelectItem>) -> Self {
+        self.projection = projection;
+        self
+    }
+
     #[must_use]
     pub fn distinct(mut self) -> Self {
         self.distinct = true;

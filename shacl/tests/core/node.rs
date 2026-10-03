@@ -1,224 +1,41 @@
-#[cfg(test)]
-mod tests {
-    use crate::common::TestSuiteError;
-    use crate::test;
-    use shacl::validator::ShaclValidationMode;
+//! W3C SHACL Core: `node`, through every engine.
 
-    const PATH: &str = "tests/data-shapes/data-shapes-test-suite/tests/core/node/";
-
-    #[test]
-    fn and_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "and-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn and_002() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "and-002");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn class_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "class-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn class_002() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "class-002");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn class_003() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "class-003");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn closed_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "closed-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn closed_002() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "closed-002");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn datatype_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "datatype-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn datatype_002() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "datatype-002");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn disjoint_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "disjoint-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn equals_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "equals-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn has_value_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "hasValue-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn in_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "in-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn language_in_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "languageIn-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn max_exclusive_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "maxExclusive-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn max_inclusive_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "maxInclusive-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn max_length_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "maxLength-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn min_exclusive_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "minExclusive-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn min_inclusive_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "minInclusive-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn min_inclusive_002() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "minInclusive-002");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn min_inclusive_003() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "minInclusive-003");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn min_length_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "minLength-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn node_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "node-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn node_kind_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "nodeKind-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn not_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "not-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn not_002() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "not-002");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn or_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "or-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn pattern_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "pattern-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn pattern_002() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "pattern-002");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn qualified_001_data() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "qualified-001-data");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn qualified_001_shapes() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "qualified-001-shapes");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn qualified_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "qualified-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn xone_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "xone-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn xone_duplicate_data() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "xone-duplicate-data");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn xone_duplicate_shapes() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "xone-duplicate-shapes");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn xone_duplicate() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "xone-duplicate");
-        test(path, ShaclValidationMode::Native)
-    }
+w3c_tests! {
+    "tests/data-shapes/data-shapes-test-suite/tests/core/node/";
+    and_001 => "and-001",
+    and_002 => "and-002",
+    class_001 => "class-001",
+    class_002 => "class-002",
+    class_003 => "class-003",
+    closed_001 => "closed-001",
+    closed_002 => "closed-002",
+    datatype_001 => "datatype-001",
+    datatype_002 => "datatype-002",
+    disjoint_001 => "disjoint-001",
+    equals_001 => "equals-001",
+    has_value_001 => "hasValue-001",
+    in_001 => "in-001",
+    language_in_001 => "languageIn-001",
+    max_exclusive_001 => "maxExclusive-001",
+    max_inclusive_001 => "maxInclusive-001",
+    max_length_001 => "maxLength-001",
+    min_exclusive_001 => "minExclusive-001",
+    min_inclusive_001 => "minInclusive-001",
+    min_inclusive_002 => "minInclusive-002",
+    min_inclusive_003 => "minInclusive-003",
+    min_length_001 => "minLength-001",
+    node_001 => "node-001",
+    node_kind_001 => "nodeKind-001",
+    not_001 => "not-001",
+    not_002 => "not-002",
+    or_001 => "or-001",
+    pattern_001 => "pattern-001",
+    pattern_002 => "pattern-002",
+    qualified_001_data => "qualified-001-data",
+    qualified_001_shapes => "qualified-001-shapes",
+    qualified_001 => "qualified-001",
+    xone_001 => "xone-001",
+    xone_duplicate_data => "xone-duplicate-data",
+    xone_duplicate_shapes => "xone-duplicate-shapes",
+    xone_duplicate => "xone-duplicate",
 }

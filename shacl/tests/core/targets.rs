@@ -1,50 +1,12 @@
-#[cfg(test)]
-mod tests {
-    use crate::common::TestSuiteError;
-    use crate::test;
-    use shacl::validator::ShaclValidationMode;
+//! W3C SHACL Core: `targets`, through every engine.
 
-    const PATH: &str = "tests/data-shapes/data-shapes-test-suite/tests/core/targets/";
-
-    #[test]
-    fn multiple_targets_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "multipleTargets-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn target_class_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "targetClass-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn target_class_implicit_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "targetClassImplicit-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn target_node_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "targetNode-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn target_objects_of_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "targetObjectsOf-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn target_subjects_of_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "targetSubjectsOf-001");
-        test(path, ShaclValidationMode::Native)
-    }
-
-    #[test]
-    fn target_subjects_of_002() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "targetSubjectsOf-002");
-        test(path, ShaclValidationMode::Native)
-    }
+w3c_tests! {
+    "tests/data-shapes/data-shapes-test-suite/tests/core/targets/";
+    multiple_targets_001 => "multipleTargets-001",
+    target_class_001 => "targetClass-001",
+    target_class_implicit_001 => "targetClassImplicit-001",
+    target_node_001 => "targetNode-001",
+    target_objects_of_001 => "targetObjectsOf-001",
+    target_subjects_of_001 => "targetSubjectsOf-001",
+    target_subjects_of_002 => "targetSubjectsOf-002",
 }

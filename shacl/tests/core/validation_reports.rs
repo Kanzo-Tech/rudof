@@ -1,14 +1,6 @@
-#[cfg(test)]
-mod tests {
-    use crate::common::TestSuiteError;
-    use crate::test;
-    use shacl::validator::ShaclValidationMode;
+//! W3C SHACL Core: `validation-reports`, through every engine.
 
-    const PATH: &str = "tests/data-shapes/data-shapes-test-suite/tests/core/validation-reports/";
-
-    #[test]
-    fn shared() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "shared");
-        test(path, ShaclValidationMode::Native)
-    }
+w3c_tests! {
+    "tests/data-shapes/data-shapes-test-suite/tests/core/validation-reports/";
+    shared => "shared",
 }

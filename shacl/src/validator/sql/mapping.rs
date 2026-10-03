@@ -414,12 +414,14 @@ impl<D: SqlDialect> Tables<D> {
         is_not_null(col(alias, &map.column))
     }
 
+    /// The `(subject, object)` rows of `table_name`, skipping a row whose
+    /// subject (or object column, when there is one) is `NULL`: a missing
+    /// value is a missing triple.
     fn edges(
         &self,
         table_name: &str,
         subject: &TermMap,
         object: TermExpr,
-        filter: bool,
         object_map: Option<&TermMap>,
     ) -> SelectBuilder {
         let mut items = subject.term(&self.dialect, "t").items("s");
@@ -427,7 +429,7 @@ impl<D: SqlDialect> Tables<D> {
         let mut select = SelectBuilder::new(items)
             .from(table(table_name, "t"))
             .filter(self.not_null("t", subject));
-        if filter && let Some(map) = object_map {
+        if let Some(map) = object_map {
             select = select.filter(self.not_null("t", map));
         }
         select
@@ -439,13 +441,13 @@ impl<D: SqlDialect> Tables<D> {
         let rdf_type = RdfVocab::rdf_type().as_str().to_owned();
         for c in &self.spec.classes {
             let object = TermExpr::constant(&[IRI.to_owned(), c.class.clone(), String::new(), String::new()]);
-            out.push((rdf_type.clone(), self.edges(&c.table, &c.subject, object, false, None)));
+            out.push((rdf_type.clone(), self.edges(&c.table, &c.subject, object, None)));
         }
         for p in &self.spec.properties {
             let object = p.object.term(&self.dialect, "t");
             out.push((
                 p.predicate.clone(),
-                self.edges(&p.table, &p.subject, object, true, Some(&p.object)),
+                self.edges(&p.table, &p.subject, object, Some(&p.object)),
             ));
         }
         let sub_of = RdfsVocab::rdfs_subclass_of_str().as_str().to_owned();

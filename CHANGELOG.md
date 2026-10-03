@@ -3,6 +3,9 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 
 ## [Unreleased]
 ### Added
+- SHACL SQL engine (`shacl::validator::sql`): `compile_sql` turns a shapes graph into set-based SQL checks over a relational mapping (`TripleTable` for arbitrary RDF, `Tables` for an R2RML-like mapping of ordinary tables), with DuckDB as the first dialect. All of SHACL Core compiles; recursive shapes, SHACL-SPARQL, `sh:targetWhere` and reifier shapes are refused. The W3C core suite runs through both the native and the SQL engine (Kanzo-Tech/keasy#71)
+- `ShaclValidationMode::Sql` (shacl, rudof_lib, CLI `--mode sql` with the `duckdb` feature) and `Rudof::compile_sql`
+- wasm: `Session.compileSql` and `Session.reportFromRows`; validation results carry `sourceShape`
 ### Fixed
 ### Changed
 ### Removed

@@ -3,7 +3,7 @@ use crate::ir::IRSchema;
 use crate::validator::ShaclValidationMode;
 use crate::validator::engine::{NativeEngine, SparqlEngine};
 use crate::validator::index::ClassIndex;
-use crate::validator::processor::{ShaclProcessor, run};
+use crate::validator::processor::{ShaclProcessor, run, run_sql};
 use crate::validator::report::ValidationResult;
 use sparql_service::RdfData;
 
@@ -39,6 +39,7 @@ impl ShaclProcessor<RdfData> for DataValidation {
                 let master = SparqlEngine::new();
                 run(store, shapes_graph, &master)
             },
+            ShaclValidationMode::Sql => run_sql(store, shapes_graph),
         }
     }
 

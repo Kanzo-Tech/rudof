@@ -22,6 +22,9 @@ pub enum ValidationError {
     #[error("Unsupported SHACL validation mode: {0}")]
     UnsupportedMode(String),
 
+    #[error("SQL engine: {0}")]
+    SqlEngine(String),
+
     #[error(transparent)]
     IRError(#[from] Box<IRError>),
 

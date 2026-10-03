@@ -12,6 +12,7 @@ mod mode;
 pub mod nodes;
 pub mod processor;
 pub mod report;
+pub mod sql;
 pub mod store;
 
 pub use config::ShaclConfig;

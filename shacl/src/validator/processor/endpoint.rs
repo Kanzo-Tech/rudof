@@ -43,6 +43,10 @@ impl ShaclProcessor<OxigraphEndpoint> for EndpointValidation {
                 let master = SparqlEngine::new();
                 run(store, shapes_graph, &master)
             },
+            // The SQL engine reads tables, not a SPARQL endpoint.
+            ShaclValidationMode::Sql => Err(ValidationError::UnsupportedMode(
+                "sql (the SQL engine validates tables, not a SPARQL endpoint)".to_owned(),
+            )),
         }
     }
 }

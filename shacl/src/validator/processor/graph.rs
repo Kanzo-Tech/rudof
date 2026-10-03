@@ -9,7 +9,7 @@ use crate::validator::engine::SparqlEngine;
 #[cfg(not(feature = "sparql"))]
 use crate::validator::engine::{Validate, validate_focus};
 use crate::validator::index::ClassIndex;
-use crate::validator::processor::{ShaclProcessor, run};
+use crate::validator::processor::{ShaclProcessor, run, run_sql};
 use crate::validator::report::ValidationResult;
 use crate::validator::store::{Graph, Store};
 #[cfg(not(target_family = "wasm"))]
@@ -96,6 +96,7 @@ impl ShaclProcessor<RdfData> for GraphValidation {
                 let master = SparqlEngine::new();
                 run(store, shapes_graph, &master)
             },
+            ShaclValidationMode::Sql => run_sql(store, shapes_graph),
         }
     }
 }
@@ -111,12 +112,17 @@ impl ShaclProcessor<OxigraphInMemory> for GraphValidation {
     fn run_validation(
         store: &OxigraphInMemory,
         shapes_graph: &IRSchema,
-        _mode: &ShaclValidationMode,
+        mode: &ShaclValidationMode,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
-        // Without the `sparql` feature only the native engine is available.
-        let index = ClassIndex::build(store)?;
-        let master = NativeEngine::new(Some(&index));
-        run(store, shapes_graph, &master)
+        // Without the `sparql` feature the native engine, or the SQL one.
+        match mode {
+            ShaclValidationMode::Native => {
+                let index = ClassIndex::build(store)?;
+                let master = NativeEngine::new(Some(&index));
+                run(store, shapes_graph, &master)
+            },
+            ShaclValidationMode::Sql => run_sql(store, shapes_graph),
+        }
     }
 }
 

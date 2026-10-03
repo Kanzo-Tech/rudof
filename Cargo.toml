@@ -268,6 +268,9 @@ const_format = "0.2"
 csv = "1.3.1"
 dashmap = "6"
 dctap = { version = "0.3.4", path = "./dctap" }
+# Native-only, and only behind `shacl/duckdb` or as a test dependency: rudof
+# links no engine in its default or wasm builds (see shacl/src/validator/sql).
+duckdb = { version = "1.10502", features = ["bundled"] }
 either = { version = "1.13", features = ["serde"] }
 futures = "0.3"
 getrandom = { version = ">=0.3, <0.4", features = ["wasm_js"] }
@@ -343,6 +346,10 @@ shex_testsuite = { version = "0.3.4", path = "./shex_testsuite" }
 shex_validation = { version = "0.3.4", path = "./shex_validation" }
 sparesults = { version = "0.3.0", features = ["sparql-12"] }
 spargebra = { version = "0.4.0", features = ["sparql-12"] }
+# The SHACL SQL engine builds its queries as this AST. No default features: the
+# default `recursive-protection` pulls `stacker`, which wasm32 cannot build;
+# `visitor` is how a check finds the CTEs it references.
+sqlparser = { version = "0.63", default-features = false, features = ["std", "visitor"] }
 sparql_service = { version = "0.3.4", path = "./sparql_service", default-features = false }
 supports-color = "3.0.0"
 tabled = { version = "0.20.0", features = ["ansi"] }
@@ -371,3 +378,9 @@ yaml-rust2 = { version = "0.10" }
 inherits = "release"
 opt-level = "s"
 lto = true
+
+# DuckDB (a test dependency of shacl, and behind its `duckdb` feature) is C++.
+# Unoptimised, its planner's frames are large enough that the deep plans of the
+# SQL engine's checks exhaust a test thread's stack; optimised, they do not.
+[profile.dev.package.libduckdb-sys]
+opt-level = 3

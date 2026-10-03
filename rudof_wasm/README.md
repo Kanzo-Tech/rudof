@@ -32,7 +32,7 @@ const report = session.validate(null);           // { conforms, results }
 const ttl = session.serialize("text/turtle");
 
 // SHACL on the host's own SQL engine: compile once, run each check, read back.
-const plan = session.compileSql(rmlTurtle, "corpus", "duckdb"); // { columns, checks: [{ sql, sourceShape, … }] }
+const plan = session.compileSql(rmlTurtle, "warehouse", "duckdb"); // { columns, checks: [{ sql, sourceShape, … }] }
 const rows = plan.checks.map((c) => runOnDuckDb(c.sql));  // string | null cells, in plan.columns order
 const sqlReport = session.reportFromRows(rows);           // same RudofReport as validate()
 ```

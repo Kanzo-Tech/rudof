@@ -9,7 +9,6 @@ use crate::validator::report::ValidationReport;
 use crate::validator::sql::{DuckDb, RESULT_COLUMNS, Row, SqlExecutor, TRIPLE_TABLE_COLUMNS, TripleTable, compile_sql};
 use duckdb::{Connection, appender_params_from_iter};
 use rudof_rdf::NeighsRDF;
-use sqlparser::ast::Query;
 use std::fmt::Display;
 
 /// Runs a plan's checks on a DuckDB connection.
@@ -52,15 +51,15 @@ impl DuckDbExecutor {
                 .map_err(|e| e.to_string())?;
         }
         appender.flush().map_err(|e| e.to_string())?;
-        Ok(TripleTable::new(table))
+        TripleTable::new(&format!("\"{table}\"")).map_err(|e| e.to_string())
     }
 }
 
 impl SqlExecutor for DuckDbExecutor {
     type Error = duckdb::Error;
 
-    fn rows(&self, query: &Query) -> Result<Vec<Row>, Self::Error> {
-        let mut statement = self.connection.prepare(&query.to_string())?;
+    fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error> {
+        let mut statement = self.connection.prepare(sql)?;
         let rows = statement.query_map([], |row| {
             (0..RESULT_COLUMNS.len())
                 .map(|i| row.get::<_, Option<String>>(i))

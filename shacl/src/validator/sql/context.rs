@@ -225,7 +225,11 @@ impl<'a, M: RelationalMapping + ?Sized, D: SqlDialect + ?Sized> Ctx<'a, M, D> {
         let mut items = TermExpr::columns("m", "s").items("f");
         items.push(item(col("m", PREDICATE_COLUMN), PREDICATE_COLUMN));
         items.extend(TermExpr::columns("m", "o").items("v"));
+        // An RDF graph is a set (RDF 1.1 Concepts §3) and a mapping may
+        // answer a bag (one row per source row, a triple in two rules): the
+        // triples are made distinct here, as `predicate` makes pairs distinct.
         let body = SelectBuilder::new(items)
+            .distinct()
             .from(derived(self.mapping.triples(), "m"))
             .into_query();
         let rel = self.add("triples", body);

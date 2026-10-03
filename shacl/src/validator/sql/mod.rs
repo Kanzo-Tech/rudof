@@ -53,6 +53,11 @@ pub use dialect::{CastTarget, DuckDb, SqlDialect, SqlDialectName};
 pub use duckdb_host::{DuckDbExecutor, validate_with_duckdb};
 pub use mapping::{PREDICATE_COLUMN, PredicateRel, Relation, RelationalMapping, SqlMapping};
 pub use plan::{Row, SqlCheck, SqlExecutor, SqlPlan, SqlRowError, SqlRunError};
+/// The SQL AST crate the extension traits ([`RelationalMapping`],
+/// [`SqlDialect`]) speak: implementing either means building its AST, so
+/// their signatures follow its versions. The host-facing surface ([`SqlPlan`],
+/// [`SqlExecutor`]) is text and does not.
+pub use sqlparser;
 pub use tables::Tables;
 pub use term::{EncodedTerm, decode, encode};
 pub use triple_table::{TRIPLE_TABLE_COLUMNS, TripleTable};
@@ -156,7 +161,7 @@ where
                     component: p.rows.component.clone(),
                     severity: owner.severity().clone(),
                     path: owner.path().cloned(),
-                    query: ctx.finish(&p.rows.rows)?,
+                    sql: dialect.render(&ctx.finish(&p.rows.rows)?),
                     parameters: match p.rows.parameters {
                         Some(own) => Parameters::Own(own),
                         None => Parameters::Component(p.component),

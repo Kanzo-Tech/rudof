@@ -19,7 +19,7 @@ pub fn plan_dto(engine: &FormEngine, plan: &SqlPlan, dialect: &str) -> SqlPlanDt
             .checks
             .iter()
             .map(|check| SqlCheckDto {
-                sql: check.sql(),
+                sql: check.sql().to_owned(),
                 source_shape: engine.sql_shape_id(&check.shape).map(object_to_term),
                 source_constraint_component: check.component.as_str().to_string(),
                 severity: severity_iri(&check.severity),
@@ -62,13 +62,13 @@ mod tests {
     fn the_plan_is_sql_text_with_the_metadata_of_each_check() {
         let mut engine = FormEngine::new();
         engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
-        let plan = engine.compile_sql(TABLES, Some("corpus"), "duckdb").unwrap().clone();
+        let plan = engine.compile_sql(TABLES, Some("warehouse"), "duckdb").unwrap().clone();
         let dto = plan_dto(&engine, &plan, "DuckDB");
         assert_eq!(dto.dialect, "duckdb");
         assert_eq!(dto.columns.len(), 9);
         assert_eq!(dto.checks.len(), 1);
         let check = &dto.checks[0];
-        assert!(check.sql.contains("\"corpus\".\"c\""), "{}", check.sql);
+        assert!(check.sql.contains("\"warehouse\".\"c\""), "{}", check.sql);
         assert_eq!(
             check.source_constraint_component,
             "http://www.w3.org/ns/shacl#MinCountConstraintComponent"
@@ -83,7 +83,7 @@ mod tests {
     fn rows_come_back_as_the_native_report() {
         let mut engine = FormEngine::new();
         engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
-        engine.compile_sql(TABLES, Some("corpus"), "duckdb").unwrap();
+        engine.compile_sql(TABLES, Some("warehouse"), "duckdb").unwrap();
         let outcome = engine.report_from_rows(&[vec![row("http://example.org/n")]]).unwrap();
         assert!(!outcome.conforms);
         assert_eq!(outcome.results.len(), 1);

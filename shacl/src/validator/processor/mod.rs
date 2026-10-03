@@ -134,27 +134,26 @@ where
 ///
 /// Without the native-only `duckdb` feature rudof links no SQL engine, and
 /// the mode is an error that points to
-/// [`compile_sql`](crate::validator::sql::compile_sql), which hosts call to
+/// `shacl::validator::sql::compile_sql` (feature `sql`), which hosts call to
 /// run the plan on their own engine.
+#[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 pub(crate) fn run_sql<S>(store: &S, shapes_graph: &IRSchema) -> Result<Vec<ValidationResult>, ValidationError>
 where
     S: NeighsRDF<Term = oxrdf::Term>,
 {
-    #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
-    {
-        crate::validator::sql::validate_with_duckdb(store, shapes_graph)
-            .map(|report| report.results().clone())
-            .map_err(ValidationError::SqlEngine)
-    }
-    #[cfg(not(all(feature = "duckdb", not(target_family = "wasm"))))]
-    {
-        let _ = (store, shapes_graph);
-        Err(ValidationError::SqlEngine(
-            "this build links no SQL engine (enable the `duckdb` feature), or compile the shapes with \
-             shacl::validator::sql::compile_sql and run the plan on the host's engine"
-                .to_owned(),
-        ))
-    }
+    crate::validator::sql::validate_with_duckdb(store, shapes_graph)
+        .map(|report| report.results().clone())
+        .map_err(ValidationError::SqlEngine)
+}
+
+/// [`ShaclValidationMode::Sql`] without an engine linked: see the docs above.
+#[cfg(not(all(feature = "duckdb", not(target_family = "wasm"))))]
+pub(crate) fn run_sql<S>(_store: &S, _shapes_graph: &IRSchema) -> Result<Vec<ValidationResult>, ValidationError> {
+    Err(ValidationError::SqlEngine(
+        "this build links no SQL engine (enable the `duckdb` feature), or compile the shapes with \
+         shacl::validator::sql::compile_sql (feature `sql`) and run the plan on the host's engine"
+            .to_owned(),
+    ))
 }
 
 /// Sequential, single-engine validation driver — the same topological-level walk

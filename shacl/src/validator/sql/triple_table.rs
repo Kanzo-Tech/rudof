@@ -1,13 +1,13 @@
 //! [`TripleTable`]: arbitrary RDF in one `(s, p, o)` table.
 
 use crate::validator::sql::SqlCompileError;
-use crate::validator::sql::ast::{SelectBuilder, col, eq, item, string, table};
+use crate::validator::sql::ast::{SelectBuilder, col, eq, item, parse_object_name, string, table};
 use crate::validator::sql::mapping::{PREDICATE_COLUMN, PredicateRel, RelationalMapping};
 use crate::validator::sql::term::{TermExpr, encode};
 use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::term::Triple;
-use sqlparser::ast::Query;
+use sqlparser::ast::{ObjectName, Query};
 
 /// One `(s, p, o)` table: arbitrary RDF, every term in its four columns.
 ///
@@ -17,20 +17,18 @@ use sqlparser::ast::Query;
 /// triples here, so class extents follow the data's own class hierarchy.
 #[derive(Debug, Clone)]
 pub struct TripleTable {
-    table: String,
+    table: ObjectName,
 }
 
 /// The columns of a [`TripleTable`], in order.
 pub const TRIPLE_TABLE_COLUMNS: [&str; 7] = ["s_k", "s_v", "p", "o_k", "o_v", "o_d", "o_l"];
 
 impl TripleTable {
-    /// The triple table named `table` (dotted for a schema: `"main.triples"`).
-    pub fn new(table: impl Into<String>) -> Self {
-        Self { table: table.into() }
-    }
-
-    pub fn table(&self) -> &str {
-        &self.table
+    /// The triple table named `table`, a SQL object name (`triples`,
+    /// `main.triples`, `"My Triples"`).
+    pub fn new(table: &str) -> Result<Self, SqlCompileError> {
+        let table = parse_object_name(table).map_err(|e| SqlCompileError::Mapping(format!("the triple table: {e}")))?;
+        Ok(Self { table })
     }
 
     /// The rows of `store` in [`TRIPLE_TABLE_COLUMNS`] order.

@@ -286,6 +286,7 @@ pub(crate) fn validate_native<S: NeighsRDF + Debug, E: Engine<S>>(
 ///
 /// The parameters do not depend on the data graph; the store type the generic
 /// trait is instantiated at is only there to name an impl.
+#[cfg(feature = "sql")]
 pub(crate) fn component_parameters(component: &IRComponent, schema: &IRSchema) -> Parameters {
     type S = rudof_rdf::backend::OxigraphInMemory;
     macro_rules! params {

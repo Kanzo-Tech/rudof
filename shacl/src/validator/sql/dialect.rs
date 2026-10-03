@@ -7,7 +7,7 @@
 //! compiler does not change.
 
 use crate::validator::sql::SqlCompileError;
-use crate::validator::sql::ast::{case, cast, function, in_list, string};
+use crate::validator::sql::ast::{case, cast, eq, function, in_list, string};
 use sqlparser::ast::{CastKind, DataType, Expr, Ident, ObjectName, Query};
 
 /// A type a lexical form is cast to, to compare it by value or to check that it
@@ -47,11 +47,17 @@ pub trait SqlDialect {
         function("LENGTH", vec![text])
     }
 
-    /// The natural RDF literal of a column value (RML-Core §12.2, as R2RML
-    /// §10.2 defines it): its lexical form and its XSD datatype, both from the
-    /// value's SQL type — an integer is an `xsd:integer`, a boolean an
-    /// `xsd:boolean`, text an `xsd:string`, and so on.
-    fn natural_literal(&self, value: Expr) -> (Expr, Expr);
+    /// The natural RDF lexical form of a column value (R2RML §10.2, which
+    /// RML-Core §12.2 takes over for SQL sources): `2020-01-02T03:04:05Z` for
+    /// a timestamp, hex digits for binary, `INF` for an infinite double, …
+    /// It is the lexical form whether the datatype is natural or overridden
+    /// by `rml:datatype`: an override replaces only the datatype IRI.
+    fn natural_lexical(&self, value: Expr) -> Expr;
+
+    /// The natural RDF datatype of a column value, from its SQL type: an
+    /// integer is an `xsd:integer`, a boolean an `xsd:boolean`, binary an
+    /// `xsd:hexBinary`, text an `xsd:string`, and so on.
+    fn natural_datatype(&self, value: Expr) -> Expr;
 
     /// `expr` as text: a host column becomes a lexical form.
     fn to_text(&self, expr: Expr) -> Expr {
@@ -118,6 +124,17 @@ impl std::str::FromStr for SqlDialectName {
 /// names for the unsigned integer types.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DuckDb;
+
+/// `expr LIKE 'prefix%'`.
+fn like(expr: &Expr, prefix: &str) -> Expr {
+    Expr::Like {
+        negated: false,
+        any: false,
+        expr: Box::new(expr.clone()),
+        pattern: Box::new(string(&format!("{prefix}%"))),
+        escape_char: None,
+    }
+}
 
 fn custom(name: &str) -> DataType {
     DataType::Custom(ObjectName::from(vec![Ident::new(name)]), Vec::new())
@@ -193,21 +210,47 @@ impl SqlDialect for DuckDb {
         function("epoch_ms", vec![timestamp])
     }
 
-    // The type of a value is only known when the query runs, so the datatype
-    // is chosen by `typeof`. A TIMESTAMP's text has a space where XSD writes
-    // `T`; every other type's cast to VARCHAR is its XSD lexical form.
-    fn natural_literal(&self, value: Expr) -> (Expr, Expr) {
+    // A value's SQL type is known only when the query runs, so both choose
+    // by `typeof`. Every branch must bind for a column of any type, which is
+    // why the lexical forms are string operations on the value's text, the
+    // one conversion every type has: a TIMESTAMP's text has a space where XSD
+    // writes `T` and a TIMESTAMPTZ's an offset of `+HH` (`Z` for UTC); a
+    // BLOB's text escapes bytes as `\xHH`, and its round trip back to BLOB
+    // is what `hex` reads; a DOUBLE writes `inf`, `-inf` and `nan`.
+    fn natural_lexical(&self, value: Expr) -> Expr {
         let ty = function("typeof", vec![value.clone()]);
+        let text = self.to_text(value);
+        let blob = cast(text.clone(), custom("BLOB"), CastKind::Cast);
+        let regexp_replace =
+            |e: Expr, pattern: &str, with: &str| function("regexp_replace", vec![e, string(pattern), string(with)]);
+        let timestamp = regexp_replace(
+            regexp_replace(regexp_replace(text.clone(), " ", "T"), "([+-][0-9][0-9])$", "\\1:00"),
+            "[+-]00:00$",
+            "Z",
+        );
+        let double = case(
+            vec![
+                (eq(text.clone(), string("inf")), string("INF")),
+                (eq(text.clone(), string("-inf")), string("-INF")),
+                (eq(text.clone(), string("nan")), string("NaN")),
+            ],
+            text.clone(),
+        );
+        case(
+            vec![
+                (eq(ty.clone(), string("BLOB")), function("hex", vec![blob])),
+                (like(&ty, "TIMESTAMP"), timestamp),
+                (in_list(ty, vec![string("DOUBLE"), string("FLOAT")]), double),
+            ],
+            text,
+        )
+    }
+
+    fn natural_datatype(&self, value: Expr) -> Expr {
+        let ty = function("typeof", vec![value]);
         let is = |names: &[&str]| in_list(ty.clone(), names.iter().map(|n| string(n)).collect());
-        let like = |prefix: &str| Expr::Like {
-            negated: false,
-            any: false,
-            expr: Box::new(ty.clone()),
-            pattern: Box::new(string(&format!("{prefix}%"))),
-            escape_char: None,
-        };
         let xsd = |local: &str| string(&format!("http://www.w3.org/2001/XMLSchema#{local}"));
-        let datatype = case(
+        case(
             vec![
                 (
                     is(&[
@@ -225,22 +268,15 @@ impl SqlDialect for DuckDb {
                     xsd("integer"),
                 ),
                 (is(&["DOUBLE", "FLOAT"]), xsd("double")),
-                (like("DECIMAL"), xsd("decimal")),
+                (like(&ty, "DECIMAL"), xsd("decimal")),
                 (is(&["BOOLEAN"]), xsd("boolean")),
                 (is(&["DATE"]), xsd("date")),
-                (like("TIMESTAMP"), xsd("dateTime")),
+                (like(&ty, "TIMESTAMP"), xsd("dateTime")),
+                (like(&ty, "TIME"), xsd("time")),
+                (is(&["BLOB"]), xsd("hexBinary")),
             ],
             xsd("string"),
-        );
-        let text = self.to_text(value);
-        let lexical = case(
-            vec![(
-                like("TIMESTAMP"),
-                function("replace", vec![text.clone(), string(" "), string("T")]),
-            )],
-            text,
-        );
-        (lexical, datatype)
+        )
     }
 
     fn try_cast(&self, expr: Expr, target: CastTarget) -> Expr {

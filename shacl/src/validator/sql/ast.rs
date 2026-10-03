@@ -10,10 +10,13 @@
 use sqlparser::ast::helpers::attached_token::AttachedToken;
 use sqlparser::ast::{
     BinaryOperator, CaseWhen, CastKind, Cte, DataType, Distinct, Expr, Function, FunctionArg, FunctionArgExpr,
-    FunctionArgumentList, FunctionArguments, GroupByExpr, Ident, Join, JoinConstraint, JoinOperator, ObjectName, Query,
-    Select, SelectFlavor, SelectItem, SetExpr, SetOperator, SetQuantifier, TableAlias, TableFactor, TableWithJoins,
-    UnaryOperator, Value, With,
+    FunctionArgumentList, FunctionArguments, GroupByExpr, Ident, Join, JoinConstraint, JoinOperator, ObjectName,
+    ObjectNamePart, Query, Select, SelectFlavor, SelectItem, SetExpr, SetOperator, SetQuantifier, TableAlias,
+    TableFactor, TableWithJoins, UnaryOperator, Value, With,
 };
+use sqlparser::dialect::GenericDialect;
+use sqlparser::parser::Parser;
+use sqlparser::tokenizer::Token;
 
 /// A quoted identifier: `"name"`. Quoting keeps host table and column names
 /// verbatim, whatever their case or characters.
@@ -26,9 +29,42 @@ pub fn col(alias: &str, column: &str) -> Expr {
     Expr::CompoundIdentifier(vec![ident(alias), ident(column)])
 }
 
-/// A dotted object name, every part quoted: `"schema"."table"`.
-pub fn object_name(dotted: &str) -> ObjectName {
-    ObjectName::from(dotted.split('.').map(ident).collect::<Vec<_>>())
+/// Reads a SQL object name — `table`, `schema.table`, `"Mixed Case"`,
+/// `"a.b"` — as the SQL grammar does, so a delimited identifier keeps its case
+/// and its dots. Text is never split on `.` by hand.
+pub fn parse_object_name(text: &str) -> Result<ObjectName, String> {
+    let dialect = GenericDialect {};
+    let mut parser = Parser::new(&dialect).try_with_sql(text).map_err(|e| e.to_string())?;
+    let name = parser.parse_object_name(false).map_err(|e| e.to_string())?;
+    parser
+        .expect_token(&Token::EOF)
+        .map_err(|_| format!("'{text}' is not a SQL object name"))?;
+    Ok(name)
+}
+
+/// Reads one SQL identifier, delimited (`"birth_year"`) or not (`birth_year`).
+pub fn parse_identifier(text: &str) -> Result<Ident, String> {
+    let dialect = GenericDialect {};
+    let mut parser = Parser::new(&dialect).try_with_sql(text).map_err(|e| e.to_string())?;
+    let ident = parser.parse_identifier().map_err(|e| e.to_string())?;
+    parser
+        .expect_token(&Token::EOF)
+        .map_err(|_| format!("'{text}' is not a SQL identifier"))?;
+    Ok(ident)
+}
+
+/// `name` with every part delimited, as the engine renders names: a part's
+/// value is kept verbatim (case and all), whatever its quoting in the source.
+pub fn delimited(name: &ObjectName) -> ObjectName {
+    ObjectName(
+        name.0
+            .iter()
+            .map(|part| match part {
+                ObjectNamePart::Identifier(i) => ObjectNamePart::Identifier(ident(&i.value)),
+                other => other.clone(),
+            })
+            .collect(),
+    )
 }
 
 pub fn string(value: &str) -> Expr {
@@ -228,10 +264,10 @@ fn alias(name: &str) -> TableAlias {
     }
 }
 
-/// A named relation (a table or a CTE), under an alias.
-pub fn table(name: &str, as_alias: &str) -> TableFactor {
+/// A table, under an alias.
+pub fn table(name: &ObjectName, as_alias: &str) -> TableFactor {
     TableFactor::Table {
-        name: object_name(name),
+        name: delimited(name),
         alias: Some(alias(as_alias)),
         args: None,
         with_hints: Vec::new(),

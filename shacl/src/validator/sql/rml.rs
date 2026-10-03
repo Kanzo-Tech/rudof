@@ -28,6 +28,7 @@
 //! are allowed.
 
 use crate::validator::sql::SqlCompileError;
+use crate::validator::sql::ast::{parse_identifier, parse_object_name};
 use crate::validator::sql::dialect::SqlDialect;
 use crate::validator::sql::tables::{ObjectRule, Rule, Source, Tables, TermRule, TermType, Value, View, ViewJoin};
 use crate::validator::sql::term::encode;
@@ -35,6 +36,7 @@ use oxrdf::{NamedOrBlankNode, Term};
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use rudof_rdf::term::Triple;
 use rudof_rdf::{NeighsRDF, RDFFormat};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 const RML: &str = "http://w3id.org/rml/";
@@ -132,6 +134,36 @@ impl Doc {
         }
     }
 
+    /// A reference (`rml:reference`, `rml:child`, …): a SQL identifier,
+    /// delimited or not (R2RML §6, §10 identifier rules), by its value.
+    fn reference(&self, node: &Term, predicate: &str) -> Result<Option<String>, SqlCompileError> {
+        match self.string(node, predicate)? {
+            None => Ok(None),
+            Some(text) => parse_identifier(&text)
+                .map(|ident| Some(ident.value))
+                .map_err(|e| malformed(format!("{} of {node}: {e}", short(predicate)))),
+        }
+    }
+
+    /// What tells two `rml:Source`s apart: an IRI by itself, a blank node by
+    /// its description (two `[ a rml:Source ]` are the same source).
+    fn signature(&self, node: &Term) -> String {
+        match node {
+            Term::BlankNode(_) => {
+                let mut arcs: Vec<String> = self
+                    .arcs
+                    .get(&key(node))
+                    .into_iter()
+                    .flatten()
+                    .map(|(p, o)| format!("{p} {o}"))
+                    .collect();
+                arcs.sort();
+                format!("[{}]", arcs.join("; "))
+            },
+            other => key(other),
+        }
+    }
+
     fn types(&self, node: &Term) -> BTreeSet<String> {
         self.values(node, RDF_TYPE)
             .into_iter()
@@ -158,6 +190,8 @@ impl Doc {
 /// Reads RML into the [`Tables`] model.
 struct Reader<'d> {
     doc: &'d Doc,
+    /// The distinct `rml:Source`s read, by [`Doc::signature`].
+    sources: RefCell<BTreeSet<String>>,
 }
 
 /// What a triples map reads, and how it names its subject.
@@ -239,7 +273,8 @@ impl Reader<'_> {
         }
         self.doc
             .only(node, &["source", "referenceFormulation", "iterator"], "logical source")?;
-        self.doc.required(node, &rml("source"))?;
+        let source = self.doc.required(node, &rml("source"))?;
+        self.sources.borrow_mut().insert(self.doc.signature(source));
         match self.doc.required(node, &rml("referenceFormulation"))? {
             Term::NamedNode(n) if n.as_str() == rml("SQL2008Table") => {},
             Term::NamedNode(n) => {
@@ -254,6 +289,8 @@ impl Reader<'_> {
             .doc
             .string(node, &rml("iterator"))?
             .ok_or_else(|| malformed(format!("{node} names no table (rml:iterator)")))?;
+        // RML-IO §3.1: a SQL table name, delimited and qualified as SQL allows.
+        let table = parse_object_name(&table).map_err(|e| malformed(format!("the table of {node}: {e}")))?;
         Ok(Source::Table(table))
     }
 
@@ -309,7 +346,7 @@ impl Reader<'_> {
                 .ok_or_else(|| malformed(format!("the field {field} has no rml:fieldName")))?;
             let reference = self
                 .doc
-                .string(field, &rml("reference"))?
+                .reference(field, &rml("reference"))?
                 .ok_or_else(|| malformed(format!("the field {name} has no rml:reference")))?;
             out.push((name, reference));
         }
@@ -326,13 +363,13 @@ impl Reader<'_> {
                 "join condition",
             )?;
             let side = |shortcut: &str, map: &str| -> Result<String, SqlCompileError> {
-                if let Some(reference) = self.doc.string(condition, &rml(shortcut))? {
+                if let Some(reference) = self.doc.reference(condition, &rml(shortcut))? {
                     return Ok(reference);
                 }
                 let map_node = self.doc.required(condition, &rml(map))?;
                 self.doc.only(map_node, &["reference"], &format!("rml:{map}"))?;
                 self.doc
-                    .string(map_node, &rml("reference"))?
+                    .reference(map_node, &rml("reference"))?
                     .ok_or_else(|| refuse(&format!("rml:{map}"), "only a reference-valued map is read"))
             };
             out.push((side("child", "childMap")?, side("parent", "parentMap")?));
@@ -372,7 +409,7 @@ impl Reader<'_> {
         if let Some(constant) = self.doc.one(map_node, &rml("constant"))? {
             return Ok(Some(Value::Constant(encode(constant)?)));
         }
-        match self.doc.string(map_node, &rml("reference"))? {
+        match self.doc.reference(map_node, &rml("reference"))? {
             Some(reference) => Ok(Some(Value::Reference(reference))),
             None => Err(refuse(
                 &format!("rml:{map}"),
@@ -390,7 +427,7 @@ impl Reader<'_> {
         if let Some(constant) = self.doc.one(node, &rml("constant"))? {
             return Self::constant(constant);
         }
-        let reference = self.doc.string(node, &rml("reference"))?.ok_or_else(|| {
+        let reference = self.doc.reference(node, &rml("reference"))?.ok_or_else(|| {
             if !self.doc.values(node, &rml("template")).is_empty() {
                 refuse("rml:template", "only rml:reference and rml:constant term maps are read")
             } else {
@@ -555,8 +592,28 @@ impl<D: SqlDialect> Tables<D> {
     /// one is given (`schema.table`).
     pub fn from_rml(turtle: &str, schema: Option<&str>, dialect: D) -> Result<Self, SqlCompileError> {
         let doc = Doc::parse(turtle)?;
-        let rules = Reader { doc: &doc }.rules()?;
-        Ok(Tables::new(rules, schema.map(str::to_owned), dialect))
+        let reader = Reader {
+            doc: &doc,
+            sources: RefCell::new(BTreeSet::new()),
+        };
+        let rules = reader.rules()?;
+        // RML-IO §2 puts the location on the rml:Source. The host gives one
+        // location, `schema`, so one source is what the mapping may name.
+        let sources = reader.sources.into_inner();
+        if sources.len() > 1 {
+            return Err(refuse(
+                "rml:source",
+                &format!(
+                    "the mapping names {} distinct rml:Source nodes; one is read, located by the schema the host gives",
+                    sources.len()
+                ),
+            ));
+        }
+        let schema = schema
+            .map(parse_object_name)
+            .transpose()
+            .map_err(|e| malformed(format!("the schema: {e}")))?;
+        Ok(Tables::new(rules, schema, dialect))
     }
 }
 
@@ -632,5 +689,30 @@ mod tests {
                <#Pet> {other} ; rml:subjectMap [ rml:reference "iri" ] ."#
         ));
         assert!(matches!(refused, Err(SqlCompileError::Mapping(_))), "{refused:?}");
+    }
+
+    #[test]
+    fn references_are_sql_identifiers_delimited_or_not() {
+        let tables = read(&format!(
+            r#"<#P> {SOURCE} ; rml:subjectMap [ rml:reference "\"Iri\"" ] ;
+                 rml:predicateObjectMap [ rml:predicate ex:born ; rml:objectMap [ rml:reference "\"birth_year\"" ] ] ."#
+        ));
+        assert!(tables.is_ok(), "{tables:?}");
+        let bad = read(&format!(r#"<#P> {SOURCE} ; rml:subjectMap [ rml:reference "a b" ] ."#));
+        assert!(matches!(bad, Err(SqlCompileError::Mapping(_))), "{bad:?}");
+    }
+
+    #[test]
+    fn a_mapping_names_one_source() {
+        let other = r#"rml:logicalSource [ rml:source <#elsewhere> ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "pet" ]"#;
+        let refused = read(&format!(
+            r#"<#elsewhere> a rml:Source ; <http://example.org/at> "somewhere" .
+               <#P> {SOURCE} ; rml:subjectMap [ rml:reference "iri" ] .
+               <#Pet> {other} ; rml:subjectMap [ rml:reference "iri" ] ."#
+        ));
+        match refused {
+            Err(SqlCompileError::UnsupportedRml(message)) => assert!(message.starts_with("rml:source"), "{message}"),
+            other => panic!("two sources must be refused, got {other:?}"),
+        }
     }
 }

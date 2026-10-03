@@ -38,6 +38,10 @@ pub struct PredicateRel(pub Query);
 pub const PREDICATE_COLUMN: &str = "p";
 
 /// Where the RDF terms live in tables.
+///
+/// A mapping may answer *bags*: the same pair or triple in several rows (one
+/// per source row, or from two rules). The compiler reads them as the sets an
+/// RDF graph is, making them distinct where multiplicity would change a result.
 pub trait RelationalMapping {
     /// The subject and object of every triple with `predicate`. `None` when
     /// the mapping has none.
@@ -110,8 +114,10 @@ pub(crate) fn no_triples() -> Query {
 pub enum SqlMapping {
     /// A [`TripleTable`] named `table`.
     TripleTable { table: String },
-    /// An RML mapping (Turtle) of ordinary tables, see [`Tables::from_rml`];
-    /// its unqualified table names resolve against `schema` when one is given.
+    /// An RML mapping (Turtle) of ordinary tables, see [`Tables::from_rml`].
+    /// `schema` (a SQL object name: `schema` or `catalog.schema`) is where the
+    /// mapping's one `rml:Source` lives: its unqualified table names resolve
+    /// against it.
     Rml { mapping: String, schema: Option<String> },
 }
 
@@ -119,7 +125,7 @@ impl SqlMapping {
     /// Compiles `schema` for this mapping in `dialect`.
     pub fn compile<D: SqlDialect + Clone>(&self, schema: &IRSchema, dialect: &D) -> Result<SqlPlan, SqlCompileError> {
         match self {
-            SqlMapping::TripleTable { table } => compile_sql(schema, &TripleTable::new(table.clone()), dialect),
+            SqlMapping::TripleTable { table } => compile_sql(schema, &TripleTable::new(table)?, dialect),
             SqlMapping::Rml {
                 mapping,
                 schema: db_schema,

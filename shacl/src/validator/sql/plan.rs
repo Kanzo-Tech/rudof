@@ -9,7 +9,6 @@ use crate::validator::sql::term::decode;
 use rudof_iri::IriS;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
-use sqlparser::ast::Query;
 use std::fmt::Display;
 
 /// One row of a check, in [`RESULT_COLUMNS`] order: the focus term, the value
@@ -17,11 +16,15 @@ use std::fmt::Display;
 pub type Row = Vec<Option<String>>;
 
 /// Runs a check's query. Hosts implement it over their engine; rudof links none.
+///
+/// The query arrives as text, rendered for the plan's dialect: a host needs no
+/// SQL AST, and the plan's public surface does not tie rudof's semver to the
+/// AST crate's.
 pub trait SqlExecutor {
     type Error: Display;
 
-    /// Every row of `query`, each in [`RESULT_COLUMNS`] order, as text.
-    fn rows(&self, query: &Query) -> Result<Vec<Row>, Self::Error>;
+    /// Every row of `sql`, each in [`RESULT_COLUMNS`] order, as text.
+    fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error>;
 }
 
 /// One `SELECT` of a plan: the failing rows of one constraint component of
@@ -37,8 +40,8 @@ pub struct SqlCheck {
     pub severity: Severity,
     /// The results' `sh:resultPath`, unless a row overrides it (`sh:closed`).
     pub path: Option<SHACLPath>,
-    /// The query, columns [`RESULT_COLUMNS`].
-    pub query: Query,
+    /// The query as its dialect renders it; its columns are [`RESULT_COLUMNS`].
+    pub(crate) sql: String,
     /// The index of the component in the shape (for its message parameters),
     /// or the parameters it names itself.
     pub(crate) parameters: Parameters,
@@ -51,9 +54,9 @@ pub(crate) enum Parameters {
 }
 
 impl SqlCheck {
-    /// The text of the query, as the default dialect renders it.
-    pub fn sql(&self) -> String {
-        self.query.to_string()
+    /// The query, as the plan's dialect renders it.
+    pub fn sql(&self) -> &str {
+        &self.sql
     }
 }
 
@@ -107,7 +110,7 @@ impl SqlPlan {
             .enumerate()
             .map(|(check, c)| {
                 executor
-                    .rows(&c.query)
+                    .rows(&c.sql)
                     .map_err(|error| SqlRunError::Executor { check, error })
             })
             .collect()
@@ -117,6 +120,19 @@ impl SqlPlan {
     /// are the rows of `checks[i]`). Messages come from the native engine's
     /// own wording ([`result_message`]), so both engines' reports read alike.
     pub fn report(&self, schema: &IRSchema, rows_by_check: &[Vec<Row>]) -> Result<ValidationReport, SqlRowError> {
+        // One row set per check: a missing set is not an empty one, and
+        // reading it as such would report conformance for checks never run.
+        if rows_by_check.len() != self.checks.len() {
+            return Err(SqlRowError {
+                check: rows_by_check.len().min(self.checks.len()),
+                row: 0,
+                message: format!(
+                    "{} row sets for {} checks: every check needs its rows, empty or not",
+                    rows_by_check.len(),
+                    self.checks.len()
+                ),
+            });
+        }
         let mut results = Vec::new();
         for (index, (check, rows)) in self.checks.iter().zip(rows_by_check).enumerate() {
             let err = |row: usize, message: String| SqlRowError {

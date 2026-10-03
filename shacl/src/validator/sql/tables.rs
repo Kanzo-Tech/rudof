@@ -24,13 +24,13 @@ use crate::validator::sql::dialect::SqlDialect;
 use crate::validator::sql::mapping::{PREDICATE_COLUMN, PredicateRel, RelationalMapping, no_triples};
 use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, RDF_LANG_STRING, TermExpr};
 use rudof_iri::IriS;
-use sqlparser::ast::{BinaryOperator, Expr, Query, SelectItem};
+use sqlparser::ast::{BinaryOperator, Expr, ObjectName, Query, SelectItem};
 
 /// Where rows come from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Source {
-    /// A table, by its (dotted) name.
-    Table(String),
+    /// A table, by its SQL object name.
+    Table(ObjectName),
     /// An RML logical view.
     View(Box<View>),
     /// No source: a triples map whose terms are all constant has one row.
@@ -112,7 +112,7 @@ pub(crate) struct Rule {
 pub struct Tables<D> {
     rules: Vec<Rule>,
     /// What an unqualified table name is qualified with.
-    schema: Option<String>,
+    schema: Option<ObjectName>,
     dialect: D,
 }
 
@@ -120,7 +120,7 @@ const CHILD: &str = "t";
 const PARENT: &str = "p";
 
 impl<D: SqlDialect> Tables<D> {
-    pub(crate) fn new(rules: Vec<Rule>, schema: Option<String>, dialect: D) -> Self {
+    pub(crate) fn new(rules: Vec<Rule>, schema: Option<ObjectName>, dialect: D) -> Self {
         Self { rules, schema, dialect }
     }
 
@@ -132,10 +132,11 @@ impl<D: SqlDialect> Tables<D> {
         out
     }
 
-    fn qualified(&self, name: &str) -> String {
+    /// `name`, qualified with the schema when it has a single part.
+    fn qualified(&self, name: &ObjectName) -> ObjectName {
         match &self.schema {
-            Some(schema) if !name.contains('.') => format!("{schema}.{name}"),
-            _ => name.to_owned(),
+            Some(schema) if name.0.len() == 1 => ObjectName(schema.0.iter().chain(name.0.iter()).cloned().collect()),
+            _ => name.clone(),
         }
     }
 
@@ -223,28 +224,29 @@ impl<D: SqlDialect> Tables<D> {
                 datatype: string(""),
                 lang: string(""),
             },
-            TermType::Literal => match (&rule.language, &rule.datatype) {
-                (Some(language), _) => TermExpr {
-                    kind: string(LITERAL),
-                    lex,
-                    datatype: string(RDF_LANG_STRING),
-                    lang: crate::validator::sql::ast::function("LOWER", vec![attribute(language)]),
-                },
-                (None, Some(datatype)) => TermExpr {
-                    kind: string(LITERAL),
-                    lex,
-                    datatype: attribute(datatype),
-                    lang: string(""),
-                },
-                (None, None) => {
-                    let (lex, datatype) = self.dialect.natural_literal(reference);
-                    TermExpr {
+            TermType::Literal => {
+                // R2RML §10.2: an overriding datatype keeps the natural lexical form.
+                let lex = self.dialect.natural_lexical(reference.clone());
+                match (&rule.language, &rule.datatype) {
+                    (Some(language), _) => TermExpr {
                         kind: string(LITERAL),
                         lex,
-                        datatype,
+                        datatype: string(RDF_LANG_STRING),
+                        lang: crate::validator::sql::ast::function("LOWER", vec![attribute(language)]),
+                    },
+                    (None, Some(datatype)) => TermExpr {
+                        kind: string(LITERAL),
+                        lex,
+                        datatype: attribute(datatype),
                         lang: string(""),
-                    }
-                },
+                    },
+                    (None, None) => TermExpr {
+                        kind: string(LITERAL),
+                        lex,
+                        datatype: self.dialect.natural_datatype(reference),
+                        lang: string(""),
+                    },
+                }
             },
         }
     }

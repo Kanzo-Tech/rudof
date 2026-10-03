@@ -177,7 +177,7 @@ fn tables_and_triple_table_yield_the_native_report() {
     let native = native(&data, &schema);
     let triples = validate_with_duckdb(&data, &schema).expect("triple table validates");
     let tables = through_tables(&schema, None);
-    let in_a_schema = through_tables(&schema, Some("corpus"));
+    let in_a_schema = through_tables(&schema, Some("warehouse"));
 
     assert!(
         native.results().len() > 15,

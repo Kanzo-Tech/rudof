@@ -53,12 +53,12 @@ fn test_compile_sql_over_an_rml_mapping() {
                 rml:predicateObjectMap [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] .
         "#
         .to_string(),
-        schema: Some("corpus".to_string()),
+        schema: Some("warehouse".to_string()),
     };
     let plan = rudof.compile_sql(&mapping).execute().unwrap();
     assert_eq!(plan.checks.len(), 2);
     // The unqualified table name resolves against the schema.
-    assert!(plan.checks.iter().all(|c| c.sql().contains("\"corpus\".\"person\"")));
+    assert!(plan.checks.iter().all(|c| c.sql().contains("\"warehouse\".\"person\"")));
 }
 
 #[test]

@@ -13,24 +13,27 @@ repository.workspace = true
 [features]
 default = ["sparql"]
 sparql = ["sparql_service/sparql", "rudof_rdf/sparql" ]
+# The SQL engine (`validator::sql`): SHACL Core compiled to SQL over a
+# relational mapping. Wasm-clean; off by default so that a plain SHACL build
+# does not pull the SQL AST.
+sql = ["dep:sqlparser", "dep:oxrdf"]
 # An in-process DuckDB host for the SQL engine: `DuckDbExecutor` and
 # `ShaclValidationMode::Sql` in the processors. Native only, never default.
-duckdb = ["dep:duckdb"]
+duckdb = ["sql", "dep:duckdb"]
 
 [dependencies]
 anyhow.workspace = true
 dashmap.workspace = true
 indoc.workspace = true
 itertools.workspace = true
-oxrdf.workspace = true
+oxrdf = { workspace = true, optional = true }
 rudof_iri.workspace = true
 petgraph.workspace = true
 prefixmap.workspace = true
 rudof_rdf.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 sparql_service.workspace = true
-sqlparser.workspace = true
+sqlparser = { workspace = true, optional = true }
 thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true

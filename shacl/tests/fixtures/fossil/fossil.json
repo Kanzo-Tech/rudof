@@ -1,0 +1,42 @@
+{
+  "format": "fossil/1",
+  "vertex_tables": [
+    {
+      "name": "Person", "iri": "http://example.org/Person", "path": "vertices/Person.parquet",
+      "key": "dense_id", "identity": "subject", "record_count": 2,
+      "properties": [
+        { "name": "dense_id", "type": "uint32", "role": "address" },
+        { "name": "subject", "type": "string", "role": "identity" },
+        { "name": "name", "type": "string", "iri": "http://example.org/name" },
+        { "name": "born", "type": "timestamp", "iri": "http://example.org/born", "nullable": true },
+        { "name": "birthday", "type": "date", "iri": "http://example.org/birthday", "nullable": true },
+        { "name": "wakes", "type": "time", "iri": "http://example.org/wakes", "nullable": true },
+        { "name": "photo", "type": "binary", "iri": "http://example.org/photo", "nullable": true },
+        { "name": "score", "type": "double", "iri": "http://example.org/score", "nullable": true },
+        { "name": "tags", "type": "list<string>", "iri": "http://example.org/tag", "nullable": true }
+      ]
+    },
+    {
+      "name": "acme.Org", "iri": "http://example.org/Org", "path": "vertices/acme.Org.parquet",
+      "key": "dense_id", "identity": "subject", "record_count": 1,
+      "properties": [
+        { "name": "dense_id", "type": "uint32", "role": "address" },
+        { "name": "subject", "type": "string", "role": "identity" },
+        { "name": "label", "type": "string", "iri": "http://example.org/label" }
+      ]
+    }
+  ],
+  "edge_tables": [
+    {
+      "name": "Person_worksFor_acme.Org", "iri": "http://example.org/worksFor",
+      "path": "edges/Person_worksFor_acme.Org.parquet",
+      "source": { "key": "src", "references": "Person" },
+      "destination": { "key": "dst", "references": "acme.Org" },
+      "record_count": 2,
+      "properties": [
+        { "name": "src", "type": "uint32", "role": "endpoint" },
+        { "name": "dst", "type": "uint32", "role": "endpoint" }
+      ]
+    }
+  ]
+}

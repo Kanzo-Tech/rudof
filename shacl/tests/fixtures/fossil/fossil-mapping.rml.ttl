@@ -1,0 +1,67 @@
+# The RDF meaning of a fossil/1 corpus, in RML (https://w3id.org/rml/): RML-Core, RML-IO, RML-LV.
+# Every table is named as the corpus names it, unqualified. <#corpus> is the catalog a consumer
+# attached the corpus under: describe it (a d2rq:Database, say) and resolve the names there.
+@prefix rml: <http://w3id.org/rml/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<#corpus> a rml:Source .
+
+<#table/Person> a rml:LogicalSource ;
+  rml:source <#corpus> ;
+  rml:referenceFormulation rml:SQL2008Table ;
+  rml:iterator "\"Person\"" .
+
+<#map/Person> a rml:TriplesMap ;
+  rml:logicalSource <#table/Person> ;
+  rml:subjectMap [ rml:reference "subject" ; rml:termType rml:IRI ; rml:class <http://example.org/Person> ] ;
+  rml:predicateObjectMap [ rml:predicate <http://example.org/name> ; rml:objectMap [ rml:reference "name" ; rml:termType rml:Literal ; rml:datatype xsd:string ] ] ;
+  rml:predicateObjectMap [ rml:predicate <http://example.org/born> ; rml:objectMap [ rml:reference "born" ; rml:termType rml:Literal ; rml:datatype xsd:dateTime ] ] ;
+  rml:predicateObjectMap [ rml:predicate <http://example.org/birthday> ; rml:objectMap [ rml:reference "birthday" ; rml:termType rml:Literal ; rml:datatype xsd:date ] ] ;
+  rml:predicateObjectMap [ rml:predicate <http://example.org/wakes> ; rml:objectMap [ rml:reference "wakes" ; rml:termType rml:Literal ; rml:datatype xsd:time ] ] ;
+  rml:predicateObjectMap [ rml:predicate <http://example.org/photo> ; rml:objectMap [ rml:reference "photo" ; rml:termType rml:Literal ; rml:datatype xsd:hexBinary ] ] ;
+  rml:predicateObjectMap [ rml:predicate <http://example.org/score> ; rml:objectMap [ rml:reference "score" ; rml:termType rml:Literal ; rml:datatype xsd:double ] ] .
+
+<#table/acme.Org> a rml:LogicalSource ;
+  rml:source <#corpus> ;
+  rml:referenceFormulation rml:SQL2008Table ;
+  rml:iterator "\"acme.Org\"" .
+
+<#map/acme.Org> a rml:TriplesMap ;
+  rml:logicalSource <#table/acme.Org> ;
+  rml:subjectMap [ rml:reference "subject" ; rml:termType rml:IRI ; rml:class <http://example.org/Org> ] ;
+  rml:predicateObjectMap [ rml:predicate <http://example.org/label> ; rml:objectMap [ rml:reference "label" ; rml:termType rml:Literal ; rml:datatype xsd:string ] ] .
+
+<#view/Person> a rml:LogicalView ;
+  rml:viewOn <#table/Person> ;
+  rml:field [ a rml:ExpressionField ; rml:fieldName "dense_id" ; rml:reference "dense_id" ] ;
+  rml:field [ a rml:ExpressionField ; rml:fieldName "subject" ; rml:reference "subject" ] .
+
+<#view/acme.Org> a rml:LogicalView ;
+  rml:viewOn <#table/acme.Org> ;
+  rml:field [ a rml:ExpressionField ; rml:fieldName "dense_id" ; rml:reference "dense_id" ] ;
+  rml:field [ a rml:ExpressionField ; rml:fieldName "subject" ; rml:reference "subject" ] .
+
+<#table/Person_worksFor_acme.Org> a rml:LogicalSource ;
+  rml:source <#corpus> ;
+  rml:referenceFormulation rml:SQL2008Table ;
+  rml:iterator "\"Person_worksFor_acme.Org\"" .
+
+<#view/Person_worksFor_acme.Org> a rml:LogicalView ;
+  rml:viewOn <#table/Person_worksFor_acme.Org> ;
+  rml:field [ a rml:ExpressionField ; rml:fieldName "src" ; rml:reference "src" ] ;
+  rml:field [ a rml:ExpressionField ; rml:fieldName "dst" ; rml:reference "dst" ] ;
+  rml:innerJoin [
+    rml:parentLogicalView <#view/Person> ;
+    rml:joinCondition [ rml:child "src" ; rml:parent "dense_id" ] ;
+    rml:field [ a rml:ExpressionField ; rml:fieldName "source" ; rml:reference "subject" ]
+  ] ;
+  rml:innerJoin [
+    rml:parentLogicalView <#view/acme.Org> ;
+    rml:joinCondition [ rml:child "dst" ; rml:parent "dense_id" ] ;
+    rml:field [ a rml:ExpressionField ; rml:fieldName "destination" ; rml:reference "subject" ]
+  ] .
+
+<#map/Person_worksFor_acme.Org> a rml:TriplesMap ;
+  rml:logicalSource <#view/Person_worksFor_acme.Org> ;
+  rml:subjectMap [ rml:reference "source" ; rml:termType rml:IRI ] ;
+  rml:predicateObjectMap [ rml:predicate <http://example.org/worksFor> ; rml:objectMap [ rml:reference "destination" ; rml:termType rml:IRI ] ] .

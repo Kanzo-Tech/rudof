@@ -516,9 +516,10 @@ where
         if !closed.is_closed() {
             return Ok(Vec::new());
         }
-        // As the native checker: every triple of a focus node whose predicate
-        // is neither a property of the shape nor ignored, with the predicate
-        // as the result path and the object as the value.
+        // SHACL §4.8.1: every triple of a value node (the focus node itself
+        // for a node shape) whose predicate is neither a property of the shape
+        // nor ignored, with the predicate as the result path and the object as
+        // the value.
         let mut allowed: Vec<String> = self
             .shape
             .allowed_properties()
@@ -527,13 +528,12 @@ where
             .collect();
         allowed.sort();
         let triples = self.ctx.triples();
-        let focus = TermExpr::columns("F", "f");
         let p = col("t", PREDICATE_COLUMN);
-        let body = SelectBuilder::new(rows_items(&focus, &TermExpr::columns("t", "v"), p.clone()))
-            .from(self.focus.from("F"))
+        let body = SelectBuilder::new(rows_items(&vp_focus(), &TermExpr::columns("t", "v"), p.clone()))
+            .from(self.values.from("vp"))
             .join(crate::validator::sql::ast::join(
                 triples.from("t"),
-                TermExpr::columns("t", "f").same(&focus),
+                TermExpr::columns("t", "f").same(&vp_value()),
             ))
             .filter(not(in_list(p, allowed.iter().map(|a| string(a)).collect())))
             .into_query();

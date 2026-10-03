@@ -106,7 +106,7 @@ pub const COVERAGE: &[(&str, Coverage)] = &[
     // 4.8 Other
     (
         "ClosedConstraintComponent",
-        Coverage::Compiled("triples of the focus node outside the allowed predicates"),
+        Coverage::Compiled("triples of the value nodes outside the allowed predicates"),
     ),
     (
         "HasValueConstraintComponent",

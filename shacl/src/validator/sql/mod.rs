@@ -49,7 +49,7 @@ pub use dialect::{CastTarget, DuckDb, SqlDialect};
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 pub use duckdb_host::{DuckDbExecutor, validate_with_duckdb};
 pub use mapping::{
-    ClassMap, PREDICATE_COLUMN, PredicateRel, PropertyMap, Relation, RelationalMapping, SubClassOf,
+    ClassMap, PREDICATE_COLUMN, PredicateRel, PropertyMap, Relation, RelationalMapping, SqlMapping, SubClassOf,
     TRIPLE_TABLE_COLUMNS, Tables, TablesSpec, TermMap, TermType, TripleTable,
 };
 pub use plan::{Row, SqlCheck, SqlExecutor, SqlPlan, SqlRowError, SqlRunError};

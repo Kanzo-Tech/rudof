@@ -327,6 +327,45 @@ pub struct TablesSpec {
     pub sub_class_of: Vec<SubClassOf>,
 }
 
+/// The mapping a host names, as data: a triple table, or ordinary tables.
+///
+/// Its JSON is either `{"tripleTable": "<table>"}` or a [`TablesSpec`]
+/// (`{"classes": [...], "properties": [...], "subClassOf": [...]}`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SqlMapping {
+    /// A [`TripleTable`] named `table`.
+    TripleTable {
+        #[serde(rename = "tripleTable")]
+        table: String,
+    },
+    /// A [`Tables`] mapping.
+    Tables(TablesSpec),
+}
+
+impl SqlMapping {
+    /// Reads the mapping from its JSON form.
+    pub fn from_json(json: &str) -> Result<Self, SqlCompileError> {
+        serde_json::from_str(json).map_err(|e| SqlCompileError::Mapping(format!("invalid mapping JSON: {e}")))
+    }
+
+    /// Compiles `schema` for this mapping in `dialect`.
+    pub fn compile<D: SqlDialect + Clone>(
+        &self,
+        schema: &crate::ir::IRSchema,
+        dialect: &D,
+    ) -> Result<crate::validator::sql::SqlPlan, SqlCompileError> {
+        match self {
+            SqlMapping::TripleTable { table } => {
+                crate::validator::sql::compile_sql(schema, &TripleTable::new(table.clone()), dialect)
+            },
+            SqlMapping::Tables(spec) => {
+                crate::validator::sql::compile_sql(schema, &Tables::new(spec.clone(), dialect.clone()), dialect)
+            },
+        }
+    }
+}
+
 /// An R2RML-like mapping of ordinary tables: classes to tables and subject
 /// columns, predicates to literal columns or edge tables.
 ///
@@ -471,5 +510,29 @@ impl<D: SqlDialect> RelationalMapping for Tables<D> {
                 SelectBuilder::new(items).filter(boolean(false)).into_query()
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_mapping_reads_as_a_triple_table_or_as_tables() {
+        assert_eq!(
+            SqlMapping::from_json(r#"{"tripleTable": "triples"}"#).unwrap(),
+            SqlMapping::TripleTable {
+                table: "triples".to_owned()
+            }
+        );
+        let tables = SqlMapping::from_json(
+            r#"{"classes": [{"class": "http://e/C", "table": "c", "subject": {"column": "id"}}]}"#,
+        )
+        .unwrap();
+        let SqlMapping::Tables(spec) = tables else {
+            panic!("a Tables mapping")
+        };
+        assert_eq!(spec.classes[0].subject, TermMap::iri("id"));
+        assert!(SqlMapping::from_json(r#"{"tables": []}"#).is_err());
     }
 }

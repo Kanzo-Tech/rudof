@@ -43,7 +43,7 @@ fn test_compile_sql_over_a_triple_table() {
 #[test]
 fn test_compile_sql_over_tables() {
     let rudof = rudof_with(SHAPES);
-    let mapping = SqlMapping::tables_from_json(
+    let mapping = SqlMapping::from_json(
         r#"{
           "classes": [ { "class": "http://example.org/Person", "table": "person", "subject": { "column": "id" } } ],
           "properties": [ { "predicate": "http://example.org/name", "table": "person",

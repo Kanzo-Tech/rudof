@@ -933,6 +933,12 @@ impl ConcreteLiteral {
     ///
     /// See: <https://www.w3.org/TR/sparql11-query/#OperatorMapping>
     pub fn sparql_compare(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // SPARQL 1.1 §17.3 maps `<` on two numerics to `op:numeric-less-than`
+        // after type promotion, whatever XSD numeric type each one has (an
+        // `xsd:long` against an `xsd:integer` bound included).
+        if let (Some(a), Some(b)) = (self.numeric_operand(), other.numeric_operand()) {
+            return a.partial_cmp(&b);
+        }
         match (self, other) {
             // Chronological comparison for datetime literals
             (Self::DatetimeLiteral(dt1), Self::DatetimeLiteral(dt2)) => dt1.partial_cmp(dt2),
@@ -963,6 +969,24 @@ impl ConcreteLiteral {
             // Wrong-datatype literals have an invalid lexical form and are incomparable for ordering
             (Self::WrongDatatypeLiteral { .. }, _) | (_, Self::WrongDatatypeLiteral { .. }) => None,
             // All other combinations are considered incomparable
+            _ => None,
+        }
+    }
+
+    /// The value of a well-formed literal of an XSD numeric type, whichever
+    /// variant holds it: a typed numeric, or a numeric kept as a
+    /// `DatatypeLiteral` to preserve its lexical form. `None` otherwise.
+    fn numeric_operand(&self) -> Option<NumericLiteral> {
+        match self {
+            Self::NumericLiteral(n) => Some(n.clone()),
+            Self::DatatypeLiteral { lexical_form, datatype } => match check_literal_datatype(lexical_form, datatype) {
+                Ok(Self::NumericLiteral(n)) => Some(n),
+                _ if datatype.get_iri().is_ok_and(|i| i.as_str() == XsdVocab::XSD_INT) => lexical_form
+                    .parse::<i32>()
+                    .ok()
+                    .map(|n| NumericLiteral::Integer(i128::from(n))),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -1286,6 +1310,22 @@ fn check_literal_datatype(lexical_form: &str, datatype: &IriRef) -> Result<Concr
         ConcreteLiteral::parse_datetime,
         ConcreteLiteral::datetime
     );
+
+    // xsd:int has no variant of its own: it keeps its datatype as a
+    // DatatypeLiteral, but an ill-formed lexical form is still ill-formed.
+    if iri_str == XsdVocab::XSD_INT {
+        return Ok(match lexical_form.parse::<i32>() {
+            Ok(_) => ConcreteLiteral::DatatypeLiteral {
+                lexical_form: lexical_form.to_string(),
+                datatype: datatype.clone(),
+            },
+            Err(e) => ConcreteLiteral::WrongDatatypeLiteral {
+                lexical_form: lexical_form.to_string(),
+                datatype: datatype.clone(),
+                error: format!("Cannot convert {lexical_form} to int: {e}"),
+            },
+        });
+    }
 
     // Unknown or custom datatype: do not validate lexical form
     Ok(ConcreteLiteral::DatatypeLiteral {

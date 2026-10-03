@@ -48,7 +48,7 @@ mod triple_table;
 
 pub use context::RESULT_COLUMNS;
 pub use coverage::{COVERAGE, Coverage};
-pub use dialect::{CastTarget, DuckDb, SqlDialect};
+pub use dialect::{CastTarget, DuckDb, SqlDialect, SqlDialectName};
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 pub use duckdb_host::{DuckDbExecutor, validate_with_duckdb};
 pub use mapping::{PREDICATE_COLUMN, PredicateRel, Relation, RelationalMapping, SqlMapping};

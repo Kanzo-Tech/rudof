@@ -328,15 +328,10 @@ impl FormEngine {
             schema: schema.map(str::to_owned),
         };
         let ir = self.compile()?;
-        let plan = match dialect.to_lowercase().as_str() {
-            "duckdb" => mapping.compile(&ir, &shacl::validator::sql::DuckDb),
-            other => {
-                return Err(FormError::Validation(format!(
-                    "unsupported SQL dialect '{other}' (supported: duckdb)"
-                )));
-            },
-        }
-        .map_err(|e| FormError::Validation(e.to_string()))?;
+        let plan = dialect
+            .parse::<shacl::validator::sql::SqlDialectName>()
+            .and_then(|d| d.compile(&mapping, &ir))
+            .map_err(|e| FormError::Validation(e.to_string()))?;
         Ok(&self.sql.insert((ir, plan)).1)
     }
 

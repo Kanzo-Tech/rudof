@@ -70,6 +70,50 @@ pub trait SqlDialect {
     }
 }
 
+/// The dialects a host can name, and the one place a name becomes a dialect:
+/// adding a dialect is an impl of [`SqlDialect`] plus a variant here, and no
+/// caller (facade, CLI, wasm binding) changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SqlDialectName {
+    /// [`DuckDb`], the default.
+    #[default]
+    DuckDb,
+}
+
+impl SqlDialectName {
+    /// Compiles `schema` for `mapping` in this dialect.
+    pub fn compile(
+        self,
+        mapping: &crate::validator::sql::SqlMapping,
+        schema: &crate::ir::IRSchema,
+    ) -> Result<crate::validator::sql::SqlPlan, SqlCompileError> {
+        match self {
+            SqlDialectName::DuckDb => mapping.compile(schema, &DuckDb),
+        }
+    }
+}
+
+impl std::fmt::Display for SqlDialectName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SqlDialectName::DuckDb => write!(f, "duckdb"),
+        }
+    }
+}
+
+impl std::str::FromStr for SqlDialectName {
+    type Err = SqlCompileError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "duckdb" => Ok(SqlDialectName::DuckDb),
+            other => Err(SqlCompileError::Unsupported(format!(
+                "the SQL dialect '{other}' (supported: duckdb)"
+            ))),
+        }
+    }
+}
+
 /// DuckDB: RE2 regular expressions through `regexp_matches`, and its own
 /// names for the unsigned integer types.
 #[derive(Debug, Clone, Copy, Default)]

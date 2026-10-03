@@ -716,9 +716,11 @@ mod tests {
             .find(|n| n.id.ends_with("/S"))
             .unwrap()
             .properties;
+        // `^…/title` ends with "/title" too, and the properties come in no fixed
+        // order: only a predicate path (no `^` prefix) is meant.
         let labels = |key: &str| -> Vec<(String, String)> {
             ps.iter()
-                .find(|p| p.path_key.ends_with(key))
+                .find(|p| !p.path_key.starts_with('^') && p.path_key.ends_with(key))
                 .unwrap()
                 .presentation
                 .path_labels

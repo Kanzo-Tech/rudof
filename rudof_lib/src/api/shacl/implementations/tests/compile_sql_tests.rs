@@ -128,11 +128,17 @@ fn test_validate_shacl_in_sql_mode() {
             // ex:bob has no ex:name.
             assert_eq!(report.results().len(), 1);
         },
+        // With `rudof_lib/duckdb` an engine is linked, so an error is a failure.
+        #[cfg(feature = "duckdb")]
+        Err(e) => panic!("the duckdb feature links an engine: {e}"),
+        // Without an engine the mode says so, and where to go instead.
+        #[cfg(not(feature = "duckdb"))]
         Err(e) => {
-            assert!(!cfg!(feature = "duckdb"), "the duckdb feature links an engine: {e}");
-            // Without an engine the mode says so, and where to go instead.
             let message = e.to_string();
-            assert!(message.contains("duckdb") && message.contains("compile_sql"), "{message}");
+            assert!(
+                message.contains("duckdb") && message.contains("compile_sql"),
+                "{message}"
+            );
         },
     }
 }

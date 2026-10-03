@@ -40,6 +40,18 @@ pub enum ShaclError {
     #[error("SHACL validation failed: {error}")]
     FailedShaclValidation { error: String },
 
+    /// The SQL dialect specified is not supported by the SQL engine.
+    #[error("Unsupported SQL dialect: '{dialect}'. Valid dialects are: 'duckdb'")]
+    UnsupportedSqlDialect { dialect: String },
+
+    /// The relational mapping given to the SQL engine is invalid.
+    #[error("Invalid relational mapping: {error}")]
+    InvalidSqlMapping { error: String },
+
+    /// The SHACL shapes do not compile to SQL (a refused or unsupported feature).
+    #[error("Failed to compile the SHACL shapes to SQL: {error}")]
+    FailedCompilingSql { error: String },
+
     /// No SHACL validation results available.
     #[error("No SHACL validation results available")]
     NoShaclValidationResultsAvailable,

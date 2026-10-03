@@ -1,3 +1,4 @@
+mod compile_sql;
 mod load_shacl_shapes;
 mod reset_shacl_shapes;
 mod reset_shacl_validation;
@@ -5,6 +6,7 @@ mod serialize_shacl_shapes;
 mod serialize_shacl_validation_results;
 mod validate_shacl;
 
+pub use compile_sql::CompileSqlBuilder;
 pub use load_shacl_shapes::LoadShaclShapesBuilder;
 pub use reset_shacl_shapes::ResetShaclShapesBuilder;
 pub use reset_shacl_validation::ResetShaclBuilder;

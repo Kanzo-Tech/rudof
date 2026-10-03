@@ -19,6 +19,9 @@ include = [
 
 [features]
 default = []
+# `ShaclValidationMode::Sql` on an in-process DuckDB (native only). Without it
+# the mode is an error and hosts run `compile_sql`'s plan on their own engine.
+duckdb = ["shacl/duckdb"]
 
 [dependencies]
 

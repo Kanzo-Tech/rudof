@@ -299,6 +299,53 @@ fn has_timezone<D: SqlDialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Exp
     dialect.regex_match(t.lex.clone(), r"(Z|[+-][0-9]{2}:[0-9]{2})$", None)
 }
 
+/// A dateTime's instant, an untimezoned one read as UTC.
+fn utc_instant<D: SqlDialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Expr, SqlCompileError> {
+    let lexical = case(
+        vec![(has_timezone(dialect, t)?, t.lex.clone())],
+        compare(t.lex.clone(), BinaryOperator::StringConcat, string("Z")),
+    );
+    Ok(dialect.try_cast(lexical, CastTarget::TimestampTz))
+}
+
+/// The 14 hours either way an untimezoned dateTime may be off by, in
+/// milliseconds.
+const TIMEZONE_SPAN_MS: i64 = 14 * 3600 * 1000;
+
+/// `a op b` for one timezoned and one untimezoned dateTime: `TRUE` or
+/// `FALSE` when determinate, `NULL` (incomparable) otherwise.
+fn mixed_timezone_order<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    a: &TermExpr,
+    a_utc: &Expr,
+    op: &BinaryOperator,
+    b: &TermExpr,
+    b_utc: &Expr,
+) -> Result<Expr, SqlCompileError> {
+    // The slack of each side: 14 hours for the untimezoned one, none otherwise.
+    let slack = |t: &TermExpr| -> Result<Expr, SqlCompileError> {
+        Ok(case(
+            vec![(has_timezone(dialect, t)?, number(0))],
+            number(TIMEZONE_SPAN_MS),
+        ))
+    };
+    let millis = |e: &Expr| dialect.epoch_millis(e.clone());
+    let a_lo = compare(millis(a_utc), BinaryOperator::Minus, slack(a)?);
+    let a_hi = compare(millis(a_utc), BinaryOperator::Plus, slack(a)?);
+    let b_lo = compare(millis(b_utc), BinaryOperator::Minus, slack(b)?);
+    let b_hi = compare(millis(b_utc), BinaryOperator::Plus, slack(b)?);
+    let surely_less = compare(a_hi, BinaryOperator::Lt, b_lo);
+    let surely_greater = compare(a_lo, BinaryOperator::Gt, b_hi);
+    let (yes, no) = match op {
+        BinaryOperator::Lt | BinaryOperator::LtEq => (surely_less, surely_greater),
+        BinaryOperator::Gt | BinaryOperator::GtEq => (surely_greater, surely_less),
+        other => {
+            return Err(SqlCompileError::Internal(format!("dateTime order under {other}")));
+        },
+    };
+    Ok(case(vec![(yes, boolean(true)), (no, boolean(false))], null()))
+}
+
 fn rank(t: &TermExpr) -> Expr {
     case(
         vec![(t.is_kind(IRI), number(0)), (t.is_kind(BLANK), number(1))],
@@ -329,7 +376,12 @@ pub fn compare_terms<D: SqlDialect + ?Sized>(
     b: &TermExpr,
 ) -> Result<Expr, SqlCompileError> {
     let num = |t: &TermExpr| dialect.try_cast(t.lex.clone(), CastTarget::Double);
-    let time = |t: &TermExpr| dialect.try_cast(t.lex.clone(), CastTarget::TimestampTz);
+    let a_utc = utc_instant(dialect, a)?;
+    let b_utc = utc_instant(dialect, b)?;
+    let both_date_times = and(
+        has_datatype(dialect, a, "dateTime", Lexical::DateTime)?,
+        has_datatype(dialect, b, "dateTime", Lexical::DateTime)?,
+    );
     let branches = vec![
         (
             not_eq(a.kind.clone(), b.kind.clone()),
@@ -347,23 +399,22 @@ pub fn compare_terms<D: SqlDialect + ?Sized>(
             and(is_string_literal(a), is_string_literal(b)),
             compare(a.lex.clone(), op.clone(), b.lex.clone()),
         ),
-        // Two dateTimes compare chronologically when both or neither carry a
-        // timezone; a mixed pair is taken as incomparable (XSD orders it only
-        // when the two lie more than 14 hours apart).
-        (
-            and_all([
-                has_datatype(dialect, a, "dateTime", Lexical::DateTime)?,
-                has_datatype(dialect, b, "dateTime", Lexical::DateTime)?,
-                eq(has_timezone(dialect, a)?, has_timezone(dialect, b)?),
-            ]),
-            compare(time(a), op.clone(), time(b)),
-        ),
+        // XSD 1.1 Part 2 §3.3.7.4 (and SPARQL 1.1 §17.3, via
+        // op:dateTime-less-than): two dateTimes that both or neither carry a
+        // timezone compare as instants (an untimezoned one read as UTC on both
+        // sides). A mixed pair is ordered only when it is determinate: the
+        // untimezoned value, taken at every timezone from -14:00 to +14:00,
+        // lies wholly on one side of the other; otherwise it is incomparable.
         (
             and(
-                eq(a.datatype.clone(), string(&xsd("dateTime"))),
-                eq(b.datatype.clone(), string(&xsd("dateTime"))),
+                both_date_times.clone(),
+                eq(has_timezone(dialect, a)?, has_timezone(dialect, b)?),
             ),
-            null(),
+            compare(a_utc.clone(), op.clone(), b_utc.clone()),
+        ),
+        (
+            both_date_times,
+            mixed_timezone_order(dialect, a, &a_utc, &op, b, &b_utc)?,
         ),
         (
             and(

@@ -38,6 +38,10 @@ pub trait SqlDialect {
     /// `expr` cast to `target`, or `NULL` when it does not convert.
     fn try_cast(&self, expr: Expr, target: CastTarget) -> Expr;
 
+    /// The milliseconds since the Unix epoch of a `TIMESTAMPTZ` value, as an
+    /// integer.
+    fn epoch_millis(&self, timestamp: Expr) -> Expr;
+
     /// The length of `text` in characters, as SPARQL `STRLEN` counts them.
     fn char_length(&self, text: Expr) -> Expr {
         function("LENGTH", vec![text])
@@ -131,6 +135,12 @@ impl SqlDialect for DuckDb {
             "regexp_matches",
             vec![text, string(&re2_pattern(pattern, flags)?)],
         ))
+    }
+
+    // `epoch_ms`, an integer: DuckDB 1.5's binder rejects arithmetic on the
+    // DOUBLE that `epoch` returns ("No function matches (DOUBLE, INTEGER)").
+    fn epoch_millis(&self, timestamp: Expr) -> Expr {
+        function("epoch_ms", vec![timestamp])
     }
 
     fn try_cast(&self, expr: Expr, target: CastTarget) -> Expr {

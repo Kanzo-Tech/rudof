@@ -18,6 +18,11 @@
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod api;
 
+/// The document base rudof gives RDF that arrived as a bare string — shared by
+/// the native `InputSpec::guess_base` and the wasm form façade, so the two
+/// cannot drift.
+pub mod base;
+
 #[cfg(not(target_family = "wasm"))]
 pub mod display;
 

@@ -207,31 +207,26 @@ impl ResultShapeMap {
         for (node, label, status) in self.iter().sorted_by(cmp) {
             let node_label = show_node(node, &self.nodes_prefixmap());
             let shape_label = show_shapelabel(label, &self.shapes_prefixmap());
-            let details;
-            let status_label;
-            match status {
-                ValidationStatus::Conformant(conformant_info) => {
-                    details = conformant_info.to_string();
-                    status_label = match self.ok_color() {
+            let (details, status_label) = match status {
+                ValidationStatus::Conformant(conformant_info) => (
+                    conformant_info.to_string(),
+                    match self.ok_color() {
                         None => ColoredString::from(self.ok_text()),
                         Some(color) => self.ok_text().color(color).to_owned(),
-                    };
-                },
-                ValidationStatus::NonConformant(non_conformant_info) => {
-                    details = non_conformant_info.to_string();
-                    status_label = match self.fail_color() {
+                    },
+                ),
+                ValidationStatus::NonConformant(non_conformant_info) => (
+                    non_conformant_info.to_string(),
+                    match self.fail_color() {
                         None => ColoredString::from(self.fail_text()),
                         Some(color) => self.fail_text().color(color).to_owned(),
-                    };
-                },
-                ValidationStatus::Pending => {
-                    details = "".to_owned();
-                    status_label = "Pending".color(self.pending_color().unwrap()).to_owned();
-                },
-                ValidationStatus::Inconsistent(ci, nci) => {
-                    details = format!("Conformant: {ci}, Non-conformant: {nci}");
-                    status_label = "Inconsistent".color(self.pending_color().unwrap()).to_owned();
-                },
+                    },
+                ),
+                ValidationStatus::Pending => ("".to_owned(), "Pending".color(self.pending_color().unwrap()).to_owned()),
+                ValidationStatus::Inconsistent(ci, nci) => (
+                    format!("Conformant: {ci}, Non-conformant: {nci}"),
+                    "Inconsistent".color(self.pending_color().unwrap()).to_owned(),
+                ),
             };
             if with_details {
                 wtr.write_record([node_label, shape_label, status_label.to_string(), details])?;
@@ -265,31 +260,26 @@ impl ResultShapeMap {
         for (node, label, status) in self.iter().sorted_by(cmp) {
             let node_label = show_node(node, &self.nodes_prefixmap());
             let shape_label = show_shapelabel(label, &self.shapes_prefixmap());
-            let details;
-            let status_label;
-            match status {
-                ValidationStatus::Conformant(conformant_info) => {
-                    details = conformant_info.to_string();
-                    status_label = match self.ok_color() {
+            let (details, status_label) = match status {
+                ValidationStatus::Conformant(conformant_info) => (
+                    conformant_info.to_string(),
+                    match self.ok_color() {
                         None => ColoredString::from(self.ok_text()),
                         Some(color) => self.ok_text().color(color).to_owned(),
-                    };
-                },
-                ValidationStatus::NonConformant(non_conformant_info) => {
-                    details = non_conformant_info.to_string();
-                    status_label = match self.fail_color() {
+                    },
+                ),
+                ValidationStatus::NonConformant(non_conformant_info) => (
+                    non_conformant_info.to_string(),
+                    match self.fail_color() {
                         None => ColoredString::from(self.fail_text()),
                         Some(color) => self.fail_text().color(color).to_owned(),
-                    };
-                },
-                ValidationStatus::Pending => {
-                    details = "".to_owned();
-                    status_label = "Pending".color(self.pending_color().unwrap()).to_owned();
-                },
-                ValidationStatus::Inconsistent(ci, nci) => {
-                    details = format!("Conformant: {ci}, Non-conformant: {nci}");
-                    status_label = "Inconsistent".color(self.pending_color().unwrap()).to_owned();
-                },
+                    },
+                ),
+                ValidationStatus::Pending => ("".to_owned(), "Pending".color(self.pending_color().unwrap()).to_owned()),
+                ValidationStatus::Inconsistent(ci, nci) => (
+                    format!("Conformant: {ci}, Non-conformant: {nci}"),
+                    "Inconsistent".color(self.pending_color().unwrap()).to_owned(),
+                ),
             };
             if with_details {
                 builder.push_record([node_label, shape_label, status_label.to_string(), details]);

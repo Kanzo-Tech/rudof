@@ -40,6 +40,10 @@ pub enum ShaclError {
     #[error("SHACL validation failed: {error}")]
     FailedShaclValidation { error: String },
 
+    /// The SHACL shapes do not compile to SQL (a refused or unsupported feature).
+    #[error("Failed to compile the SHACL shapes to SQL: {error}")]
+    FailedCompilingSql { error: String },
+
     /// No SHACL validation results available.
     #[error("No SHACL validation results available")]
     NoShaclValidationResultsAvailable,

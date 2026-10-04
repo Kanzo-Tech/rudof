@@ -2,10 +2,12 @@ use crate::error::ValidationError;
 use crate::ir::components::Closed;
 use crate::ir::{IRComponent, IRSchema, IRShape};
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::ValueNodes;
 use crate::validator::report::ValidationResult;
+use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::{Object, Triple};
@@ -27,8 +29,9 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Closed {
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         _: Option<&SHACLPath>,
-        _: &IRSchema,
+        schema: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
+        let component_iri = IriS::from(component);
         if !self.is_closed() {
             return Ok(Vec::new());
         }
@@ -37,28 +40,34 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Closed {
         let component_obj = Object::iri(component.into());
         let mut results = Vec::new();
 
-        for (fnode, _) in value_nodes.iter() {
-            let subject = match S::term_as_subject(fnode) {
-                Ok(subj) => subj,
-                Err(_) => continue,
-            };
-
-            let triples = store
-                .triples_with_subject(&subject)
-                .map_err(ValidationError::new_graph_error::<S>)?;
-
+        // SHACL §4.8.1: every *value node* may only have values for the
+        // allowed properties. For a node shape that is the focus node itself;
+        // for a property shape, the nodes its path reaches.
+        for (fnode, nodes) in value_nodes.iter() {
             let focus_obj = S::term_as_object(fnode)?;
+            for value_node in nodes.iter() {
+                let subject = match S::term_as_subject(value_node) {
+                    Ok(subj) => subj,
+                    Err(_) => continue,
+                };
 
-            for triple in triples {
-                let (_, pred, obj) = triple.into_components();
-                let pred_iri = pred.into();
-                if !allowed_props.contains(&pred_iri) {
-                    let value = S::term_as_object(&obj).ok();
-                    let vr = ValidationResult::new(focus_obj.clone(), component_obj.clone(), shape.severity().clone())
-                        .with_source(Some(shape.id().clone()))
-                        .with_path(Some(SHACLPath::iri(pred_iri)))
-                        .with_value(value);
-                    results.push(vr);
+                let triples = store
+                    .triples_with_subject(&subject)
+                    .map_err(ValidationError::new_graph_error::<S>)?;
+
+                for triple in triples {
+                    let (_, pred, obj) = triple.into_components();
+                    let pred_iri = pred.into();
+                    if !allowed_props.contains(&pred_iri) {
+                        let value = S::term_as_object(&obj).ok();
+                        let vr =
+                            ValidationResult::new(focus_obj.clone(), component_obj.clone(), shape.severity().clone())
+                                .with_source(Some(shape.id().clone()))
+                                .with_message(result_message(schema, shape, &component_iri, &[], value.as_ref()))
+                                .with_path(Some(SHACLPath::iri(pred_iri)))
+                                .with_value(value);
+                        results.push(vr);
+                    }
                 }
             }
         }

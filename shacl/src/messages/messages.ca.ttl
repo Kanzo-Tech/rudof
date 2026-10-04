@@ -1,0 +1,40 @@
+# Default validation messages of the SHACL engine, as RDF. Language: Catalan.
+# See messages.en.ttl for what this catalog is, the SHACL sections it rests on and
+# the placeholders; this file holds only the Catalan wording, one `sh:message`
+# per constraint component.
+
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+sh:MinCountConstraintComponent sh:message "Calen com a mínim {$minCount} valor(s)"@ca .
+sh:MaxCountConstraintComponent sh:message "Es permeten com a màxim {$maxCount} valor(s)"@ca .
+sh:DatatypeConstraintComponent sh:message "«{$value}» no és del tipus {$datatype}"@ca .
+sh:ClassConstraintComponent sh:message "El valor ha de ser una instància de {$class}"@ca .
+sh:NodeKindConstraintComponent sh:message "Classe de valor esperada: {$nodeKind}"@ca .
+sh:PatternConstraintComponent sh:message "El valor no coincideix amb el patró {$pattern}"@ca .
+sh:MinLengthConstraintComponent sh:message "Calen com a mínim {$minLength} caràcter(s)"@ca .
+sh:MaxLengthConstraintComponent sh:message "Es permeten com a màxim {$maxLength} caràcter(s)"@ca .
+sh:MinInclusiveConstraintComponent sh:message "El valor ha de ser com a mínim {$minInclusive}"@ca .
+sh:MinExclusiveConstraintComponent sh:message "El valor ha de ser més gran que {$minExclusive}"@ca .
+sh:MaxInclusiveConstraintComponent sh:message "El valor ha de ser com a màxim {$maxInclusive}"@ca .
+sh:MaxExclusiveConstraintComponent sh:message "El valor ha de ser més petit que {$maxExclusive}"@ca .
+sh:LanguageInConstraintComponent sh:message "L'idioma ha de ser un de: {$languageIn}"@ca .
+sh:UniqueLangConstraintComponent sh:message "Només es permet un valor per idioma"@ca .
+sh:EqualsConstraintComponent sh:message "Els valors han de ser els mateixos que els de {$equals}"@ca .
+sh:DisjointConstraintComponent sh:message "Els valors han de ser diferents dels de {$disjoint}"@ca .
+sh:LessThanConstraintComponent sh:message "Els valors han de ser més petits que els de {$lessThan}"@ca .
+sh:LessThanOrEqualsConstraintComponent sh:message "Els valors han de ser més petits o iguals que els de {$lessThanOrEquals}"@ca .
+sh:HasValueConstraintComponent sh:message "Falta un valor obligatori: {$hasValue}"@ca .
+sh:InConstraintComponent sh:message "«{$value}» no és un de: {$in}"@ca .
+sh:NodeConstraintComponent sh:message "El valor no compleix els requisits de la forma referenciada"@ca .
+sh:NotConstraintComponent sh:message "Aquest valor no està permès aquí"@ca .
+sh:AndConstraintComponent sh:message "El valor ha de complir tots els requisits"@ca .
+sh:OrConstraintComponent sh:message "El valor ha de complir almenys una de les alternatives"@ca .
+sh:XoneConstraintComponent sh:message "El valor ha de complir exactament una de les alternatives"@ca .
+sh:IfConstraintComponent sh:message "El valor no compleix el requisit que s'hi aplica"@ca .
+sh:QualifiedValueShapeConstraintComponent sh:message "Alguns valors no són els esperats aquí"@ca .
+sh:QualifiedMinCountConstraintComponent sh:message "Calen com a mínim {$qualifiedMinCount} valor(s) que compleixin l'esperat"@ca .
+sh:QualifiedMaxCountConstraintComponent sh:message "Es permeten com a màxim {$qualifiedMaxCount} valor(s) que compleixin l'esperat"@ca .
+sh:ClosedConstraintComponent sh:message "Aquesta propietat no està permesa aquí"@ca .
+sh:ReifierShapeConstraintComponent sh:message "Falten dades sobre aquesta declaració"@ca .
+sh:SPARQLConstraintComponent sh:message "El valor no compleix un requisit personalitzat"@ca .
+sh:ConstraintComponent sh:message "Valor no vàlid"@ca .

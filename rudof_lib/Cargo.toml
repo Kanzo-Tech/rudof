@@ -19,6 +19,9 @@ include = [
 
 [features]
 default = []
+# `ShaclValidationMode::Sql` on an in-process DuckDB (native only). Without it
+# the mode is an error and hosts run `compile_sql`'s plan on their own engine.
+duckdb = ["shacl/duckdb"]
 
 [dependencies]
 
@@ -39,7 +42,7 @@ rudof_rdf.workspace = true
 rudof_rdf_viz.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-shacl.workspace = true
+shacl = { workspace = true, features = ["sql"] }
 shapes_comparator.workspace = true
 shapes_converter.workspace = true
 shex_ast.workspace = true
@@ -60,5 +63,5 @@ oxrdf = { workspace = true }
 prefixmap = { workspace = true }
 rudof_iri = { workspace = true }
 rudof_rdf = { workspace = true }
-shacl = { path = "../shacl", default-features = false }
+shacl = { path = "../shacl", default-features = false, features = ["sql"] }
 thiserror = { workspace = true }

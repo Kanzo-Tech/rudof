@@ -9,7 +9,7 @@ use crate::validator::engine::SparqlEngine;
 #[cfg(not(feature = "sparql"))]
 use crate::validator::engine::{Validate, validate_focus};
 use crate::validator::index::ClassIndex;
-use crate::validator::processor::{ShaclProcessor, run};
+use crate::validator::processor::{ShaclProcessor, run, run_sql};
 use crate::validator::report::ValidationResult;
 use crate::validator::store::{Graph, Store};
 #[cfg(not(target_family = "wasm"))]
@@ -27,11 +27,20 @@ use std::path::Path;
 /// The In-Memory Graph Validation algorithm
 pub struct GraphValidation {
     store: Graph,
+    /// The class index of `store`, built by the first scoped validation and kept:
+    /// it is a pass over the whole graph, and a caller validating many nodes
+    /// against one graph would otherwise repeat it for each.
+    #[cfg(not(feature = "sparql"))]
+    index: std::cell::OnceCell<ClassIndex>,
 }
 
 impl GraphValidation {
     pub fn new(store: Graph) -> Self {
-        Self { store }
+        Self {
+            store,
+            #[cfg(not(feature = "sparql"))]
+            index: std::cell::OnceCell::new(),
+        }
     }
 
     /// Returns an In-Memory Graph validation SHACL processor.
@@ -62,7 +71,7 @@ impl GraphValidation {
     #[cfg(not(target_family = "wasm"))]
     pub fn from_path<P: AsRef<Path>>(path: P, format: RDFFormat, base: Option<&str>) -> Result<Self, ValidationError> {
         let store = Graph::from_path(path.as_ref(), &format, base)?;
-        Ok(Self { store })
+        Ok(Self::new(store))
     }
 }
 
@@ -87,6 +96,7 @@ impl ShaclProcessor<RdfData> for GraphValidation {
                 let master = SparqlEngine::new();
                 run(store, shapes_graph, &master)
             },
+            ShaclValidationMode::Sql => run_sql(store, shapes_graph),
         }
     }
 }
@@ -102,12 +112,17 @@ impl ShaclProcessor<OxigraphInMemory> for GraphValidation {
     fn run_validation(
         store: &OxigraphInMemory,
         shapes_graph: &IRSchema,
-        _mode: &ShaclValidationMode,
+        mode: &ShaclValidationMode,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
-        // Without the `sparql` feature only the native engine is available.
-        let index = ClassIndex::build(store)?;
-        let master = NativeEngine::new(Some(&index));
-        run(store, shapes_graph, &master)
+        // Without the `sparql` feature the native engine, or the SQL one.
+        match mode {
+            ShaclValidationMode::Native => {
+                let index = ClassIndex::build(store)?;
+                let master = NativeEngine::new(Some(&index));
+                run(store, shapes_graph, &master)
+            },
+            ShaclValidationMode::Sql => run_sql(store, shapes_graph),
+        }
     }
 }
 
@@ -132,8 +147,14 @@ impl GraphValidation {
         focus: Option<&Object>,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
         let store = self.store.store();
-        let index = ClassIndex::build(store)?;
-        let mut engine = NativeEngine::new(Some(&index));
+        let index = match self.index.get() {
+            Some(index) => index,
+            None => {
+                let built = ClassIndex::build(store)?;
+                self.index.get_or_init(|| built)
+            },
+        };
+        let mut engine = NativeEngine::new(Some(index));
         match focus {
             Some(focus) => validate_focus(store, shapes_graph, &mut engine, shape_idx, focus),
             None => {

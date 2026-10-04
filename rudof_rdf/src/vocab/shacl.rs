@@ -58,6 +58,9 @@ vocab_term!(ShaclVocab, SH_AND, "and");
 vocab_term!(ShaclVocab, SH_NOT, "not");
 vocab_term!(ShaclVocab, SH_OR, "or");
 vocab_term!(ShaclVocab, SH_XONE, "xone");
+vocab_term!(ShaclVocab, SH_IF, "if"); // SHACL-AF conditional
+vocab_term!(ShaclVocab, SH_THEN, "then"); // SHACL-AF conditional
+vocab_term!(ShaclVocab, SH_ELSE, "else"); // SHACL-AF conditional
 
 // Property pair
 vocab_term!(ShaclVocab, SH_DISJOINT, "disjoint");
@@ -121,6 +124,7 @@ vocab_term!(ShaclVocab, SH_TARGET_NODE, "targetNode");
 vocab_term!(ShaclVocab, SH_TARGET_CLASS, "targetClass");
 vocab_term!(ShaclVocab, SH_TARGET_SUBJECTS_OF, "targetSubjectsOf");
 vocab_term!(ShaclVocab, SH_TARGET_OBJECTS_OF, "targetObjectsOf");
+vocab_term!(ShaclVocab, SH_TARGET_WHERE, "targetWhere"); // SHACL 1.2
 
 // SPARQL
 vocab_term!(ShaclVocab, SH_SOURCE_CONSTRAINT, "sourceConstraint");
@@ -173,6 +177,7 @@ vocab_term!(ShaclVocab, SH_AND_CONSTRAINT_COMPONENT, "AndConstraintComponent");
 vocab_term!(ShaclVocab, SH_NOT_CONSTRAINT_COMPONENT, "NotConstraintComponent");
 vocab_term!(ShaclVocab, SH_OR_CONSTRAINT_COMPONENT, "OrConstraintComponent");
 vocab_term!(ShaclVocab, SH_XONE_CONSTRAINT_COMPONENT, "XoneConstraintComponent");
+vocab_term!(ShaclVocab, SH_IF_CONSTRAINT_COMPONENT, "IfConstraintComponent");
 
 vocab_term!(
     ShaclVocab,

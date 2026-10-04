@@ -60,7 +60,7 @@ impl PropertyShapeBuilder {
     }
 
     pub fn datatype(self, dt: IriRef) -> Self {
-        self.component(ASTComponent::Datatype(dt))
+        self.component(ASTComponent::Datatype(vec![dt]))
     }
 
     pub fn class(self, class: impl Into<Object>) -> Self {

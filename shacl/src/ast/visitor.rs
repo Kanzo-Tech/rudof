@@ -34,7 +34,7 @@ pub trait ComponentVisitor {
     fn visit_class(&mut self, _class: &Object) -> Result<Self::Output, Self::Error> {
         self.default_component()
     }
-    fn visit_datatype(&mut self, _datatype: &IriRef) -> Result<Self::Output, Self::Error> {
+    fn visit_datatype(&mut self, _datatypes: &[IriRef]) -> Result<Self::Output, Self::Error> {
         self.default_component()
     }
     fn visit_node_kind(&mut self, _node_kind: &NodeKind) -> Result<Self::Output, Self::Error> {
@@ -107,6 +107,14 @@ pub trait ComponentVisitor {
     fn visit_xone(&mut self, _shapes: &[Object]) -> Result<Self::Output, Self::Error> {
         self.default_component()
     }
+    fn visit_if(
+        &mut self,
+        _cond: &Object,
+        _then: Option<&Object>,
+        _else: Option<&Object>,
+    ) -> Result<Self::Output, Self::Error> {
+        self.default_component()
+    }
 
     // shape-based
     fn visit_closed(&mut self, _is_closed: bool, _ignored: &HashSet<IriS>) -> Result<Self::Output, Self::Error> {
@@ -174,6 +182,7 @@ impl ASTComponent {
             ASTComponent::And(shapes) => visitor.visit_and(shapes),
             ASTComponent::Not(shape) => visitor.visit_not(shape),
             ASTComponent::Xone(shapes) => visitor.visit_xone(shapes),
+            ASTComponent::If { cond, then_, else_ } => visitor.visit_if(cond, then_.as_ref(), else_.as_ref()),
             ASTComponent::Closed {
                 is_closed,
                 ignored_properties,

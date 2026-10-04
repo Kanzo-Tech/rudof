@@ -38,9 +38,9 @@ pub fn serialize_shacl_validation_results<W: io::Write>(
                 .table(writer, Some(true), Some(true), Some(terminal_width()))
                 .map_err(|e| ShaclError::FailedIoOperation { error: e.to_string() })?;
         },
-        ResultShaclValidationFormat::Json => {
-            todo!("Generation of JSON for SHACL validation report is not implemented yet")
-        },
+        // Minimal/Compact/Details are the three prose renderings; every other
+        // format — `Json` included, which serializes the report graph as JSON-LD
+        // — is an RDF serialization of the `sh:ValidationReport` (SHACL §3.6).
         _ => {
             serialize_shacl_validation_results_rdf(
                 serialize_shacl_validation_results,

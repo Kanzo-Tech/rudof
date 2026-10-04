@@ -32,7 +32,8 @@ cli_wrapper!(
     ShaclValidationMode,
     {
         Native,
-        Sparql
+        Sparql,
+        Sql
     }
 );
 

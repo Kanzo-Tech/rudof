@@ -1,5 +1,6 @@
 use crate::error::ValidationError;
 use crate::ir::IRSchema;
+use crate::validator::constraints::Parameters;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::ValueNodeIteration;
@@ -35,10 +36,11 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for LanguageIn<'_> {
         Ok(if violates { Check::Violate } else { Check::Hold })
     }
 
-    fn message(&self, _schema: &IRSchema) -> String {
-        format!(
-            "LanguageIn constraint not satisfied. Expected one of {}",
-            self.0.iter().map(|l| l.to_string()).collect::<Vec<_>>().join(", ")
-        )
+    fn parameters(&self, _schema: &IRSchema) -> Parameters {
+        [(
+            "languageIn",
+            self.0.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "),
+        )]
+        .into()
     }
 }

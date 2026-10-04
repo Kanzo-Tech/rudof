@@ -1,12 +1,13 @@
 use crate::error::ValidationError;
 use crate::ir::components::Or;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::{Engine, Validate};
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
+use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
@@ -30,6 +31,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Or {
         maybe_path: Option<&SHACLPath>,
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
+        let component_iri = IriS::from(component);
         let mut validation_results = Vec::new();
         let component = Object::iri(component.into());
 
@@ -40,22 +42,24 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Or {
                 let mut conforms = false;
                 for idx in self.shapes().iter() {
                     let or_shape = shapes_graph.get_shape_from_idx_e(idx)?;
-                    let inner_results = or_shape.validate(store, engine, Some(&focus_nodes), Some(shape), shapes_graph);
-                    match inner_results {
-                        Ok(results) => {
-                            if results.is_empty() {
-                                conforms = true;
-                                break;
-                            }
-                        },
-                        Err(e) => return Err(e),
+                    if or_shape
+                        .validate(store, engine, Some(&focus_nodes), Some(shape), shapes_graph)?
+                        .is_empty()
+                    {
+                        conforms = true;
+                        break;
                     }
                 }
                 if !conforms {
                     let node_obj = S::term_as_object(node).ok();
-                    let msg = "OR not satisfied".to_string();
                     let vr = ValidationResult::new(fnode_obj.clone(), component.clone(), shape.severity().clone())
-                        .with_message(MessageMap::from(msg))
+                        .with_message(result_message(
+                            shapes_graph,
+                            shape,
+                            &component_iri,
+                            &[],
+                            node_obj.as_ref(),
+                        ))
                         .with_path(maybe_path.cloned())
                         .with_value(node_obj)
                         .with_source(Some(shape.id().clone()));

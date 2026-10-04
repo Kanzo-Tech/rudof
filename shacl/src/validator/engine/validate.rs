@@ -1,6 +1,6 @@
 use crate::error::ValidationError;
 use crate::ir::{IRSchema, IRShape, ReifierInfo, ShapeLabelIdx};
-use crate::types::MessageMap;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::Engine;
 use crate::validator::engine::focus_nodes_ops::FocusNodesOps;
 use crate::validator::engine::value_nodes_ops::ValueNodesOps;
@@ -64,7 +64,7 @@ impl<RDF: NeighsRDF + Debug> Validate<RDF> for IRShape {
         let focus_nodes = match targets {
             Some(targets) => targets,
             None => {
-                computed_focus = self.focus_nodes(store, runner)?;
+                computed_focus = self.focus_nodes(store, runner, shapes_graph)?;
                 &computed_focus
             },
         };
@@ -215,16 +215,13 @@ fn validate_reifiers<RDF: NeighsRDF + Debug, E: Engine<RDF>>(
                     .map_err(ValidationError::new_graph_error::<RDF>)?
                     .collect::<Vec<_>>();
                 if reifier_subjects.is_empty() && reifier_info.reification_required() {
-                    let vr_single = ValidationResult::new(
-                        shape.id().clone(),
-                        Object::iri(ShaclVocab::sh_reifier_shape_constraint_component()),
-                        shape.severity().clone(),
-                    )
-                    .with_message(MessageMap::from(
-                        "Reification required but no reifier found for triple {triple} with predicate {pred}",
-                    ))
-                    .with_path(Some(SHACLPath::iri(pred.clone())))
-                    .with_source(source_shape.map(|s| s.id()).cloned());
+                    let component = ShaclVocab::sh_reifier_shape_constraint_component();
+                    let message = result_message(shapes_graph, shape, &component, &[], None);
+                    let vr_single =
+                        ValidationResult::new(shape.id().clone(), Object::Iri(component), shape.severity().clone())
+                            .with_message(message)
+                            .with_path(Some(SHACLPath::iri(pred.clone())))
+                            .with_source(source_shape.map(|s| s.id()).cloned());
                     results.push(vr_single);
                     continue;
                 }

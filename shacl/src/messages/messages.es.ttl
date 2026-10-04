@@ -1,0 +1,40 @@
+# Default validation messages of the SHACL engine, as RDF. Language: Spanish.
+# See messages.en.ttl for what this catalog is, the SHACL sections it rests on and
+# the placeholders; this file holds only the Spanish wording, one `sh:message`
+# per constraint component.
+
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+sh:MinCountConstraintComponent sh:message "Se requieren al menos {$minCount} valor(es)"@es .
+sh:MaxCountConstraintComponent sh:message "Se permiten como máximo {$maxCount} valor(es)"@es .
+sh:DatatypeConstraintComponent sh:message "«{$value}» no es del tipo {$datatype}"@es .
+sh:ClassConstraintComponent sh:message "El valor debe ser una instancia de {$class}"@es .
+sh:NodeKindConstraintComponent sh:message "Clase de valor esperada: {$nodeKind}"@es .
+sh:PatternConstraintComponent sh:message "El valor no coincide con el patrón {$pattern}"@es .
+sh:MinLengthConstraintComponent sh:message "Se requieren al menos {$minLength} carácter(es)"@es .
+sh:MaxLengthConstraintComponent sh:message "Se permiten como máximo {$maxLength} carácter(es)"@es .
+sh:MinInclusiveConstraintComponent sh:message "El valor debe ser como mínimo {$minInclusive}"@es .
+sh:MinExclusiveConstraintComponent sh:message "El valor debe ser mayor que {$minExclusive}"@es .
+sh:MaxInclusiveConstraintComponent sh:message "El valor debe ser como máximo {$maxInclusive}"@es .
+sh:MaxExclusiveConstraintComponent sh:message "El valor debe ser menor que {$maxExclusive}"@es .
+sh:LanguageInConstraintComponent sh:message "El idioma debe ser uno de: {$languageIn}"@es .
+sh:UniqueLangConstraintComponent sh:message "Solo se permite un valor por idioma"@es .
+sh:EqualsConstraintComponent sh:message "Los valores deben ser los mismos que los de {$equals}"@es .
+sh:DisjointConstraintComponent sh:message "Los valores deben ser distintos de los de {$disjoint}"@es .
+sh:LessThanConstraintComponent sh:message "Los valores deben ser menores que los de {$lessThan}"@es .
+sh:LessThanOrEqualsConstraintComponent sh:message "Los valores deben ser menores o iguales que los de {$lessThanOrEquals}"@es .
+sh:HasValueConstraintComponent sh:message "Falta un valor obligatorio: {$hasValue}"@es .
+sh:InConstraintComponent sh:message "«{$value}» no es uno de: {$in}"@es .
+sh:NodeConstraintComponent sh:message "El valor no cumple los requisitos de la forma referenciada"@es .
+sh:NotConstraintComponent sh:message "Este valor no está permitido aquí"@es .
+sh:AndConstraintComponent sh:message "El valor debe cumplir todos los requisitos"@es .
+sh:OrConstraintComponent sh:message "El valor debe cumplir al menos una de las alternativas"@es .
+sh:XoneConstraintComponent sh:message "El valor debe cumplir exactamente una de las alternativas"@es .
+sh:IfConstraintComponent sh:message "El valor no cumple el requisito que se aplica aquí"@es .
+sh:QualifiedValueShapeConstraintComponent sh:message "Algunos valores no son los esperados aquí"@es .
+sh:QualifiedMinCountConstraintComponent sh:message "Se requieren al menos {$qualifiedMinCount} valor(es) que cumplan lo esperado"@es .
+sh:QualifiedMaxCountConstraintComponent sh:message "Se permiten como máximo {$qualifiedMaxCount} valor(es) que cumplan lo esperado"@es .
+sh:ClosedConstraintComponent sh:message "Esta propiedad no está permitida aquí"@es .
+sh:ReifierShapeConstraintComponent sh:message "Faltan datos sobre esta declaración"@es .
+sh:SPARQLConstraintComponent sh:message "El valor no cumple un requisito personalizado"@es .
+sh:ConstraintComponent sh:message "Valor no válido"@es .

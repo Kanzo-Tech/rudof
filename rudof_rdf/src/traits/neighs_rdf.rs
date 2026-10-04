@@ -410,10 +410,13 @@ pub trait NeighsRDF: Rdf {
     ///
     /// # Errors
     ///
-    /// Returns [`RDFError::ErrorObjectsFor`] if the query fails or if the
-    /// subject term cannot be converted to a valid subject.
+    /// Returns [`RDFError::ErrorObjectsFor`] if the query fails. A subject term
+    /// that cannot be a subject (a literal) has no objects.
     fn objects_for(&self, subject: &Self::Term, predicate: &Self::IRI) -> Result<HashSet<Self::Term>, RDFError> {
-        let subject_node: Self::Subject = Self::term_as_subject(subject)?;
+        // A term that cannot be a subject, a literal, is the subject of no triple: it has no objects.
+        let Ok(subject_node) = Self::term_as_subject(subject) else {
+            return Ok(HashSet::new());
+        };
         let triples = self
             .triples_matching(&subject_node, predicate, &Any)
             .map_err(|e| RDFError::ErrorObjectsFor {

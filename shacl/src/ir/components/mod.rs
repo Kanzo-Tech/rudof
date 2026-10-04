@@ -11,6 +11,7 @@
 mod and;
 mod basic_sparql;
 mod closed;
+mod if_;
 mod node;
 mod not;
 mod or;
@@ -21,6 +22,7 @@ mod xone;
 pub use and::And;
 pub use basic_sparql::BasicSparql;
 pub use closed::Closed;
+pub use if_::If;
 pub use node::Node;
 pub use not::Not;
 pub use or::Or;

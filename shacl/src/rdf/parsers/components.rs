@@ -1,7 +1,7 @@
 use crate::ast::ASTComponent;
 use crate::rdf::parsers::basic_sparql;
 use crate::rdf::parsers::{
-    and, class, closed, datatype, deactivated, disjoint, equals, has_value, in_component, language_in, less_than,
+    and, class, closed, datatype, deactivated, disjoint, equals, has_value, if_, in_component, language_in, less_than,
     less_than_or_equals, max_count, max_exclusive, max_inclusive, max_length, min_count, min_exclusive, min_inclusive,
     min_length, node, node_kind, not, or, pattern, qualified_value_shape, unique_lang, xone,
 };
@@ -43,6 +43,7 @@ pub(crate) fn components<RDF: NeighsRDF + 'static>() -> impl RDFNodeParse<RDF, O
         Box::new(and()),
         Box::new(or()),
         Box::new(xone()),
+        Box::new(if_()),
         // Shape based constraint components
         Box::new(node()),
         // property is handled differently

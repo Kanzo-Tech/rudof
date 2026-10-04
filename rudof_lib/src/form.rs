@@ -33,13 +33,18 @@ pub use rudof_rdf::{BuildRDF, RDFFormat, SHACLPath};
 pub use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 pub use shacl::types::{NodeKind, Severity, Target, Value};
 pub use shacl::validator::report::ValidationResult;
+pub use shacl::validator::sql::{RESULT_COLUMNS, Row as SqlRow, SqlCheck, SqlMapping, SqlPlan};
 pub use shacl::vocab::shui;
 
+pub use crate::base::STRING_BASE;
+
 use shacl::ir::{IRSchema, ShapeLabelIdx};
+use shacl::messages::MessageCatalog;
 use shacl::rdf::ShaclParser;
 use shacl::validator::ShaclValidationMode;
 use shacl::validator::processor::{GraphValidation, ShaclProcessor};
 use shacl::validator::store::Graph;
+use std::collections::HashSet;
 
 /// Errors surfaced by the form façade. Flat, `thiserror`-derived (no `Box<dyn>`):
 /// the binding renders them to a `JsError` via `Display`.
@@ -75,6 +80,12 @@ pub struct FormEngine {
     data: OxigraphInMemory,
     shapes_graph: Option<OxigraphInMemory>,
     shapes_ast: Option<ASTSchema>,
+    /// The wording of results whose shape has no `sh:message`: the built-in
+    /// catalog until [`FormEngine::load_messages`] extends it.
+    messages: Option<MessageCatalog>,
+    /// The last [`FormEngine::compile_sql`] plan, with the compiled shapes its
+    /// report is read against.
+    sql: Option<(IRSchema, SqlPlan)>,
 }
 
 impl FormEngine {
@@ -82,9 +93,33 @@ impl FormEngine {
         Self::default()
     }
 
-    /// Parse RDF text into an in-memory graph (lenient reader).
-    pub fn parse_graph(text: &str, format: &RDFFormat) -> Result<OxigraphInMemory, FormError> {
-        OxigraphInMemory::from_str(text, format, None, &ReaderMode::Lax).map_err(|e| FormError::Parse(e.to_string()))
+    /// Parse RDF text into an in-memory graph, resolving relative IRIs against
+    /// `base`.
+    ///
+    /// Deliberately [`ReaderMode::Strict`]: under [`ReaderMode::Lax`] a triple
+    /// whose IRI is malformed (Turtle's `IRIREF` production excludes `|`, `<`,
+    /// `{`, …) is *dropped* and the parse still reports success, so a document
+    /// could be made to conform simply by embedding a bad IRI. A syntax error
+    /// has to reach the caller rather than show up as a missing triple.
+    ///
+    /// Strictness makes the base load-bearing. A **relative** IRI is not a
+    /// syntax error — Turtle defines it as a reference resolved against the
+    /// document base (RDF 1.2 Turtle §6.3) — so rejecting one is a bug, not a
+    /// conformance win. Which is why no loading path in this workspace parses
+    /// without a base: `load_data` takes `base: IriS`, not an `Option`, filled
+    /// from the caller's `--base-data` / `--base-shapes` or, failing that, from
+    /// wherever the document came from (`InputSpec::guess_base`: a `file://`
+    /// URL for a path, the endpoint URL for a URL, `stdin://` for stdin).
+    ///
+    /// This façade follows that convention rather than inventing a third one:
+    /// the caller supplies the base when it knows one (the wasm binding takes it
+    /// as an optional argument on `loadData` / `loadShapes`), and when it does
+    /// not, a string has no location to derive a base from, so the parse falls
+    /// back to the workspace's own synthetic string base, [`STRING_BASE`].
+    pub fn parse_graph(text: &str, format: &RDFFormat, base: Option<&str>) -> Result<OxigraphInMemory, FormError> {
+        let base = base.unwrap_or(STRING_BASE);
+        OxigraphInMemory::from_str(text, format, Some(base), &ReaderMode::Strict)
+            .map_err(|e| FormError::Parse(e.to_string()))
     }
 
     // ---- shapes --------------------------------------------------------------
@@ -92,14 +127,31 @@ impl FormEngine {
     /// Parse `text` as a SHACL shapes graph and load it: stores both the raw
     /// graph (annotation reads) and the parsed validation AST. Returns the AST so
     /// the binding can project its form-IR JSON without re-parsing.
-    pub fn load_shapes(&mut self, text: &str, format: &RDFFormat) -> Result<&ASTSchema, FormError> {
-        let graph = Self::parse_graph(text, format)?;
+    pub fn load_shapes(&mut self, text: &str, format: &RDFFormat, base: Option<&str>) -> Result<&ASTSchema, FormError> {
+        let graph = Self::parse_graph(text, format, base)?;
         let schema = ShaclParser::new(graph.clone())
             .parse()
             .map_err(|e| FormError::Parse(e.to_string()))?;
         self.shapes_graph = Some(graph);
         self.shapes_ast = Some(schema);
         Ok(self.shapes_ast.as_ref().expect("just set"))
+    }
+
+    /// Add the `sh:message` literals of `text` to the message catalog that words
+    /// the results of shapes with no `sh:message` of their own (SHACL §3.6.2.7).
+    /// The built-in catalog (English, Spanish, Catalan) is the starting point; per
+    /// constraint component and language, the later document wins. Adding a
+    /// language needs no code. Nothing changes when `text` does not parse.
+    pub fn load_messages(&mut self, text: &str, format: &RDFFormat) -> Result<(), FormError> {
+        let mut catalog = self
+            .messages
+            .clone()
+            .unwrap_or_else(|| MessageCatalog::builtin().clone());
+        catalog
+            .load(text, format)
+            .map_err(|e| FormError::Parse(e.to_string()))?;
+        self.messages = Some(catalog);
+        Ok(())
     }
 
     /// The parsed shapes AST, if any (form-IR projection input).
@@ -114,9 +166,10 @@ impl FormEngine {
 
     // ---- data ----------------------------------------------------------------
 
-    /// Replace the live data graph with the parse of `text`.
-    pub fn load_data(&mut self, text: &str, format: &RDFFormat) -> Result<(), FormError> {
-        self.data = Self::parse_graph(text, format)?;
+    /// Replace the live data graph with the parse of `text`, resolving its
+    /// relative IRIs against `base` (see [`FormEngine::parse_graph`]).
+    pub fn load_data(&mut self, text: &str, format: &RDFFormat, base: Option<&str>) -> Result<(), FormError> {
+        self.data = Self::parse_graph(text, format, base)?;
         Ok(())
     }
 
@@ -242,16 +295,151 @@ impl FormEngine {
         Ok(outcome(results))
     }
 
+    /// Does `focus` conform to `shape`? Resolves the shape by `Object` (IRI OR
+    /// blank node), so blank-node `sh:if` condition shapes — which
+    /// [`validate_focus`]/[`validate_shape`] cannot address (they resolve IRI
+    /// ids only) — can be evaluated. Conformance is decided canonically by the
+    /// validator: the focus conforms exactly when scoped validation yields no
+    /// results.
+    ///
+    /// [`validate_focus`]: FormEngine::validate_focus
+    /// [`validate_shape`]: FormEngine::validate_shape
+    pub fn conforms_focus(&self, shape: &Object, focus: &Object) -> Result<bool, FormError> {
+        let ir = self.compile()?;
+        let idx = ir
+            .get_idx(shape)
+            .copied()
+            .ok_or_else(|| FormError::ShapeNotFound(format!("{shape}")))?;
+        let results = GraphValidation::new(Graph::from(self.data.clone()))
+            .validate_scoped(&ir, idx, Some(focus))
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(results.is_empty())
+    }
+
+    /// Compile the loaded shapes into SQL checks over the tables the RML
+    /// mapping `rml` (Turtle) describes, in `dialect` (`duckdb`), its
+    /// unqualified table names resolved against `schema` when given. The host
+    /// runs each check's query on its own engine and hands the rows to
+    /// [`FormEngine::report_from_rows`]; the plan is kept for that until the
+    /// next compilation.
+    pub fn compile_sql(&mut self, rml: &str, schema: Option<&str>, dialect: &str) -> Result<&SqlPlan, FormError> {
+        let mapping = SqlMapping::Rml {
+            mapping: rml.to_owned(),
+            schema: schema.map(str::to_owned),
+        };
+        let ir = self.compile()?;
+        let plan = dialect
+            .parse::<shacl::validator::sql::SqlDialectName>()
+            .and_then(|d| d.compile(&mapping, &ir))
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(&self.sql.insert((ir, plan)).1)
+    }
+
+    /// The report of the rows of the last [`FormEngine::compile_sql`] plan:
+    /// `rows[i]` are the rows of check `i`, each in [`RESULT_COLUMNS`] order.
+    /// Messages are worded as the native engine words them.
+    pub fn report_from_rows(&self, rows: &[Vec<SqlRow>]) -> Result<ValidationOutcome, FormError> {
+        let (ir, plan) = self
+            .sql
+            .as_ref()
+            .ok_or_else(|| FormError::Validation("no SQL plan; call compileSql first".to_owned()))?;
+        if rows.len() != plan.checks.len() {
+            return Err(FormError::Validation(format!(
+                "{} row sets for {} checks",
+                rows.len(),
+                plan.checks.len()
+            )));
+        }
+        let report = plan
+            .report(ir, rows)
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(ValidationOutcome {
+            conforms: report.conforms(),
+            results: report.results().clone(),
+        })
+    }
+
+    /// The shapes graph, compiled; the id of the shape `idx` in it.
+    pub fn sql_shape_id(&self, idx: &ShapeLabelIdx) -> Option<&Object> {
+        let (ir, _) = self.sql.as_ref()?;
+        ir.get_shape_from_idx(idx).map(|s| s.id())
+    }
+
     /// Compile the loaded shapes AST into the validator's internal representation.
     fn compile(&self) -> Result<IRSchema, FormError> {
         let ast = self.shapes_ast.as_ref().ok_or(FormError::NoShapes)?;
-        IRSchema::try_from(ast).map_err(|e| FormError::Validation(e.to_string()))
+        let ir = IRSchema::try_from(ast).map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(match &self.messages {
+            Some(catalog) => ir.with_messages(catalog.clone()),
+            None => ir,
+        })
     }
 }
 
-/// Resolve a shape's IRI string to its arena index in the compiled schema.
+/// Asks whether a node of one graph conforms to a shape of another: the shapes
+/// come from `shapes`, the node from `data`, and the two need not be related.
+///
+/// [`FormEngine`] cannot say this: it validates its own data graph against its own
+/// shapes. SHACL UI needs the split — its matcher shapes live in a *scoring
+/// graph* and are run against nodes of the application's *shapes graph* — so the
+/// two graphs are parameters here. The shapes are compiled, and the data graph
+/// loaded into the validator's store, once; each [`NodeChecker::conforms`] is then
+/// one scoped validation.
+pub struct NodeChecker {
+    shapes: IRSchema,
+    data: GraphValidation,
+    subjects: HashSet<NamedOrBlankNode>,
+}
+
+impl NodeChecker {
+    /// Compile `shapes` and take `data` as the graph whose nodes are checked.
+    pub fn new(shapes: &OxigraphInMemory, data: &OxigraphInMemory) -> Result<Self, FormError> {
+        let ast = ShaclParser::new(shapes.clone())
+            .parse()
+            .map_err(|e| FormError::Parse(e.to_string()))?;
+        let shapes = IRSchema::try_from(&ast).map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(Self {
+            shapes,
+            subjects: data.quads().map(|q| q.subject).collect(),
+            data: GraphValidation::new(Graph::from(data.clone())),
+        })
+    }
+
+    /// Does `focus` conform to `shape` — an IRI or blank node of the compiled
+    /// shapes graph?
+    ///
+    /// A node that is neither a literal nor a subject of `data` does not conform:
+    /// this is the SHACL UI *validation function*, which has that step before the
+    /// standard validation. A shape the shapes graph does not define is a
+    /// [`FormError::ShapeNotFound`].
+    pub fn conforms(&self, shape: &Object, focus: &Object) -> Result<bool, FormError> {
+        let known = match Term::from(focus.clone()) {
+            Term::Literal(_) => true,
+            node => as_subject(&node).is_some_and(|s| self.subjects.contains(&s)),
+        };
+        if !known {
+            return Ok(false);
+        }
+        let idx = self
+            .shapes
+            .get_idx(shape)
+            .copied()
+            .ok_or_else(|| FormError::ShapeNotFound(format!("{shape}")))?;
+        let results = self
+            .data
+            .validate_scoped(&self.shapes, idx, Some(focus))
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(results.is_empty())
+    }
+}
+
+/// Resolve a shape's id — an IRI, or `_:label` for an anonymous shape — to its
+/// arena index in the compiled schema.
 fn resolve_idx(ir: &IRSchema, shape_id: &str) -> Result<ShapeLabelIdx, FormError> {
-    let shape_ref = Object::iri(IriS::new_unchecked(shape_id));
+    let shape_ref = match shape_id.strip_prefix("_:") {
+        Some(label) => Object::bnode(label.to_string()),
+        None => Object::iri(IriS::new_unchecked(shape_id)),
+    };
     ir.get_idx(&shape_ref)
         .copied()
         .ok_or_else(|| FormError::ShapeNotFound(shape_id.to_string()))

@@ -10,8 +10,11 @@ use wasm_bindgen::prelude::*;
 use rudof_lib::form::{BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm};
 
 mod dto;
+mod index;
 mod project;
+mod scoring;
 mod shapes;
+mod sql;
 mod validate;
 use dto::*;
 
@@ -109,10 +112,16 @@ impl Session {
         }
     }
 
+    /// Parse and load a SHACL shapes graph.
+    ///
+    /// `base` is the document base relative IRIs in `text` resolve against — the
+    /// URL the shapes were fetched from, when the caller knows it. Omitted
+    /// (`undefined`/`null`), the parse falls back to the workspace's synthetic
+    /// string base; see [`FormEngine::parse_graph`].
     #[wasm_bindgen(js_name = loadShapes)]
-    pub fn load_shapes(&mut self, text: String, media_type: String) -> Result<JsValue, JsError> {
+    pub fn load_shapes(&mut self, text: String, media_type: String, base: Option<String>) -> Result<JsValue, JsError> {
         self.engine
-            .load_shapes(&text, &format_of(&media_type))
+            .load_shapes(&text, &format_of(&media_type), base.as_deref())
             .map_err(|e| JsError::new(&e.to_string()))?;
         let ast = self.engine.shapes_ast().expect("shapes just loaded");
         let graph = self.engine.shapes_graph().expect("shapes just loaded");
@@ -120,10 +129,29 @@ impl Session {
         to_js(&json)
     }
 
-    #[wasm_bindgen(js_name = loadData)]
-    pub fn load_data(&mut self, text: String, media_type: String) -> Result<(), JsError> {
+    /// Add default validation messages: `sh:message` literals on constraint
+    /// components (`sh:MinCountConstraintComponent sh:message "..."@fr`, with
+    /// `{$minCount}`-style placeholders), used for results whose shape has no
+    /// `sh:message`. They extend the built-in English, Spanish and Catalan
+    /// messages; per component and language the later document wins. `media_type`
+    /// defaults to Turtle.
+    #[wasm_bindgen(js_name = loadMessages)]
+    pub fn load_messages(&mut self, text: String, media_type: Option<String>) -> Result<(), JsError> {
         self.engine
-            .load_data(&text, &format_of(&media_type))
+            .load_messages(&text, &format_of(media_type.as_deref().unwrap_or("text/turtle")))
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Replace the live data graph with the parse of `text`.
+    ///
+    /// `base` is the document base relative IRIs in `text` resolve against — the
+    /// URL the document was fetched from, when the caller knows it. Omitted
+    /// (`undefined`/`null`), the parse falls back to the workspace's synthetic
+    /// string base; see [`FormEngine::parse_graph`].
+    #[wasm_bindgen(js_name = loadData)]
+    pub fn load_data(&mut self, text: String, media_type: String, base: Option<String>) -> Result<(), JsError> {
+        self.engine
+            .load_data(&text, &format_of(&media_type), base.as_deref())
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
@@ -192,6 +220,7 @@ impl Session {
             None => to_js(&ProjectedForm {
                 focus,
                 properties: vec![],
+                satisfied: vec![],
             }),
         }
     }
@@ -229,8 +258,162 @@ impl Session {
     }
 }
 
+#[wasm_bindgen]
+impl Session {
+    /// Compile the loaded shapes to SQL over the tables the RML mapping `rml`
+    /// (Turtle; RML-Core + RML-IO SQL tables + RML-LV views) describes, in
+    /// `dialect` (`"duckdb"`). Unqualified table names resolve against
+    /// `schema` (the catalog or schema the tables are attached under) when it
+    /// is given. RML terms outside the subset read are an error naming them.
+    ///
+    /// Returns a `SqlPlanDto`: per check, the SQL text and the result metadata
+    /// (`sourceShape`, `sourceConstraintComponent`, `severity`, `path`). Run
+    /// every check on the host's engine and pass the rows to `reportFromRows`.
+    /// Shapes the engine refuses (recursive ones, `sh:sparql`,
+    /// `sh:targetWhere`) are an error here, never skipped.
+    #[wasm_bindgen(js_name = compileSql)]
+    pub fn compile_sql(&mut self, rml: String, schema: Option<String>, dialect: String) -> Result<JsValue, JsError> {
+        let plan = self
+            .engine
+            .compile_sql(&rml, schema.as_deref(), &dialect)
+            .map_err(|e| JsError::new(&e.to_string()))?
+            .clone();
+        to_js(&sql::plan_dto(&self.engine, &plan, &dialect))
+    }
+
+    /// The validation report of the rows of the last `compileSql` plan: one
+    /// array of rows per check, in plan order, each row an array of the plan's
+    /// `columns` (`string | null`). Returns a `RudofReport`, worded as the
+    /// native engine words it.
+    #[wasm_bindgen(js_name = reportFromRows)]
+    pub fn report_from_rows(&self, rows: JsValue) -> Result<JsValue, JsError> {
+        let rows: Vec<Vec<Vec<Option<String>>>> = from_js(rows)?;
+        let outcome = self
+            .engine
+            .report_from_rows(&rows)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&validate::report_from_outcome(&outcome))
+    }
+}
+
 impl Default for Session {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    /// Turtle's `IRIREF` production excludes `|`, so `<http://example.org/bad|iri>`
+    /// is a syntax error. Under the reader's lax mode the offending triple was
+    /// simply dropped and `loadData` still reported success — a document could
+    /// then be made to conform by embedding a malformed IRI, because the triple
+    /// that would have violated a constraint was no longer in the graph. A
+    /// malformed IRI must surface as an error, not as an absence.
+    #[wasm_bindgen_test]
+    fn a_malformed_iri_is_a_parse_error_not_a_silently_dropped_triple() {
+        const DOC: &str = r#"@prefix ex: <http://example.org/> .
+ex:a a ex:T ; ex:p <http://example.org/bad|iri> .
+ex:a ex:q "ok" .
+"#;
+
+        let mut session = Session::new();
+        let outcome = session.load_data(DOC.to_string(), "text/turtle".to_string(), None);
+        assert!(
+            outcome.is_err(),
+            "loadData accepted a document whose IRI violates Turtle's IRIREF production"
+        );
+
+        // The same document with the `|` removed is valid and still loads.
+        let mut session = Session::new();
+        session
+            .load_data(DOC.replace('|', "-"), "text/turtle".to_string(), None)
+            .expect("a well-formed document must still load");
+    }
+
+    /// `#` passes Turtle's `IRIREF` character class but a second one does not
+    /// survive IRI parsing: RFC 3987 allows exactly one fragment separator. So
+    /// supplying a base must not launder this into a success — resolving a
+    /// *relative* reference is the only thing the base is there to do.
+    #[wasm_bindgen_test]
+    fn a_double_fragment_iri_stays_a_parse_error_even_with_a_base() {
+        const DOC: &str = r#"@prefix ex: <http://example.org/> .
+ex:a ex:p <http://example.org/thing#a#b> .
+"#;
+
+        for base in [None, Some("http://example.org/doc".to_string())] {
+            let mut session = Session::new();
+            assert!(
+                session
+                    .load_data(DOC.to_string(), "text/turtle".to_string(), base)
+                    .is_err(),
+                "loadData accepted an IRI carrying two fragment separators"
+            );
+        }
+    }
+
+    /// A **relative** IRI is not malformed: Turtle resolves it against the
+    /// document base. Strict reading with `base: None` turned every such
+    /// document into "No scheme found in an absolute IRI" — rejecting input RDF
+    /// calls legal. With a base threaded through, the triple loads and its IRIs
+    /// come out absolute.
+    #[wasm_bindgen_test]
+    fn a_relative_iri_resolves_against_the_caller_supplied_base() {
+        const DOC: &str = r#"@prefix ex: <http://example.org/> .
+<person/1> ex:knows <person/2> .
+"#;
+
+        let mut session = Session::new();
+        session
+            .load_data(
+                DOC.to_string(),
+                "text/turtle".to_string(),
+                Some("http://example.org/dir/doc.ttl".to_string()),
+            )
+            .expect("a relative IRI is legal Turtle and must load");
+
+        let quads: Vec<RudofQuad> = from_js(
+            session
+                .quads(JsValue::NULL, JsValue::NULL, JsValue::NULL)
+                .expect("quads"),
+        )
+        .expect("quads decode");
+
+        assert_eq!(quads.len(), 1, "the relative-IRI triple must be in the graph");
+        assert_eq!(quads[0].subject.value, "http://example.org/dir/person/1");
+        assert_eq!(quads[0].object.value, "http://example.org/dir/person/2");
+    }
+
+    /// With no base from the caller the parse still has to succeed: the façade
+    /// falls back to the workspace's synthetic string base (the same answer
+    /// `InputSpec::guess_base` gives RDF that arrived as a string), so the IRIs
+    /// resolve under `string://` rather than the document being rejected.
+    #[wasm_bindgen_test]
+    fn a_relative_iri_resolves_against_the_synthetic_base_when_none_is_given() {
+        const DOC: &str = r#"@prefix ex: <http://example.org/> .
+<person/1> ex:knows <person/2> .
+"#;
+
+        let mut session = Session::new();
+        session
+            .load_data(DOC.to_string(), "text/turtle".to_string(), None)
+            .expect("a relative IRI must load even with no caller base");
+
+        let quads: Vec<RudofQuad> = from_js(
+            session
+                .quads(JsValue::NULL, JsValue::NULL, JsValue::NULL)
+                .expect("quads"),
+        )
+        .expect("quads decode");
+
+        assert_eq!(quads.len(), 1, "the relative-IRI triple must be in the graph");
+        assert!(
+            quads[0].subject.value.starts_with("string:"),
+            "expected the synthetic string base, got {}",
+            quads[0].subject.value
+        );
     }
 }

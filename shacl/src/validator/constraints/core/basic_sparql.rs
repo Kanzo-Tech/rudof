@@ -9,12 +9,16 @@ use crate::ir::{IRComponent, IRShape};
 use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
 #[cfg(feature = "sparql")]
+use crate::validator::constraints::result_message;
+#[cfg(feature = "sparql")]
 use crate::validator::constraints::sparql::{inject_values_into_where, path_to_sparql};
 use crate::validator::iteration::ValueNodeIteration;
 #[cfg(feature = "sparql")]
 use crate::validator::nodes::ValueNodes;
 #[cfg(feature = "sparql")]
 use crate::validator::report::ValidationResult;
+#[cfg(feature = "sparql")]
+use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 #[cfg(feature = "sparql")]
 use rudof_rdf::SHACLPath;
@@ -52,7 +56,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for BasicSparql {
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
+        schema: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError>
     where
         S: QueryRDF,
@@ -116,10 +120,15 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for BasicSparql {
                     .and_then(|t| S::term_as_object(t).ok())
                     .or_else(|| S::term_as_object(focus_node).ok());
 
+                // Most specific message wins: the query's own `?message`
+                // binding, then the constraint's `sh:message`, then the
+                // shape's, then the catalog's for the component.
                 let message = if let Some(msg_term) = sol.find_solution("message") {
                     MessageMap::from(format!("{msg_term}"))
+                } else if let Some(m) = self.message() {
+                    m.clone()
                 } else {
-                    self.message().cloned().unwrap_or_default()
+                    result_message(schema, shape, &IriS::from(component), &[], value.as_ref())
                 };
 
                 results.push(

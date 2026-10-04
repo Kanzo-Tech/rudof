@@ -107,16 +107,43 @@ pub struct ValueConstraints {
     pub language_in: Option<Vec<String>>,
 }
 
+/// A conditional requirement on a node shape: `sh:or ( [ sh:not C ] T )` in SHACL
+/// Core, or this engine's own `sh:if` / `sh:then` / `sh:else`. The `then`/`else`
+/// property shapes are the fields shown when the condition (does not) hold.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ConditionalIR {
+    /// stable id of the condition shape (IRI, or "_:b" for a blank node).
+    pub condition_id: String,
+    /// id of the shape the `then` property shapes come from, so a consumer can
+    /// validate a focus against that branch alone and get results that name the
+    /// path at fault. A failed disjunction reports only that the node failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub then_id: Option<String>,
+    #[serde(default)]
+    pub then: Vec<PropertyShapeIR>,
+    #[serde(default, rename = "else")]
+    pub els: Vec<PropertyShapeIR>,
+}
+
+/// `sh:and` / `sh:or` / `sh:xone` / `sh:not`.
+///
+/// The members are [`ShapeIR`], not [`PropertyShapeIR`], because SHACL 4.6 defines
+/// every one of these over *shapes* and a shape need not have a path. Pathless
+/// members are in fact the common case in published profiles — `sh:or ( [sh:datatype
+/// xsd:date] [sh:datatype xsd:dateTime] )` is one shape per datatype — so typing
+/// these as property shapes does not simplify the model, it makes the usual member
+/// unrepresentable and forces the mapper to drop it.
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct LogicalConstraints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub or: Option<Vec<PropertyShapeIR>>,
+    pub or: Option<Vec<ShapeIR>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub xone: Option<Vec<PropertyShapeIR>>,
+    pub xone: Option<Vec<ShapeIR>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub and: Option<Vec<PropertyShapeIR>>,
+    pub and: Option<Vec<ShapeIR>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub not: Option<Box<PropertyShapeIR>>,
+    pub not: Option<Box<ShapeIR>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
@@ -128,18 +155,106 @@ pub struct PresentationHints {
     pub order: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
+    /// The best-scoring editor (`shui:` IRI), the first of `editors`. Absent when
+    /// no editor scores: the shape says nothing an editor is chosen by.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor: Option<String>,
+    /// Where `editor` comes from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor_source: Option<EditorSource>,
+    /// Every editor the SHACL UI score function returned for this shape node, best
+    /// first. Empty when `editor_source` is `branch` or `fallback`: those editors
+    /// were not scored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub editors: Vec<EditorScore>,
+    /// The `rdfs:label`s the shapes graph holds for the predicate, when the path is
+    /// a predicate IRI (SHACL UI, Property Labels, step 3).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path_labels: Vec<LangString>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_line: Option<bool>,
 }
 
+/// Where a shape's editor comes from. `declared` and `scored` are SHACL UI's;
+/// `branch` and `fallback` are not.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum EditorSource {
+    /// An explicit `shui:editor` on the shape, which wins the score function.
+    Declared,
+    /// The best result of the score function over the specification's scoring data.
+    Scored,
+    /// The score function returned nothing for the shape; the editor is the best
+    /// for its first `sh:or` / `sh:xone` branch. Not in SHACL UI.
+    Branch,
+    /// Nothing scored, here or in a branch: the rule of `shapes::fallback_editor`.
+    /// Not in SHACL UI.
+    Fallback,
+}
+
+/// One result of the SHACL UI score function: an editor and the score of the
+/// `shui:WidgetScore` that matched.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct EditorScore {
+    pub editor: String,
+    pub score: f64,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ComponentIR {
     pub iri: String,
     pub params: HashMap<String, Vec<TermValue>>,
+}
+
+/// A shape: a set of constraints, plus what they are about.
+///
+/// `path` is what says which. With a path the shape constrains the values reached
+/// by it from the focus node — a property shape, and what a form builds a field
+/// from. Without one it constrains the focus node itself: "be an IRI", "be an
+/// `xsd:date`". The pathless form has no field of its own and appears only inside
+/// [`LogicalConstraints`], where the node in focus is a value of the enclosing
+/// property.
+///
+/// One struct rather than two, so a combinator can hold either kind without a
+/// conversion between them, and `serde` skips the absent path.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ShapeIR {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathExpr>,
+    /// Canonical SPARQL-ish path key. Absent exactly when `path` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_key: Option<String>,
+    pub cardinality: Cardinality,
+    pub value: ValueConstraints,
+    pub logical: LogicalConstraints,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
+    pub presentation: PresentationHints,
+    pub components: Vec<ComponentIR>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deactivated: Option<bool>,
+}
+
+impl From<PropertyShapeIR> for ShapeIR {
+    fn from(p: PropertyShapeIR) -> Self {
+        Self {
+            id: p.id,
+            path: Some(p.path),
+            path_key: Some(p.path_key),
+            cardinality: p.cardinality,
+            value: p.value,
+            logical: p.logical,
+            node: p.node,
+            presentation: p.presentation,
+            components: p.components,
+            deactivated: p.deactivated,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -159,6 +274,12 @@ pub struct PropertyShapeIR {
     pub node: Option<String>,
     pub presentation: PresentationHints,
     pub components: Vec<ComponentIR>,
+    /// `sh:deactivated true` (SHACL 2.1.6): the shape is switched off, so every
+    /// term conforms to it and the validator reports nothing for it. Emitted so a
+    /// form consumer can render nothing for it rather than collecting input that
+    /// is never validated. `None` when the shape is active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deactivated: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -169,8 +290,33 @@ pub struct NodeShapeIR {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instance_class: Option<String>,
     pub properties: Vec<PropertyShapeIR>,
+    #[serde(default)]
+    pub conditionals: Vec<ConditionalIR>,
+    /// Combinators declared on the node shape itself, constraining the focus node
+    /// rather than one of its properties. The same field as on a property shape,
+    /// because it is the same construct. Profiles use it to name a value kind once
+    /// and reuse it: DCAT-AP's `:DateOrDateTimeDataType_Shape` is nothing but an
+    /// `sh:or` of four datatypes, and a dozen properties reach it by `sh:node`.
+    #[serde(default)]
+    pub logical: LogicalConstraints,
+    /// `sh:closed true` (SHACL 4.8.1): the focus node may carry no property
+    /// beyond those the shape declares. `None` when open (`sh:closed` absent, or
+    /// stated `false`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<bool>,
+    /// `sh:ignoredProperties`: the predicates a closed shape permits anyway
+    /// (`rdf:type` being the usual one). Meaningless without `closed`, and
+    /// inseparable from it — SHACL parses the two as a single component, and a
+    /// consumer enforcing `closed` without these would reject exactly what the
+    /// profile went out of its way to allow. Sorted, so the payload is stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignored_properties: Vec<String>,
+    /// `sh:deactivated true` (SHACL 2.1.6): the shape is switched off, so every
+    /// term conforms to it and the validator reports nothing for it. Emitted so a
+    /// form consumer can render nothing for it rather than collecting input that
+    /// is never validated. `None` when the shape is active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deactivated: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -203,12 +349,20 @@ pub struct ProjectedValue {
 pub struct ProjectedProperty {
     pub path_key: String,
     pub values: Vec<ProjectedValue>,
+    /// The `rdfs:label`s the data graph holds for the predicate, when the path is a
+    /// predicate IRI (SHACL UI, Property Labels, step 2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path_labels: Vec<LangString>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectedForm {
     pub focus: TermValue,
     pub properties: Vec<ProjectedProperty>,
+    /// condition_ids (matching `ConditionalIR.condition_id`) whose
+    /// condition the focus currently conforms to — the live "satisfied" flag.
+    #[serde(default)]
+    pub satisfied: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -224,13 +378,32 @@ pub struct RudofResult {
     pub focus_node: TermValue,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<TermValue>,
+    /// The path as its canonical key — the SAME string `shapes::path_key` gives
+    /// the projection, because the consumer files an error under
+    /// `${focusNode}|${pathKey}` and a field it cannot match is an error that
+    /// silently becomes node-level.
+    ///
+    /// `path` above carries only a predicate, so every inverse, sequence,
+    /// alternative and quantified path reported its violation with no path at
+    /// all. That was survivable while those fields were read-only. It is not
+    /// now: hundreds of alternative-path fields carry `sh:minCount 1`, and a
+    /// required field whose error cannot point at it is a form that says
+    /// "something in here is wrong" and nothing else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<TermValue>,
-    pub message: Vec<String>,
+    /// Lang-tagged messages: the engine's default (untagged, `language: ""`)
+    /// merged with the shape's per-language `sh:message` entries. The JS side
+    /// picks the best by locale; untagged is the fallback.
+    pub message: Vec<LangString>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub severity: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_constraint_component: Option<String>,
+    /// `sh:sourceShape`: the shape that declares the violated constraint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_shape: Option<TermValue>,
 }
 
 // The validation report crossing the ABI (also produced by the Node fake).
@@ -238,4 +411,41 @@ pub struct RudofResult {
 pub struct RudofReport {
     pub conforms: bool,
     pub results: Vec<RudofResult>,
+}
+
+/// One check of a SQL plan: a query whose rows are validation results, and
+/// what every one of those results carries besides its rows.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SqlCheckDto {
+    /// The query, rendered for the plan's dialect. Its columns are the plan's
+    /// `columns`.
+    pub sql: String,
+    /// `sh:sourceShape`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_shape: Option<TermValue>,
+    /// `sh:sourceConstraintComponent`.
+    pub source_constraint_component: String,
+    /// `sh:resultSeverity`.
+    pub severity: String,
+    /// `sh:resultPath`, for a predicate path (a row's `path` column overrides it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<TermValue>,
+    /// The path as its canonical key, as on [`RudofResult::path_key`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_key: Option<String>,
+}
+
+/// The SQL plan of the loaded shapes: one check per shape, constraint
+/// component and context. Run each `sql`, then hand the rows, one array per
+/// check and in this order, to `reportFromRows`.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SqlPlanDto {
+    pub dialect: String,
+    /// The columns of every check's rows: the focus term, the value term and
+    /// a path override, each term as kind (`I`/`B`/`L`), lexical form,
+    /// datatype and language.
+    pub columns: Vec<String>,
+    pub checks: Vec<SqlCheckDto>,
 }

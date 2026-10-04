@@ -27,6 +27,10 @@ pub enum ShaclValidationMode {
     Native,
     /// SPARQL-based engine using SPARQL queries to validate the data
     Sparql,
+    /// SQL engine: the shapes compiled to SQL and run on an in-process DuckDB
+    /// holding the data as a triple table (needs the `duckdb` feature; hosts
+    /// with their own engine use `Rudof::compile_sql`)
+    Sql,
 }
 
 /// Sorting modes for validation results supported by Rudof.
@@ -214,6 +218,7 @@ impl Display for ShaclValidationMode {
         match self {
             ShaclValidationMode::Native => write!(dest, "native"),
             ShaclValidationMode::Sparql => write!(dest, "sparql"),
+            ShaclValidationMode::Sql => write!(dest, "sql"),
         }
     }
 }
@@ -225,6 +230,7 @@ impl FromStr for ShaclValidationMode {
         match s.to_lowercase().as_str() {
             "native" => Ok(ShaclValidationMode::Native),
             "sparql" => Ok(ShaclValidationMode::Sparql),
+            "sql" => Ok(ShaclValidationMode::Sql),
             other => Err(ValidationError::UnsupportedSHACLValidationMode {
                 mode: other.to_string(),
             }),
@@ -237,6 +243,7 @@ impl From<ShaclValidationMode> for InnerShaclValidationMode {
         match mode {
             ShaclValidationMode::Native => InnerShaclValidationMode::Native,
             ShaclValidationMode::Sparql => InnerShaclValidationMode::Sparql,
+            ShaclValidationMode::Sql => InnerShaclValidationMode::Sql,
         }
     }
 }
@@ -593,6 +600,12 @@ impl TryFrom<ResultShaclValidationFormat> for RDFFormat {
             ResultShaclValidationFormat::TriG => Ok(RDFFormat::TriG),
             ResultShaclValidationFormat::N3 => Ok(RDFFormat::N3),
             ResultShaclValidationFormat::NQuads => Ok(RDFFormat::NQuads),
+            // A SHACL validation report *is* an RDF graph (SHACL §3.6), so its
+            // JSON serialization is JSON-LD — the same mapping `RDFFormat` itself
+            // already publishes ("json" is one of `RDFFormat::JsonLd`'s
+            // extensions). Nothing else here is a JSON of the report; it is a
+            // JSON of some other, invented, shape.
+            ResultShaclValidationFormat::Json => Ok(RDFFormat::JsonLd),
             other => Err(ValidationError::UnsupportedConversionToRDFFormat {
                 format: other.to_string(),
             }),

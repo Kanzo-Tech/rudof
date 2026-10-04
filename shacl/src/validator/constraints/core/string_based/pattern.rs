@@ -3,6 +3,7 @@ use crate::ir::IRSchema;
 use crate::ir::components::Pattern;
 #[cfg(feature = "sparql")]
 use crate::ir::{IRComponent, IRShape};
+use crate::validator::constraints::Parameters;
 #[cfg(feature = "sparql")]
 use crate::validator::constraints::sparql_ask;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
@@ -38,8 +39,8 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Pattern {
         Ok(if violates { Check::Violate } else { Check::Hold })
     }
 
-    fn message(&self, _schema: &IRSchema) -> String {
-        format!("Pattern({}) not satisfied", self.pattern())
+    fn parameters(&self, _schema: &IRSchema) -> Parameters {
+        [("pattern", self.pattern().to_string())].into()
     }
 
     #[cfg(feature = "sparql")]
@@ -51,7 +52,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Pattern {
         value_nodes: &ValueNodes<S>,
         _: Option<&IRShape>,
         maybe_path: Option<&SHACLPath>,
-        _: &IRSchema,
+        schema: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError>
     where
         S: QueryRDF,
@@ -66,13 +67,15 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Pattern {
                 vn, self.pattern(), flags
             },
         };
+        let parameters = <Self as ConstraintComponent<S>>::parameters(self, schema);
         sparql_ask(
             component,
             shape,
             store,
             value_nodes,
             query_fn,
-            &format!("Pattern({}) not satisfied", self.pattern()),
+            schema,
+            &parameters,
             maybe_path,
         )
     }

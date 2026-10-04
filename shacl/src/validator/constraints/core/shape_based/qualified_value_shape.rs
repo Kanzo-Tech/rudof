@@ -1,8 +1,8 @@
 use crate::error::ValidationError;
 use crate::ir::components::QualifiedValueShape;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::{Engine, Validate};
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
@@ -67,13 +67,16 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for QualifiedValueShape {
             if let Some(min_count) = self.qualified_min_count()
                 && valid_counter < min_count
             {
-                let component = Object::iri(ShaclVocab::sh_qualified_min_count_constraint_component());
-                let msg = format!(
-                    "QualifiedValueShape: only {valid_counter} nodes conform to shape {}, which is less than minCount: {min_count}. Focus node: {fnode}",
-                    shape.id()
+                let component = ShaclVocab::sh_qualified_min_count_constraint_component();
+                let message = result_message(
+                    shapes_graph,
+                    shape,
+                    &component,
+                    &[("qualifiedMinCount", min_count.to_string())],
+                    None,
                 );
-                let vr = ValidationResult::new(fnode_obj.clone(), component, shape.severity().clone())
-                    .with_message(MessageMap::from(msg))
+                let vr = ValidationResult::new(fnode_obj.clone(), Object::Iri(component), shape.severity().clone())
+                    .with_message(message)
                     .with_path(maybe_path.cloned())
                     .with_source(Some(shape.id().clone()));
                 validation_results.insert(vr);
@@ -82,14 +85,17 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for QualifiedValueShape {
             if let Some(max_count) = self.qualified_max_count()
                 && valid_counter > max_count
             {
-                let component = Object::iri(ShaclVocab::sh_qualified_max_count_constraint_component());
-                let msg = format!(
-                    "QualifiedValueShape: {valid_counter} nodes conform to shape {}, which is grater than maxCount: {max_count}. Focus node: {fnode}",
-                    shape.id()
+                let component = ShaclVocab::sh_qualified_max_count_constraint_component();
+                let message = result_message(
+                    shapes_graph,
+                    shape,
+                    &component,
+                    &[("qualifiedMaxCount", max_count.to_string())],
+                    None,
                 );
-                let vr = ValidationResult::new(fnode_obj, component, shape.severity().clone())
+                let vr = ValidationResult::new(fnode_obj, Object::Iri(component), shape.severity().clone())
                     .with_path(maybe_path.cloned())
-                    .with_message(MessageMap::from(msg))
+                    .with_message(message)
                     .with_source(Some(shape.id().clone()));
                 validation_results.insert(vr);
             }

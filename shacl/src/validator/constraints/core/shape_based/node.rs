@@ -1,12 +1,13 @@
 use crate::error::ValidationError;
 use crate::ir::components::Node;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::MessageMap;
 use crate::validator::constraints::ConstraintComponent;
+use crate::validator::constraints::result_message;
 use crate::validator::engine::{Engine, Validate};
 use crate::validator::iteration::ValueNodeIteration;
 use crate::validator::nodes::{FocusNodes, ValueNodes};
 use crate::validator::report::ValidationResult;
+use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
@@ -30,6 +31,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Node {
         maybe_path: Option<&SHACLPath>,
         shapes_graph: &IRSchema,
     ) -> Result<Vec<ValidationResult>, ValidationError> {
+        let component_iri = IriS::from(component);
         let mut validation_results = Vec::new();
         let shape_idx = self.shape();
         let node_shape = shapes_graph.get_shape_from_idx_e(shape_idx)?;
@@ -47,22 +49,21 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Node {
                         .map(|r| !r.is_empty())
                         .unwrap_or(false)
                 } else {
-                    let inner_results =
-                        node_shape.validate(store, engine, Some(&focus_nodes), Some(shape), shapes_graph);
-                    match inner_results {
-                        Ok(results) => !results.is_empty(),
-                        Err(e) => return Err(e),
-                    }
+                    !node_shape
+                        .validate(store, engine, Some(&focus_nodes), Some(shape), shapes_graph)?
+                        .is_empty()
                 };
 
                 if had_violations {
-                    let msg = format!(
-                        "Shape {}: Node({node_shape}) constraint not satisfied for {node}",
-                        shape.id()
-                    );
                     let vr = ValidationResult::new(fnode_obj.clone(), component_obj.clone(), shape.severity().clone())
                         .with_path(maybe_path.cloned())
-                        .with_message(MessageMap::from(msg))
+                        .with_message(result_message(
+                            shapes_graph,
+                            shape,
+                            &component_iri,
+                            &[],
+                            Some(&node_object),
+                        ))
                         .with_value(Some(node_object.clone()))
                         .with_source(Some(shape.id().clone()));
                     validation_results.push(vr);

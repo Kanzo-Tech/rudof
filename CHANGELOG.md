@@ -3,7 +3,16 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 
 ## [Unreleased]
 ### Added
+- SHACL SQL engine (`shacl::validator::sql`): `compile_sql` turns a shapes graph into set-based SQL checks over a relational mapping (`TripleTable` for arbitrary RDF, `Tables` for ordinary tables described by an RML 2.0 mapping: RML-Core term maps and joins, RML-IO SQL tables, RML-LV logical views with inner/left joins), with DuckDB as the first dialect, behind the `sql` feature. All of SHACL Core compiles; recursive shapes, SHACL-SPARQL, `sh:targetWhere` and reifier shapes are refused. The W3C core suite runs through both the native and the SQL engine
+- `ShaclValidationMode::Sql` (shacl, rudof_lib, CLI `--mode sql` with the `duckdb` feature) and `Rudof::compile_sql`
+- RML reading: table names and references are read as SQL identifiers (delimited, qualified); a literal keeps its natural lexical form under an `rml:datatype` override (timestamps, binary, time, double specials); a mapping names one `rml:Source`, located by the schema the host passes
+- wasm: `Session.compileSql(rmlTurtle, schema?, dialect)` and `Session.reportFromRows`; validation results carry `sourceShape`
 ### Fixed
+- SHACL `sh:minLength` / `sh:maxLength` count characters (SPARQL `STRLEN`), not UTF-8 bytes
+- SHACL value ranges compare numerics by value across every XSD numeric type (e.g. `xsd:long` against `xsd:integer`); `xsd:int` literals are checked for well-formedness; `xsd:short` values keep their datatype in reports
+- SHACL `sh:closed` on a property shape checks its value nodes (SHACL §4.8.1), not the focus node
+- SQL engine: dateTimes with and without a timezone follow the XSD 1.1 partial order (determinate beyond 14 hours)
+- CI: clippy 1.99 findings; the wasm-bindgen CLI version is read from Cargo.lock
 ### Changed
 ### Removed
 

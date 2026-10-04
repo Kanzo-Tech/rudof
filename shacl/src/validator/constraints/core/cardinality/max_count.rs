@@ -1,5 +1,6 @@
 use crate::error::ValidationError;
 use crate::ir::IRSchema;
+use crate::validator::constraints::Parameters;
 use crate::validator::constraints::{Check, CheckCtx, ConstraintComponent};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::FocusNodeIteration;
@@ -25,7 +26,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for MaxCount {
         })
     }
 
-    fn message(&self, _schema: &IRSchema) -> String {
-        format!("MaxCount({}) not satisfied", self.0)
+    fn parameters(&self, _schema: &IRSchema) -> Parameters {
+        [("maxCount", self.0.to_string())].into()
     }
 }

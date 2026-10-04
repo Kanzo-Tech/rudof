@@ -3,6 +3,7 @@
 
 pub mod ast;
 pub mod ir;
+pub mod messages;
 pub mod rdf;
 // Capa-4 graph-subset recorder (prototype): a generic, dyn/Arc-free decorator
 // over `NeighsRDF::triples_matching` that captures the visited frontier.

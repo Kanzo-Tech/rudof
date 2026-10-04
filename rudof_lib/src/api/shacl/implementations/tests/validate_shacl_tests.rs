@@ -793,3 +793,77 @@ fn test_validate_multiple_violations() {
         result
     );
 }
+
+/// `--result-format json` used to hit a `todo!()` and abort the process. A SHACL
+/// validation report is an RDF graph (SHACL §3.6), so its JSON serialization is
+/// JSON-LD — the mapping `RDFFormat` already publishes, since "json" is one of
+/// `RDFFormat::JsonLd`'s own extensions.
+#[test]
+fn test_validate_shacl_json_result_format() {
+    let mut rudof = Rudof::new(RudofConfig::default());
+
+    let schema = InputSpec::str(
+        r#"
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+        ex:PersonShape
+            a sh:NodeShape ;
+            sh:targetClass ex:Person ;
+            sh:property [
+                sh:path ex:name ;
+                sh:datatype xsd:string ;
+                sh:minCount 1 ;
+            ] .
+        "#,
+    );
+
+    load_shacl_schema(&mut rudof, Some(&schema), Some(&ShaclFormat::Turtle), None, None).unwrap();
+
+    let data = InputSpec::str(
+        r#"
+        @prefix ex: <http://example.org/> .
+
+        ex:Alice a ex:Person .
+        "#,
+    );
+
+    load_data(
+        &mut rudof,
+        Some(&[data]),
+        Some(&DataFormat::Turtle),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    validate_shacl(&mut rudof, None).unwrap();
+
+    let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Json));
+
+    // It is JSON, and it is the report: a `sh:ValidationReport` carrying the one
+    // `sh:MinCountConstraintComponent` violation raised on ex:Alice.
+    let json: serde_json::Value = serde_json::from_str(&result).expect("the emitted result must parse as JSON");
+    assert!(json.is_array() || json.is_object(), "unexpected JSON-LD shape: {json}");
+    assert!(
+        result.contains("http://www.w3.org/ns/shacl#ValidationReport"),
+        "no sh:ValidationReport in {result}"
+    );
+    assert!(
+        result.contains("http://www.w3.org/ns/shacl#MinCountConstraintComponent"),
+        "the violation is missing from {result}"
+    );
+    assert!(
+        result.contains("http://example.org/Alice"),
+        "the focus node is missing from {result}"
+    );
+
+    println!(
+        "\n===== test_validate_shacl_json_result_format =====\n{}============================================",
+        result
+    );
+}

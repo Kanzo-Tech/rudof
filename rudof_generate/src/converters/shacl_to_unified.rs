@@ -165,9 +165,13 @@ impl ShaclToUnified {
 
     fn convert_component(&self, component: &ASTComponent, constraints: &mut Vec<UnifiedConstraint>) -> bool {
         match component {
-            ASTComponent::Datatype(datatype) => {
-                constraints.push(UnifiedConstraint::Datatype(datatype.to_string()));
-                true
+            // The generator has no "one of these datatypes" constraint.
+            ASTComponent::Datatype(datatypes) => match datatypes.as_slice() {
+                [datatype] => {
+                    constraints.push(UnifiedConstraint::Datatype(datatype.to_string()));
+                    true
+                },
+                _ => false,
             },
             ASTComponent::NodeKind(node_kind) => {
                 let unified_nk = match *node_kind {

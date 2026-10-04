@@ -15,7 +15,9 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ASTComponent {
     Class(Object),
-    Datatype(IriRef),
+    /// `sh:datatype`: the datatype of every value node must be one of these — a single
+    /// IRI, or the members of the SHACL list SHACL 1.2 Core allows.
+    Datatype(Vec<IriRef>),
     NodeKind(NodeKind),
     MinCount(isize),
     MaxCount(isize),
@@ -39,6 +41,11 @@ pub enum ASTComponent {
     And(Vec<Object>),
     Not(Object),
     Xone(Vec<Object>),
+    If {
+        cond: Object,
+        then_: Option<Object>,
+        else_: Option<Object>,
+    },
     Closed {
         is_closed: bool,
         ignored_properties: HashSet<IriS>,
@@ -79,8 +86,9 @@ impl ComponentVisitor for DisplayVisitor<'_, '_> {
     fn visit_class(&mut self, class: &Object) -> Result<(), std::fmt::Error> {
         write!(self.f, "class({class})")
     }
-    fn visit_datatype(&mut self, iri: &IriRef) -> Result<(), std::fmt::Error> {
-        write!(self.f, "datatype({iri})")
+    fn visit_datatype(&mut self, iris: &[IriRef]) -> Result<(), std::fmt::Error> {
+        let iris = iris.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ");
+        write!(self.f, "datatype({iris})")
     }
     fn visit_node_kind(&mut self, node: &NodeKind) -> Result<(), std::fmt::Error> {
         write!(self.f, "nodeKind({node})")
@@ -148,6 +156,21 @@ impl ComponentVisitor for DisplayVisitor<'_, '_> {
     fn visit_xone(&mut self, shapes: &[Object]) -> Result<(), std::fmt::Error> {
         let str = shapes.iter().map(|s| s.to_string()).join(", ");
         write!(self.f, "xone[{str}]")
+    }
+    fn visit_if(
+        &mut self,
+        cond: &Object,
+        then_: Option<&Object>,
+        else_: Option<&Object>,
+    ) -> Result<(), std::fmt::Error> {
+        write!(self.f, "if({cond}")?;
+        if let Some(t) = then_ {
+            write!(self.f, ", then: {t}")?;
+        }
+        if let Some(e) = else_ {
+            write!(self.f, ", else: {e}")?;
+        }
+        write!(self.f, ")")
     }
     fn visit_closed(&mut self, is_closed: bool, ignored: &HashSet<IriS>) -> Result<(), std::fmt::Error> {
         write!(
@@ -245,7 +268,7 @@ impl ComponentVisitor for ConstraintIriVisitor {
     fn visit_class(&mut self, _: &Object) -> Result<IriS, Infallible> {
         Ok(ShaclVocab::sh_class())
     }
-    fn visit_datatype(&mut self, _: &IriRef) -> Result<IriS, Infallible> {
+    fn visit_datatype(&mut self, _: &[IriRef]) -> Result<IriS, Infallible> {
         Ok(ShaclVocab::sh_datatype())
     }
     fn visit_node_kind(&mut self, _: &NodeKind) -> Result<IriS, Infallible> {
@@ -307,6 +330,9 @@ impl ComponentVisitor for ConstraintIriVisitor {
     }
     fn visit_xone(&mut self, _: &[Object]) -> Result<IriS, Infallible> {
         Ok(ShaclVocab::sh_xone())
+    }
+    fn visit_if(&mut self, _: &Object, _: Option<&Object>, _: Option<&Object>) -> Result<IriS, Infallible> {
+        Ok(ShaclVocab::sh_if())
     }
     fn visit_closed(&mut self, _: bool, _: &HashSet<IriS>) -> Result<IriS, Infallible> {
         Ok(ShaclVocab::sh_closed())

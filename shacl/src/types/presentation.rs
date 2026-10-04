@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// `shui:editor` / `shui:viewer` IRIs without interpreting them. Downstream
 /// consumers (e.g. metadata-form) map those IRIs to concrete widgets. See
 /// [`crate::vocab::shui`] for the term constants. Namespace:
-/// <https://www.w3.org/TR/shacl12-ui/> (`http://www.w3.org/ns/shacl-ui#`).
+/// <https://www.w3.org/TR/shacl12-ui/> (`http://www.w3.org/ns/shacl-ui/`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Presentation {
     /// `shui:editor` — the suggested editor class IRI.

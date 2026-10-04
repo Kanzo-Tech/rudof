@@ -15,6 +15,11 @@ pub enum ShaclValidationMode {
     /// SPARQL-based engine using SPARQL queries to validate the data
     #[cfg(feature = "sparql")]
     Sparql,
+    /// SQL engine: the shapes graph compiled to set-based SQL queries (see
+    /// [`crate::validator::sql`]). A processor runs it on an in-process DuckDB
+    /// when the `duckdb` feature is on; otherwise a host compiles the plan
+    /// itself with [`compile_sql`](crate::validator::sql::compile_sql).
+    Sql,
 }
 
 impl Display for ShaclValidationMode {
@@ -23,6 +28,7 @@ impl Display for ShaclValidationMode {
             ShaclValidationMode::Native => write!(f, "native"),
             #[cfg(feature = "sparql")]
             ShaclValidationMode::Sparql => write!(f, "sparql"),
+            ShaclValidationMode::Sql => write!(f, "sql"),
         }
     }
 }
@@ -35,6 +41,7 @@ impl FromStr for ShaclValidationMode {
             "native" => Ok(Self::Native),
             #[cfg(feature = "sparql")]
             "sparql" => Ok(Self::Sparql),
+            "sql" => Ok(Self::Sql),
             other => Err(Self::Err::UnsupportedMode(other.to_string())),
         }
     }

@@ -1,8 +1,8 @@
 use crate::error::ValidationError;
 use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::validator::constraints::ConstraintComponent;
 use crate::validator::constraints::display;
 use crate::validator::constraints::result_message;
+use crate::validator::constraints::{ConstraintComponent, Parameters};
 use crate::validator::engine::Engine;
 use crate::validator::iteration::{IterationStrategy, ValueNodeIteration};
 use crate::validator::nodes::ValueNodes;
@@ -23,6 +23,10 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Disjoint<'_> {
 
     fn strategy(&self) -> Self::Strategy {
         ValueNodeIteration
+    }
+
+    fn parameters(&self, schema: &IRSchema) -> Parameters {
+        [("disjoint", display(schema, &Object::Iri(self.0.clone())))].into()
     }
 
     fn validate_native<E: Engine<S>>(
@@ -56,7 +60,7 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for Disjoint<'_> {
         };
 
         let strategy = ValueNodeIteration;
-        let parameters = [("disjoint", display(schema, &Object::Iri(self.0.clone())))];
+        let parameters = <Self as ConstraintComponent<S>>::parameters(self, schema);
         let mut results = Vec::new();
         for (focus_node, item) in strategy.iterate(value_nodes) {
             let Ok(focus) = S::term_as_object(focus_node) else {

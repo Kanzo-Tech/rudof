@@ -92,6 +92,11 @@ impl IRSchema {
         self.base.as_ref()
     }
 
+    /// The dependencies between shapes (`sh:node`, `sh:and`, `sh:property`, …).
+    pub fn dependency_graph(&self) -> &DependencyGraph {
+        &self.dependency_graph
+    }
+
     pub fn get_shape_from_idx(&self, shape_idx: &ShapeLabelIdx) -> Option<&IRShape> {
         self.shapes.get(shape_idx)
     }

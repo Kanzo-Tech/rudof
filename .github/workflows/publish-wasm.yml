@@ -42,12 +42,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # Build with wasm-bindgen-cli (NOT wasm-pack, which is archived). The CLI
-      # version MUST match the `wasm-bindgen = "=0.2.120"` lib pin, or the module
-      # is ABI-mismatched and fails at instantiation.
+      # version MUST match the `wasm-bindgen` lib the lockfile resolves, or the
+      # module is ABI-mismatched and fails at instantiation.
+      - name: Read the wasm-bindgen version from Cargo.lock
+        id: wasm-bindgen
+        run: echo "version=$(cargo pkgid -p wasm-bindgen | sed 's/.*@//')" >> "$GITHUB_OUTPUT"
       - name: Install wasm-bindgen-cli
         uses: taiki-e/install-action@v2
         with:
-          tool: wasm-bindgen-cli@0.2.120
+          tool: wasm-bindgen-cli@${{ steps.wasm-bindgen.outputs.version }}
 
       # wasm-opt comes from the binaryen RELEASE, not from install-action, which
       # carries no manifest for it (nor for binaryen) at any version: asking it

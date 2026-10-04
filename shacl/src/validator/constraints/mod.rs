@@ -279,6 +279,55 @@ pub(crate) fn validate_native<S: NeighsRDF + Debug, E: Engine<S>>(
     }
 }
 
+/// The message parameters of `component`, as its native checker states them —
+/// the one source the SQL engine's report reads too, so both engines word a
+/// result alike. `sh:qualifiedValueShape` names its two components' parameters
+/// itself (`qualifiedMinCount` / `qualifiedMaxCount`), so it has none here.
+///
+/// The parameters do not depend on the data graph; the store type the generic
+/// trait is instantiated at is only there to name an impl.
+#[cfg(feature = "sql")]
+pub(crate) fn component_parameters(component: &IRComponent, schema: &IRSchema) -> Parameters {
+    type S = rudof_rdf::backend::OxigraphInMemory;
+    macro_rules! params {
+        ($checker:expr) => {
+            ConstraintComponent::<S>::parameters(&$checker, schema)
+        };
+    }
+    match component {
+        IRComponent::Class(c) => params!(core::value::Class(c)),
+        IRComponent::Datatype(c) => params!(core::value::Datatype(c)),
+        IRComponent::NodeKind(c) => params!(core::value::Nodekind(c)),
+        IRComponent::MinCount(c) => params!(core::cardinality::MinCount(*c)),
+        IRComponent::MaxCount(c) => params!(core::cardinality::MaxCount(*c)),
+        IRComponent::MinExclusive(c) => params!(core::value_range::MinExclusive(c)),
+        IRComponent::MaxExclusive(c) => params!(core::value_range::MaxExclusive(c)),
+        IRComponent::MinInclusive(c) => params!(core::value_range::MinInclusive(c)),
+        IRComponent::MaxInclusive(c) => params!(core::value_range::MaxInclusive(c)),
+        IRComponent::MinLength(c) => params!(core::string_based::MinLength(*c)),
+        IRComponent::MaxLength(c) => params!(core::string_based::MaxLength(*c)),
+        IRComponent::Pattern(c) => params!(*c),
+        IRComponent::UniqueLang(c) => params!(core::string_based::UniqueLang(*c)),
+        IRComponent::LanguageIn(c) => params!(core::string_based::LanguageIn(c)),
+        IRComponent::Equals(c) => params!(core::property_pair::Equals(c)),
+        IRComponent::Disjoint(c) => params!(core::property_pair::Disjoint(c)),
+        IRComponent::LessThan(c) => params!(core::property_pair::LessThan(c)),
+        IRComponent::LessThanOrEquals(c) => params!(core::property_pair::LessThanOrEquals(c)),
+        IRComponent::Or(c) => params!(*c),
+        IRComponent::And(c) => params!(*c),
+        IRComponent::Not(c) => params!(*c),
+        IRComponent::Xone(c) => params!(*c),
+        IRComponent::If(c) => params!(*c),
+        IRComponent::Node(c) => params!(*c),
+        IRComponent::HasValue(c) => params!(core::other::HasValue(c)),
+        IRComponent::In(c) => params!(core::other::In(c)),
+        IRComponent::QualifiedValueShape(c) => params!(*c),
+        IRComponent::Closed(c) => params!(*c),
+        IRComponent::Deactivated(_) => params!(core::non_shape::Deactivated),
+        IRComponent::BasicSparql(c) => params!(*c),
+    }
+}
+
 /// SPARQL constraint dispatch (mirror of [`validate_native`], same variants).
 #[cfg(feature = "sparql")]
 pub(crate) fn validate_sparql<S: QueryRDF + NeighsRDF + Debug>(

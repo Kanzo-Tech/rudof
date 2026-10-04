@@ -39,12 +39,12 @@ impl<S: NeighsRDF + Debug> ConstraintComponent<S> for MaxLength {
             true
         } else if vn.is_iri() {
             match S::term_as_iri(vn) {
-                Ok(iri) => iri.as_str().len() > bound,
+                Ok(iri) => iri.as_str().chars().count() > bound,
                 Err(_) => true,
             }
         } else if vn.is_literal() {
             match S::term_as_literal(vn) {
-                Ok(lit) => lit.lexical_form().len() > bound,
+                Ok(lit) => lit.lexical_form().chars().count() > bound,
                 Err(_) => true,
             }
         } else {

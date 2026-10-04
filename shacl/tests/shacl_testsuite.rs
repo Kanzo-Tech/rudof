@@ -9,6 +9,34 @@ use shacl::validator::processor::{DataValidation, ShaclProcessor};
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 
+/// One W3C test per line, run through every engine: a `native` and a `sql`
+/// module of `#[test]`s over the same fixtures. The SQL run loads each data
+/// graph into an in-memory DuckDB as a triple table, compiles the shapes with
+/// that mapping, and must produce a report equal to the expected one (the
+/// equality ignores messages), as the native run must.
+#[cfg(not(target_family = "wasm"))]
+macro_rules! w3c_tests {
+    ($dir:literal; $($name:ident => $file:literal),* $(,)?) => {
+        mod native {
+            $(
+                #[test]
+                fn $name() -> Result<(), crate::common::TestSuiteError> {
+                    crate::test(format!("{}{}.ttl", $dir, $file), shacl::validator::ShaclValidationMode::Native)
+                }
+            )*
+        }
+
+        mod sql {
+            $(
+                #[test]
+                fn $name() -> Result<(), crate::common::TestSuiteError> {
+                    crate::test(format!("{}{}.ttl", $dir, $file), shacl::validator::ShaclValidationMode::Sql)
+                }
+            )*
+        }
+    };
+}
+
 #[cfg(not(target_family = "wasm"))]
 mod common;
 #[cfg(not(target_family = "wasm"))]

@@ -246,23 +246,18 @@ impl NumericLiteral {
 
     /// Checks if this numeric literal is less than another.
     ///
-    /// Optimized for integer comparisons; falls back to decimal conversion
-    /// for mixed-type comparisons.
+    /// The order of [`PartialOrd`], with numeric type promotion; `false` when
+    /// the two are unordered (`NaN`).
     pub fn less_than(&self, other: &NumericLiteral) -> bool {
-        match (self, other) {
-            // Fast path: direct integer comparison
-            (NumericLiteral::Integer(n1), NumericLiteral::Integer(n2)) => n1 < n2,
-            // Generic path: convert to decimal for comparison
-            (v1, v2) => v1.to_decimal() < v2.to_decimal(),
-        }
+        matches!(self.partial_cmp(other), Some(std::cmp::Ordering::Less))
     }
 
     /// Checks if this numeric literal is less than or equal to another.
     pub fn less_than_or_eq(&self, other: &NumericLiteral) -> bool {
-        match (self, other) {
-            (NumericLiteral::Integer(n1), NumericLiteral::Integer(n2)) => n1 <= n2,
-            (v1, v2) => v1.to_decimal() <= v2.to_decimal(),
-        }
+        matches!(
+            self.partial_cmp(other),
+            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+        )
     }
 
     /// Returns the total number of digits in the literal.
@@ -509,13 +504,67 @@ impl Display for NumericLiteral {
 }
 
 /// Ordering based on decimal conversion for cross-type comparisons.
+/// Value comparison across every XSD numeric type (SPARQL 1.1 §17.3 maps `<`
+/// on numerics to `op:numeric-less-than` after type promotion, so an
+/// `xsd:long` and an `xsd:integer`, or an `xsd:decimal` and an `xsd:double`,
+/// compare by value). Values are compared exactly — integers as integers,
+/// otherwise as decimals, and as doubles only beyond the decimal range —
+/// rather than through a rounding to double, so the order stays transitive.
+/// `None` for `NaN`, which is unordered.
 impl PartialOrd for NumericLiteral {
-    // Convert both to Decimal and compare
-    // Returns None if conversion fails (e.g., NaN)
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        let self_decimal = self.to_decimal()?;
-        let other_decimal = other.to_decimal()?;
-        self_decimal.partial_cmp(&other_decimal)
+        if let (Some(a), Some(b)) = (self.integer_key(), other.integer_key()) {
+            return Some(a.cmp(&b));
+        }
+        if let (Some(a), Some(b)) = (self.to_decimal(), other.to_decimal()) {
+            return a.partial_cmp(&b);
+        }
+        self.to_f64()?.partial_cmp(&other.to_f64()?)
+    }
+}
+
+impl NumericLiteral {
+    /// An integer-derived value as a key whose order is the integers' order:
+    /// negatives first, by decreasing magnitude, then the rest by magnitude.
+    fn integer_key(&self) -> Option<(bool, u128)> {
+        let signed = |n: i128| {
+            if n < 0 {
+                (false, u128::MAX - n.unsigned_abs())
+            } else {
+                (true, n.unsigned_abs())
+            }
+        };
+        Some(match self {
+            NumericLiteral::Integer(n) | NumericLiteral::NegativeInteger(n) | NumericLiteral::NonPositiveInteger(n) => {
+                signed(*n)
+            },
+            NumericLiteral::Long(n) => signed(i128::from(*n)),
+            NumericLiteral::Byte(n) => signed(i128::from(*n)),
+            NumericLiteral::Short(n) => signed(i128::from(*n)),
+            NumericLiteral::NonNegativeInteger(n) | NumericLiteral::PositiveInteger(n) => (true, *n),
+            NumericLiteral::UnsignedLong(n) => (true, u128::from(*n)),
+            NumericLiteral::UnsignedInt(n) => (true, u128::from(*n)),
+            NumericLiteral::UnsignedShort(n) => (true, u128::from(*n)),
+            NumericLiteral::UnsignedByte(n) => (true, u128::from(*n)),
+            NumericLiteral::Decimal(_) | NumericLiteral::Double(_) | NumericLiteral::Float(_) => return None,
+        })
+    }
+
+    /// The value as an `xsd:double`, the type every numeric promotes to.
+    pub fn to_f64(&self) -> Option<f64> {
+        match self {
+            NumericLiteral::Double(d) => Some(*d),
+            NumericLiteral::Float(f) => Some(f64::from(*f)),
+            NumericLiteral::Decimal(d) => d.to_f64(),
+            integer => {
+                let (non_negative, magnitude) = integer.integer_key()?;
+                Some(if non_negative {
+                    magnitude as f64
+                } else {
+                    -((u128::MAX - magnitude) as f64)
+                })
+            },
+        }
     }
 }
 
@@ -559,7 +608,7 @@ impl From<NumericLiteral> for oxrdf::Literal {
             NumericLiteral::Long(l) => oxrdf::Literal::new_typed_literal(l.to_string(), oxrdf::vocab::xsd::LONG),
             NumericLiteral::Float(f) => oxrdf::Literal::from(f),
             NumericLiteral::Byte(b) => oxrdf::Literal::new_typed_literal(b.to_string(), oxrdf::vocab::xsd::BYTE),
-            NumericLiteral::Short(s) => oxrdf::Literal::from(s),
+            NumericLiteral::Short(s) => oxrdf::Literal::new_typed_literal(s.to_string(), oxrdf::vocab::xsd::SHORT),
             NumericLiteral::NonNegativeInteger(n) => {
                 oxrdf::Literal::new_typed_literal(n.to_string(), oxrdf::vocab::xsd::NON_NEGATIVE_INTEGER)
             },

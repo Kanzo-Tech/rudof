@@ -73,9 +73,7 @@ fn refuse(shape: &IRShape) -> Result<(), DenoteError> {
 /// each context it is reached in.
 ///
 /// A shape with targets yields the checks of its components and of its
-/// property shapes for its focus nodes; so does a shape an IRI names, for the
-/// nodes the data graph declares its own by `sh:shape`. A shape without either
-/// is reached only through another (as a property shape, or by `sh:node`,
+/// property shapes for its focus nodes. A shape without targets is reached only through another (as a property shape, or by `sh:node`,
 /// `sh:and`, …). Deactivated shapes yield nothing and conform everywhere.
 pub fn denote(schema: &IRSchema) -> Result<Plan, DenoteError> {
     let mut d = Denoter::new(schema)?;
@@ -211,21 +209,15 @@ impl<'a> Denoter<'a> {
 
     // --- targets -------------------------------------------------------------
 
-    /// The focus nodes of `shape`, distinct: those of its targets, and, for a
-    /// shape an IRI names, the subjects of `sh:shape` triples naming it in the
-    /// data (SHACL 1.2 §3.1.3.7). `None` for a shape with neither.
+    /// The focus nodes of `shape`, distinct: those of its targets. `None` for
+    /// a shape with none.
+    ///
+    /// TODO: `sh:shape` in the data graph (SHACL 1.2 §3.1.3.7), whose section
+    /// is still a TODO in the draft. It is left out until the section settles.
     fn focus(&mut self, shape: &IRShape) -> Result<Option<RelId>, DenoteError> {
         let mut parts = Vec::new();
         for target in shape.targets() {
             parts.push(self.target(target)?);
-        }
-        if let Object::Iri(_) = shape.id() {
-            let declared = self.op(Op::Predicate(ShaclVocab::sh_shape_target()))?;
-            let declared = self.op(Op::Filter(
-                declared,
-                Pred::Same(Expr::v(), Expr::Const(shape.id().clone())),
-            ))?;
-            parts.push(self.op(Op::Focus(declared))?);
         }
         if parts.is_empty() {
             return Ok(None);

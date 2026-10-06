@@ -6,7 +6,9 @@
 //! is no file system. The in-memory interpretation runs on both; the SQL one
 //! needs DuckDB and runs natively.
 //!
-//! A suite passes when every case does, in every interpretation.
+//! A suite passes when every case does, in every interpretation, except the
+//! ones `LEFT_OUT` names; a listed case that passes is red too, so the list
+//! only ever shrinks.
 
 use include_dir::{Dir, include_dir};
 use oxrdf::{NamedNode, Term};
@@ -30,6 +32,13 @@ static SHACL_1_2: Suite = Suite {
     name: "shacl12",
     dir: &include_dir!("$CARGO_MANIFEST_DIR/tests/data-shapes/shacl12-test-suite/tests/core"),
 };
+
+/// Cases of features left out on purpose, by id (`<suite>/<path>`), each with
+/// why.
+const LEFT_OUT: &[(&str, &str)] = &[(
+    "shacl12/targets/shape-001",
+    "sh:shape (SHACL 1.2 §3.1.3.7) waits until the draft's section settles",
+)];
 
 /// The base the suite's relative IRIs resolve against: `<base><suite>/<path>`.
 const BASE: &str = "http://w3c-test.invalid/";
@@ -153,14 +162,26 @@ impl Suite {
         messages_hold(manifest, &result, &actual)
     }
 
-    /// Runs the suite: every case holds.
+    /// Runs the suite: every case holds but the ones `LEFT_OUT` names, which
+    /// fail.
     fn check(&self, interpretation: Interpretation) {
         let outcomes = self.run(interpretation);
         assert!(!outcomes.is_empty(), "{} has no cases", self.name);
-        let failures: Vec<String> = outcomes
+        let left_out = |id: &str| LEFT_OUT.iter().any(|(case, _)| *case == id);
+        let mut failures: Vec<String> = outcomes
             .iter()
-            .filter_map(|(id, outcome)| outcome.as_ref().err().map(|why| format!("FAILS {id}\n{why}")))
+            .filter_map(|(id, outcome)| match (outcome, left_out(id)) {
+                (Err(why), false) => Some(format!("FAILS {id}\n{why}")),
+                (Ok(()), true) => Some(format!("PASSES {id}, listed in LEFT_OUT")),
+                _ => None,
+            })
             .collect();
+        failures.extend(
+            LEFT_OUT
+                .iter()
+                .filter(|(id, _)| id.starts_with(&format!("{}/", self.name)) && !outcomes.contains_key(*id))
+                .map(|(id, _)| format!("UNKNOWN {id}, listed in LEFT_OUT but not a case")),
+        );
         assert!(
             failures.is_empty(),
             "{} ({}): {} of {} pass\n\n{}",

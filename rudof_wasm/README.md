@@ -32,7 +32,7 @@ const report = session.validate(null);           // { conforms, results }
 const ttl = session.serialize("text/turtle");
 
 // SHACL on the host's own SQL engine: compile once, run the script on one connection, read back.
-const plan = session.compileSql(rmlTurtle, "warehouse", "duckdb"); // { setup, query, teardown, columns, checks }
+const plan = session.compileSql(r2rmlTurtle, "warehouse", "duckdb"); // { setup, query, teardown, columns, checks }
 for (const s of plan.setup) await run(s);                // a temporary table per shared relation
 const rows = await runQuery(plan.query);                 // string | null cells, in plan.columns order
 for (const s of plan.teardown) await run(s);             // drop them, also after a failure

@@ -1,5 +1,5 @@
 //! The SQL engine reads the same report from one dataset whether it sits in a
-//! triple table or in ordinary tables described by an RML mapping — and
+//! triple table or in ordinary tables described by an R2RML mapping — and
 //! that report is the in-memory evaluator's.
 #![cfg(not(target_family = "wasm"))]
 
@@ -59,63 +59,41 @@ CREATE TABLE knows (src INTEGER, dst INTEGER);
 INSERT INTO knows VALUES (1, 2), (1, 3), (1, 4), (1, 5), (2, 1), (2, 5), (3, 4);
 "#;
 
-/// Where those tables' terms are, in RML: classes and literal columns, an edge
-/// table whose source key is resolved by a logical view with an inner join to
-/// the vertex table, and whose target is a referencing object map joined on
-/// the target key. The subclass triple comes from a constant triples map.
+/// Where those tables' terms are, in R2RML: classes and literal columns, an
+/// edge table whose source key is resolved by an R2RML view joining the
+/// vertex table, and whose target is a referencing object map joined on the
+/// target key. The subclass triple comes from a triples map whose terms are
+/// constants, over a one-row view.
 const MAPPING: &str = r#"
-@prefix rml:  <http://w3id.org/rml/> .
+@prefix rr:   <http://www.w3.org/ns/r2rml#> .
 @prefix ex:   <http://example.org/> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-<#db> a rml:Source .
+<#Node> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "node" ] ;
+    rr:subjectMap [ rr:column "iri" ] .
 
-<#nodes> a rml:LogicalSource ; rml:source <#db> ;
-    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "node" .
-<#persons> a rml:LogicalSource ; rml:source <#db> ;
-    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "person" .
-<#students> a rml:LogicalSource ; rml:source <#db> ;
-    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "student" .
-<#edges> a rml:LogicalSource ; rml:source <#db> ;
-    rml:referenceFormulation rml:SQL2008Table ; rml:iterator "knows" .
+<#Person> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "person" ] ;
+    rr:subjectMap [ rr:column "iri" ; rr:class ex:Person ] ;
+    rr:predicateObjectMap [ rr:predicate ex:name ; rr:objectMap [ rr:column "name" ] ] ;
+    rr:predicateObjectMap [ rr:predicate ex:age ; rr:objectMap [ rr:column "age" ] ] ;
+    rr:predicateObjectMap [ rr:predicate ex:email ; rr:objectMap [ rr:column "email" ] ] .
 
-<#nodeView> a rml:LogicalView ; rml:viewOn <#nodes> ;
-    rml:field [ a rml:ExpressionField ; rml:fieldName "id" ; rml:reference "id" ] ,
-              [ a rml:ExpressionField ; rml:fieldName "iri" ; rml:reference "iri" ] .
+<#Student> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "student" ] ;
+    rr:subjectMap [ rr:column "iri" ; rr:class ex:Student ] ;
+    rr:predicateObjectMap [ rr:predicate ex:name ; rr:objectMap [ rr:column "name" ] ] ;
+    rr:predicateObjectMap [ rr:predicate ex:age ; rr:objectMap [ rr:column "age" ] ] .
 
-<#knowsView> a rml:LogicalView ; rml:viewOn <#edges> ;
-    rml:field [ a rml:ExpressionField ; rml:fieldName "src" ; rml:reference "src" ] ,
-              [ a rml:ExpressionField ; rml:fieldName "dst" ; rml:reference "dst" ] ;
-    rml:innerJoin [
-        rml:parentLogicalView <#nodeView> ;
-        rml:joinCondition [ rml:child "src" ; rml:parent "id" ] ;
-        rml:field [ a rml:ExpressionField ; rml:fieldName "src_iri" ; rml:reference "iri" ]
+<#Knows> a rr:TriplesMap ;
+    rr:logicalTable [ rr:sqlQuery """SELECT k.dst, n.iri AS src_iri FROM knows AS k JOIN node AS n ON k.src = n.id""" ] ;
+    rr:subjectMap [ rr:column "src_iri" ] ;
+    rr:predicateObjectMap [
+        rr:predicate ex:knows ;
+        rr:objectMap [ rr:parentTriplesMap <#Node> ; rr:joinCondition [ rr:child "dst" ; rr:parent "id" ] ]
     ] .
 
-<#Node> a rml:TriplesMap ; rml:logicalSource <#nodes> ;
-    rml:subjectMap [ rml:reference "iri" ] .
-
-<#Person> a rml:TriplesMap ; rml:logicalSource <#persons> ;
-    rml:subjectMap [ rml:reference "iri" ; rml:class ex:Person ] ;
-    rml:predicateObjectMap [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ;
-    rml:predicateObjectMap [ rml:predicate ex:age ; rml:objectMap [ rml:reference "age" ] ] ;
-    rml:predicateObjectMap [ rml:predicate ex:email ; rml:objectMap [ rml:reference "email" ] ] .
-
-<#Student> a rml:TriplesMap ; rml:logicalSource <#students> ;
-    rml:subjectMap [ rml:reference "iri" ; rml:class ex:Student ] ;
-    rml:predicateObjectMap [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ;
-    rml:predicateObjectMap [ rml:predicate ex:age ; rml:objectMap [ rml:reference "age" ] ] .
-
-<#Knows> a rml:TriplesMap ; rml:logicalSource <#knowsView> ;
-    rml:subjectMap [ rml:reference "src_iri" ] ;
-    rml:predicateObjectMap [
-        rml:predicate ex:knows ;
-        rml:objectMap [ rml:parentTriplesMap <#Node> ; rml:joinCondition [ rml:child "dst" ; rml:parent "id" ] ]
-    ] .
-
-<#Hierarchy> a rml:TriplesMap ;
-    rml:subject ex:Student ;
-    rml:predicateObjectMap [ rml:predicate rdfs:subClassOf ; rml:object ex:Person ] .
+<#Hierarchy> a rr:TriplesMap ; rr:logicalTable [ rr:sqlQuery "SELECT 1 AS one" ] ;
+    rr:subject ex:Student ;
+    rr:predicateObjectMap [ rr:predicate rdfs:subClassOf ; rr:object ex:Person ] .
 "#;
 
 /// Shapes over classes, literal columns and edges: targets with subclasses,
@@ -146,7 +124,7 @@ fn in_memory(data: &OxigraphInMemory, schema: &IRSchema) -> ValidationReport {
     shacl::validator::validate(schema, data).expect("in memory validates")
 }
 
-/// Validates through the RML mapping, with the tables in `db_schema` (the
+/// Validates through the R2RML mapping, with the tables in `db_schema` (the
 /// mapping's table names unqualified) when one is given.
 fn through_tables(schema: &IRSchema, db_schema: Option<&str>) -> ValidationReport {
     let executor = DuckDbExecutor::in_memory().expect("duckdb opens");
@@ -160,15 +138,16 @@ fn through_tables(schema: &IRSchema, db_schema: Option<&str>) -> ValidationRepor
         None => TABLES.to_owned(),
     };
     executor.connection().execute_batch(&ddl).expect("tables load");
-    let mapping = rml(db_schema);
+    let mapping = r2rml(db_schema);
     let plan = compile(schema, &mapping, SqlDialect::DuckDb).expect("shapes compile");
     plan.validate(&executor).expect("plan runs")
 }
 
-fn rml(db_schema: Option<&str>) -> SqlMapping {
-    SqlMapping::Rml {
+fn r2rml(db_schema: Option<&str>) -> SqlMapping {
+    SqlMapping::R2rml {
         mapping: MAPPING.to_owned(),
         schema: db_schema.map(str::to_owned),
+        base_iri: None,
     }
 }
 
@@ -232,7 +211,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:property [ sh:path ex:knows ; sh:node ex:S ] .
 "#,
     );
-    let refused = compile(&schema, &rml(None), SqlDialect::DuckDb).expect_err("recursion is refused");
+    let refused = compile(&schema, &r2rml(None), SqlDialect::DuckDb).expect_err("recursion is refused");
     assert!(matches!(refused, SqlCompileError::RecursiveShapes(_)), "{refused}");
 }
 
@@ -244,7 +223,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:sparql [ sh:select "SELECT $this WHERE { $this ?p ?o }" ] .
 "#,
     );
-    let refused = compile(&schema, &rml(None), SqlDialect::DuckDb).expect_err("sh:sparql is refused");
+    let refused = compile(&schema, &r2rml(None), SqlDialect::DuckDb).expect_err("sh:sparql is refused");
     assert!(matches!(refused, SqlCompileError::Unsupported(_)), "{refused}");
 }
 

@@ -6,7 +6,7 @@
 //! `rdfs:subClassOf` pairs by the trait itself. Two mappings share the one
 //! compiler: [`TripleTable`], a single `(s, p, o)` table that holds arbitrary
 //! RDF (and runs the W3C suite), and [`Tables`], ordinary tables described by
-//! an RML mapping. Neither carries any product vocabulary.
+//! an R2RML mapping. Neither carries any product vocabulary.
 //!
 //! Every relation a mapping returns has fixed column names, each term spread
 //! over the four columns of [`crate::validator::sql::term`]:
@@ -95,16 +95,21 @@ pub(crate) fn no_triples() -> Query {
     SelectBuilder::new(items).filter(boolean(false)).into_query()
 }
 
-/// Where the RDF terms live: a triple table, or tables described by RML.
+/// Where the RDF terms live: a triple table, or tables described by R2RML.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SqlMapping {
     /// One `(s, p, o)` table named `table` (a SQL object name: `triples`,
     /// `main.triples`, `"My Triples"`), every term spread over its columns
     /// `s_k, s_v, p, o_k, o_v, o_d, o_l`.
     TripleTable { table: String },
-    /// An RML mapping (Turtle) of ordinary tables.
-    /// `schema` (a SQL object name: `schema` or `catalog.schema`) is where the
-    /// mapping's one `rml:Source` lives: its unqualified table names resolve
-    /// against it.
-    Rml { mapping: String, schema: Option<String> },
+    /// An R2RML mapping (Turtle) of ordinary tables (W3C Recommendation).
+    /// `schema` (a SQL object name: `schema` or `catalog.schema`) qualifies
+    /// the mapping's unqualified table names; `base_iri` is the processor's
+    /// base IRI, which a relative IRI the mapping generates is resolved
+    /// against (R2RML §11); without one, a generated IRI is kept as written.
+    R2rml {
+        mapping: String,
+        schema: Option<String>,
+        base_iri: Option<String>,
+    },
 }

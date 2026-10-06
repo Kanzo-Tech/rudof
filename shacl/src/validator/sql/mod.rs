@@ -12,7 +12,7 @@
 //! ```
 //!
 //! - [`SqlMapping`] says where the RDF terms live: one `(s, p, o)` table for
-//!   arbitrary RDF, or ordinary tables described by an RML mapping.
+//!   arbitrary RDF, or ordinary tables described by an R2RML mapping.
 //! - [`SqlDialect`] names the engine the SQL is written for.
 //! - The plan is text: the compiler builds `sqlparser` ASTs and renders them
 //!   for the dialect, so a host needs no SQL AST.
@@ -35,8 +35,10 @@ mod dialect;
 mod duckdb_host;
 mod mapping;
 mod plan;
+mod r2rml;
+#[cfg(all(test, feature = "duckdb", not(target_family = "wasm")))]
+mod r2rml_suite;
 mod render;
-mod rml;
 mod tables;
 mod term;
 mod triple_table;
@@ -71,9 +73,9 @@ pub enum SqlCompileError {
     MalformedTarget(String),
     #[error("invalid relational mapping: {0}")]
     Mapping(String),
-    /// An RML term outside the subset the engine reads, named first.
-    #[error("the SQL engine does not read the RML term {0}")]
-    UnsupportedRml(String),
+    /// An R2RML feature the engine refuses, named first.
+    #[error("the SQL engine does not read the R2RML term {0}")]
+    UnsupportedR2rml(String),
     #[error("invalid data: {0}")]
     Data(String),
     #[error("internal error of the SQL compiler: {0}")]
@@ -102,12 +104,13 @@ pub fn compile(schema: &IRSchema, mapping: &SqlMapping, dialect: SqlDialect) -> 
     match dialect {
         SqlDialect::DuckDb => match mapping {
             SqlMapping::TripleTable { table } => script(schema, &TripleTable::new(table)?, &DuckDb),
-            SqlMapping::Rml {
+            SqlMapping::R2rml {
                 mapping,
                 schema: db_schema,
+                base_iri,
             } => script(
                 schema,
-                &Tables::from_rml(mapping, db_schema.as_deref(), DuckDb)?,
+                &Tables::from_r2rml(mapping, db_schema.as_deref(), base_iri.as_deref(), DuckDb)?,
                 &DuckDb,
             ),
         },

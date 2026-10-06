@@ -62,7 +62,9 @@ pub(crate) fn encode_object(object: &Object) -> Result<EncodedTerm, SqlCompileEr
 /// holds for it (through the same `oxrdf::Term → Object` conversion).
 pub(crate) fn decode(kind: &str, lexical: &str, datatype: &str, lang: &str) -> Result<Object, String> {
     let term: Term = match kind {
-        IRI => NamedNode::new_unchecked(lexical).into(),
+        IRI => NamedNode::new(lexical)
+            .map_err(|e| format!("<{lexical}> is not an IRI: {e}"))?
+            .into(),
         BLANK => BlankNode::new_unchecked(lexical).into(),
         LITERAL if !lang.is_empty() => match lang.split_once("--") {
             Some((tag, direction)) => {

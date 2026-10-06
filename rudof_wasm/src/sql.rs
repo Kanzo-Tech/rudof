@@ -46,16 +46,16 @@ mod tests {
 :S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; sh:minCount 1 ] ."#;
 
     const TABLES: &str = r#"
-        @prefix rml: <http://w3id.org/rml/> . @prefix : <http://example.org/> .
-        <#C> rml:logicalSource [ rml:source [ a rml:Source ] ;
-                                 rml:referenceFormulation rml:SQL2008Table ; rml:iterator "c" ] ;
-            rml:subjectMap [ rml:reference "id" ; rml:class :C ] ;
-            rml:predicateObjectMap [ rml:predicate :p ; rml:objectMap [ rml:reference "p" ] ] ."#;
+        @prefix rr: <http://www.w3.org/ns/r2rml#> . @prefix : <http://example.org/> .
+        <#C> rr:logicalTable [ rr:tableName "c" ] ;
+            rr:subjectMap [ rr:column "id" ; rr:class :C ] ;
+            rr:predicateObjectMap [ rr:predicate :p ; rr:objectMap [ rr:column "p" ] ] ."#;
 
     fn tables(schema: Option<&str>) -> SqlMapping {
-        SqlMapping::Rml {
+        SqlMapping::R2rml {
             mapping: TABLES.to_owned(),
             schema: schema.map(str::to_owned),
+            base_iri: None,
         }
     }
 

@@ -345,10 +345,8 @@ mod differential {
                 _ => None,
             }));
             objects.extend(subjects.iter().cloned().map(Term::from));
-            for pool in [&mut subjects] {
-                pool.sort_by_key(ToString::to_string);
-                pool.dedup();
-            }
+            subjects.sort_by_key(ToString::to_string);
+            subjects.dedup();
             predicates.sort();
             predicates.dedup();
             objects.sort_by_key(ToString::to_string);

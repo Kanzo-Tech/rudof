@@ -296,15 +296,14 @@ impl Shacl2ShEx {
         }
     }
 
-    pub fn create_class_constraint(&self, cls: &Object) -> Result<ShapeExpr, Shacl2ShExError> {
+    /// `rdf:type` one of `classes`.
+    pub fn create_class_constraint(&self, classes: &[IriS]) -> Result<ShapeExpr, Shacl2ShExError> {
         let rdf_type = IriRef::iri(IriS::rdf_type());
-        let value = match cls {
-            Object::Iri(iri) => ValueSetValue::iri(IriRef::iri(iri.clone())),
-            Object::BlankNode(_) => todo!(),
-            Object::Literal(_) => todo!(),
-            Object::Triple { .. } => todo!(),
-        };
-        let cls = NodeConstraint::new().with_values(vec![value]);
+        let values = classes
+            .iter()
+            .map(|iri| ValueSetValue::iri(IriRef::iri(iri.clone())))
+            .collect();
+        let cls = NodeConstraint::new().with_values(values);
         let te = TripleExpr::triple_constraint(None, None, rdf_type, Some(ShapeExpr::node_constraint(cls)), None, None);
         let se = ShapeExpr::shape(ShExShape::new(None, None, Some(te)));
         Ok(se)
@@ -328,37 +327,11 @@ impl Shacl2ShEx {
                     _ => Ok(ShapeExpr::or(datatypes)),
                 }
             },
-            IRComponent::NodeKind(_) => todo!(),
-            IRComponent::MinCount(_) => todo!(),
-            IRComponent::MaxCount(_) => todo!(),
-            IRComponent::MinExclusive(_) => todo!(),
-            IRComponent::MaxExclusive(_) => todo!(),
-            IRComponent::MinInclusive(_) => todo!(),
-            IRComponent::MaxInclusive(_) => todo!(),
-            IRComponent::MinLength(_) => todo!(),
-            IRComponent::MaxLength(_) => todo!(),
-            IRComponent::Pattern(_) => todo!(),
-            IRComponent::UniqueLang(_) => todo!(),
-            IRComponent::LanguageIn(_) => todo!(),
-            IRComponent::Equals(_) => todo!(),
-            IRComponent::Disjoint(_) => todo!(),
-            IRComponent::LessThan(_) => todo!(),
-            IRComponent::LessThanOrEquals(_) => todo!(),
             IRComponent::Or(_) => {
                 debug!("Not implemented OR Shapes");
                 Ok(ShapeExpr::empty_shape())
             },
-            IRComponent::And(_) => todo!(),
-            IRComponent::Not(_) => todo!(),
-            IRComponent::Xone(_) => todo!(),
-            IRComponent::If(_) => todo!(),
-            IRComponent::Closed(_) => todo!(),
-            IRComponent::Node(_) => todo!(),
-            IRComponent::HasValue(_) => todo!(),
-            IRComponent::In(_) => todo!(),
-            IRComponent::QualifiedValueShape(_) => todo!(),
-            IRComponent::Deactivated(_) => todo!(),
-            IRComponent::BasicSparql(_) => todo!(),
+            other => Err(Shacl2ShExError::not_implemented(&format!("the component {other}"))),
         }
     }
 

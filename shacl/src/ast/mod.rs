@@ -11,7 +11,6 @@ mod property_shape;
 mod reifier_info;
 mod schema;
 mod shape;
-mod visitor;
 
 use crate::error::ASTError;
 pub use builder::{BuildError, NodeShapeBuilder, PropertyShapeBuilder, SchemaBuilder};
@@ -24,7 +23,6 @@ use rudof_rdf::term::Object;
 pub use schema::ASTSchema;
 pub use shape::ASTShape;
 use std::collections::HashSet;
-pub use visitor::ComponentVisitor;
 
 pub fn defined_properties_for(properties: &[Object], ast: &ASTSchema) -> Result<HashSet<IriS>, ASTError> {
     let mut defined_properties = HashSet::new();

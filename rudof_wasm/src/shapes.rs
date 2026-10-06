@@ -133,6 +133,7 @@ fn closed_info(components: &[ASTComponent]) -> (Option<bool>, Vec<String>) {
         if let ASTComponent::Closed {
             is_closed,
             ignored_properties,
+            ..
         } = c
         {
             let mut ignored: Vec<String> = ignored_properties.iter().map(|i| i.as_str().to_string()).collect();
@@ -310,8 +311,18 @@ fn shape_core(
                     value.datatype = Some(iriref_str(iri));
                 }
             },
-            ASTComponent::Class(o) => value.class_iri = object_iri(o),
-            ASTComponent::NodeKind(nk) => value.node_kind = Some(nodekind_iri(nk)),
+            // As for `sh:datatype`, a list of classes or node kinds (SHACL 1.2)
+            // has no field in the payload yet.
+            ASTComponent::Class(classes) => {
+                if let [class] = classes.as_slice() {
+                    value.class_iri = Some(iriref_str(class));
+                }
+            },
+            ASTComponent::NodeKind(kinds) => {
+                if let [kind] = kinds.as_slice() {
+                    value.node_kind = Some(nodekind_iri(kind));
+                }
+            },
             ASTComponent::MinCount(n) => cardinality.min = Some(*n as i64),
             ASTComponent::MaxCount(n) => cardinality.max = Some(*n as i64),
             ASTComponent::MinLength(n) => value.min_length = Some(*n as i64),
@@ -715,6 +726,7 @@ fn nodekind_iri(nk: &NodeKind) -> String {
         NodeKind::BNodeOrIri => "BlankNodeOrIRI",
         NodeKind::BNodeOrLit => "BlankNodeOrLiteral",
         NodeKind::IriOrLit => "IRIOrLiteral",
+        NodeKind::TripleTerm => "TripleTerm",
     };
     format!("{SH}{local}")
 }

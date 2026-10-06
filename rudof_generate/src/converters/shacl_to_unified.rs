@@ -173,14 +173,16 @@ impl ShaclToUnified {
                 },
                 _ => false,
             },
-            ASTComponent::NodeKind(node_kind) => {
-                let unified_nk = match *node_kind {
-                    NodeKind::Iri => UnifiedNodeKind::Iri,
-                    NodeKind::BNode => UnifiedNodeKind::BlankNode,
-                    NodeKind::Lit => UnifiedNodeKind::Literal,
-                    NodeKind::BNodeOrIri => UnifiedNodeKind::BlankNodeOrIri,
-                    NodeKind::BNodeOrLit => UnifiedNodeKind::BlankNodeOrLiteral,
-                    NodeKind::IriOrLit => UnifiedNodeKind::IriOrLiteral,
+            // The generator has no "one of these node kinds", nor triple terms.
+            ASTComponent::NodeKind(node_kinds) => {
+                let unified_nk = match node_kinds.as_slice() {
+                    [NodeKind::Iri] => UnifiedNodeKind::Iri,
+                    [NodeKind::BNode] => UnifiedNodeKind::BlankNode,
+                    [NodeKind::Lit] => UnifiedNodeKind::Literal,
+                    [NodeKind::BNodeOrIri] => UnifiedNodeKind::BlankNodeOrIri,
+                    [NodeKind::BNodeOrLit] => UnifiedNodeKind::BlankNodeOrLiteral,
+                    [NodeKind::IriOrLit] => UnifiedNodeKind::IriOrLiteral,
+                    _ => return false,
                 };
                 constraints.push(UnifiedConstraint::NodeKind(unified_nk));
                 true

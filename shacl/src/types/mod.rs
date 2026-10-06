@@ -1,13 +1,14 @@
+mod annotation;
 mod closed_info;
 mod message_map;
 mod node_kind;
 mod presentation;
 mod severity;
 mod shacl_format;
-pub(crate) mod shacl_path_serde;
 mod target;
 mod value;
 
+pub use annotation::{Annotation, Annotations};
 pub use closed_info::ClosedInfo;
 pub use message_map::MessageMap;
 pub use node_kind::NodeKind;

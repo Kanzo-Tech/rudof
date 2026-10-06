@@ -1,7 +1,7 @@
 use crate::ast::error::ASTError;
 use crate::ast::reifier_info::ReifierInfo;
 use crate::ast::{ASTComponent, ASTSchema, defined_properties_for};
-use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target, Value};
+use crate::types::{Annotation, Annotations, ClosedInfo, MessageMap, Presentation, Severity, Target, Value};
 use rudof_iri::IriS;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
@@ -13,9 +13,6 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ASTPropertyShape {
     id: Object,
-    // `SHACLPath` (rudof_rdf) only derives `Serialize`; the missing
-    // `Deserialize` is recovered locally via `types::shacl_path_serde`.
-    #[serde(deserialize_with = "crate::types::shacl_path_serde::deserialize")]
     path: SHACLPath,
     components: Vec<ASTComponent>,
     targets: Vec<Target>,
@@ -25,12 +22,14 @@ pub struct ASTPropertyShape {
     // ignored_properties: Vec<IriRef>,
     message: Option<MessageMap>,
     severity: Option<Severity>,
+    /// The reifiers of the shape's constraint triples (SHACL 1.2).
+    #[serde(default)]
+    annotations: Annotations,
     name: MessageMap,
     description: MessageMap,
     order: Option<NumericLiteral>,
     group: Option<Object>,
     // source_iri: Option<IriRef>,
-    // annotations: Vec<(IriRef, RDFNode)>
 
     // SHACL 1.2 Core: `sh:defaultValue` is a single constant RDF term (same
     // shape as `sh:hasValue`), only meaningful on predicate paths. Modelled as
@@ -54,6 +53,7 @@ impl ASTPropertyShape {
             closed: false,
             message: None,
             severity: None,
+            annotations: Annotations::new(),
             name: MessageMap::new(),
             description: MessageMap::new(),
             order: None,
@@ -91,6 +91,21 @@ impl ASTPropertyShape {
     pub fn with_reifier_shape(mut self, reifier_info: Option<ReifierInfo>) -> Self {
         self.reifier_info = reifier_info;
         self
+    }
+
+    pub fn with_annotations(mut self, annotations: Annotations) -> Self {
+        self.annotations = annotations;
+        self
+    }
+
+    /// What the reifiers of `component`'s triples say about it.
+    pub fn annotation(&self, component: &ASTComponent) -> Annotation {
+        Annotation::of(&self.annotations, &component.parameters())
+    }
+
+    /// Whether a reifier deactivates the triple `(self, predicate, object)`.
+    pub fn deactivates(&self, predicate: &IriS, object: &Object) -> bool {
+        Annotation::deactivates(&self.annotations, predicate, object)
     }
 
     pub fn with_severity(mut self, severity: Option<Severity>) -> Self {
@@ -209,6 +224,7 @@ impl ASTPropertyShape {
             if let ASTComponent::Closed {
                 is_closed,
                 ignored_properties,
+                ..
             } = component
             {
                 return (*is_closed, ignored_properties.clone());

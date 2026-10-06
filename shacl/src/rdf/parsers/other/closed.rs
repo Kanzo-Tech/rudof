@@ -1,23 +1,32 @@
 use crate::ast::ASTComponent;
 use rudof_iri::IriS;
-use rudof_rdf::parser::rdf_node_parser::constructors::{SingleBoolPropertyParser, SingleValuePropertyAsListParser};
+use rudof_rdf::parser::rdf_node_parser::constructors::{SingleValuePropertyAsListParser, SingleValuePropertyParser};
+use rudof_rdf::parser::rdf_node_parser::utils::term_to_bool;
 use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::term::Iri;
 use rudof_rdf::vocab::ShaclVocab;
 use rudof_rdf::{NeighsRDF, RDFError};
 use std::collections::HashSet;
 
+/// `sh:closed`: a boolean, or `sh:ByTypes` (SHACL 1.2 §8.4.1). The properties
+/// `sh:ByTypes` permits depend on the whole shapes graph, so they are filled
+/// in once every shape is parsed ([`crate::rdf::ShaclParser`]).
 pub(crate) fn closed<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Vec<ASTComponent>> {
-    SingleBoolPropertyParser::new(ShaclVocab::sh_closed())
+    SingleValuePropertyParser::new(ShaclVocab::sh_closed())
         .optional()
-        .then(move |maybe_closed| {
-            ignored_properties().map(move |is| {
-                maybe_closed.map_or(vec![], |b| {
-                    vec![ASTComponent::Closed {
-                        is_closed: b,
-                        ignored_properties: is,
-                    }]
-                })
+        .then(move |closed: Option<RDF::Term>| {
+            ignored_properties().flat_map(move |ignored_properties| {
+                let Some(term) = &closed else {
+                    return Ok(Vec::new());
+                };
+                let by_types =
+                    RDF::term_as_iri(term).is_ok_and(|iri: RDF::IRI| iri.as_str() == ShaclVocab::SH_BY_TYPES);
+                let is_closed = by_types || term_to_bool::<RDF>(term)?;
+                Ok(vec![ASTComponent::Closed {
+                    is_closed,
+                    ignored_properties,
+                    by_types: by_types.then(Vec::new),
+                }])
             })
         })
 }
@@ -32,9 +41,7 @@ fn ignored_properties<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = HashS
                 for v in vs {
                     if let Ok(iri) = RDF::term_as_iri(&v) {
                         let iri: RDF::IRI = iri;
-                        let iri_string = iri.as_str();
-                        let iri_s = IriS::new_unchecked(iri_string);
-                        hs.insert(iri_s);
+                        hs.insert(IriS::new_unchecked(iri.as_str()));
                     } else {
                         return Err(RDFError::ExpectedIRIError { term: v.to_string() });
                     }

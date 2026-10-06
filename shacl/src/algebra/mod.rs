@@ -42,7 +42,7 @@
 pub mod denote;
 
 use crate::ir::ShapeLabelIdx;
-use crate::types::Severity;
+use crate::types::{MessageMap, Severity};
 use rudof_iri::IriS;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
@@ -93,6 +93,8 @@ pub enum Col {
 pub enum Expr {
     Col(Col),
     Const(Object),
+    /// The triple term `<<( s p o )>>` (RDF 1.2), SPARQL's `TRIPLE(s, p, o)`.
+    Triple(Box<Expr>, IriS, Box<Expr>),
 }
 
 impl Expr {
@@ -104,6 +106,9 @@ impl Expr {
     }
     pub fn o() -> Self {
         Expr::Col(Col::O)
+    }
+    pub fn triple(s: Expr, p: IriS, o: Expr) -> Self {
+        Expr::Triple(Box::new(s), p, Box::new(o))
     }
 }
 
@@ -122,6 +127,18 @@ pub enum Kind {
     Iri,
     Blank,
     Literal,
+    /// A triple term (RDF 1.2), SPARQL's `isTRIPLE`.
+    TripleTerm,
+}
+
+/// What [`Op::Duplicates`] compares the values of a focus node by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Key {
+    /// The language tag, case-insensitively, and the base direction, of the
+    /// values that have one.
+    Lang,
+    /// The term itself.
+    Term,
 }
 
 /// A row test. Three-valued like SPARQL's `FILTER`: an incomparable or
@@ -231,8 +248,8 @@ pub enum Op {
     Inverse(RelId),
     /// The pairs whose focus is a node of `nodes` (a semi-join). Pairs, Nodes → Pairs
     Restrict { pairs: RelId, nodes: RelId },
-    /// Relational composition `a ∘ b`: `(a.f, b.v)` where `a.v = b.f`, distinct.
-    /// Pairs, Pairs → Pairs
+    /// Relational composition `a ∘ b`: `(a.f, b.v)` where `a.v = b.f`, once
+    /// per joining pair of pairs (a bag). Pairs, Pairs → Pairs
     Compose(RelId, RelId),
     /// The transitive closure of `step` from the pairs of `base`: `base`, then
     /// `step` applied until nothing new is reached. Pairs, Pairs → Pairs
@@ -256,21 +273,22 @@ pub enum Op {
         op: CmpOp,
         bound: i64,
     },
-    /// The focus nodes that have more than one value literal with the same
-    /// non-empty language tag, compared case-insensitively, once per such tag.
-    /// Pairs → Rows `(f, —, —)`
-    LangDuplicates(RelId),
+    /// The focus nodes of the bag `pairs` with more than one value of the
+    /// same [`Key`], once per such key. Pairs → Rows `(f, —, —)`
+    Duplicates { pairs: RelId, key: Key },
     /// For each pair `(f, v)` of `pairs`, each triple `(v, p, o)` of `triples`
-    /// whose predicate is not in `allowed`: the row `(f, o, p)`.
-    /// Pairs, Triples → Rows
+    /// whose predicate is not permitted: the row `(f, o, p)`. Permitted are
+    /// `allowed`, and the properties `by_type` lists for a class `T` when
+    /// `(v, rdf:type, T)` is in `triples`. Pairs, Triples → Rows
     Outgoing {
         pairs: RelId,
         triples: RelId,
         allowed: Vec<IriS>,
+        by_type: Vec<(IriS, Vec<IriS>)>,
     },
     /// For each pair `(f, v)` of `left` and each pair `(f, o)` of `right` with
-    /// the same focus such that `pred` (over `F`, `V`, `O`) holds: `(f, v, —)`.
-    /// Pairs, Pairs → Rows
+    /// the same focus such that `pred` (over `F`, `V`, `O`) holds: `(f, v)`,
+    /// once per such `o`. Pairs, Pairs → Pairs
     PairJoin { left: RelId, right: RelId, pred: Pred },
 }
 
@@ -289,7 +307,7 @@ impl Op {
             | Op::Inverse(r)
             | Op::Filter(r, _)
             | Op::NodeRows(r)
-            | Op::LangDuplicates(r) => vec![*r],
+            | Op::Duplicates { pairs: r, .. } => vec![*r],
             Op::PairRows { pairs, .. } => vec![*pairs],
             Op::Outgoing { pairs, triples, .. } => vec![*pairs, *triples],
             Op::Restrict { pairs, nodes } => vec![*pairs, *nodes],
@@ -337,6 +355,9 @@ pub struct Check {
     pub severity: Severity,
     /// The results' `sh:resultPath`, unless a row overrides it (`sh:closed`).
     pub path: Option<SHACLPath>,
+    /// The results' `sh:resultMessage` the shapes graph states, for the
+    /// constraint or its shape; `None` takes the message catalog's.
+    pub message: Option<MessageMap>,
     /// Message parameters: the index of the component in its shape, or the
     /// parameters the check names itself.
     pub parameters: Parameters,
@@ -500,7 +521,7 @@ impl PlanBuilder {
                 self.expect(*b, &[Pairs], "compose")?;
                 Pairs
             },
-            Op::PairRows { pairs, .. } | Op::LangDuplicates(pairs) => {
+            Op::PairRows { pairs, .. } | Op::Duplicates { pairs, .. } => {
                 self.expect(*pairs, &[Pairs], "rows")?;
                 Rows
             },
@@ -526,7 +547,7 @@ impl PlanBuilder {
             Op::PairJoin { left, right, .. } => {
                 self.expect(*left, &[Pairs], "pair join")?;
                 self.expect(*right, &[Pairs], "pair join")?;
-                Rows
+                Pairs
             },
         })
     }

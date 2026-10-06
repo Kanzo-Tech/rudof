@@ -6,18 +6,17 @@
 //! is no file system. The in-memory interpretation runs on both; the SQL one
 //! needs DuckDB and runs natively.
 //!
-//! A suite passes when the cases that fail are exactly the ones
-//! `w3c-expected-failures.txt` lists: a new failure is red, and so is a listed
-//! case that has started to pass, so the list only ever shrinks.
+//! A suite passes when every case does, in every interpretation.
 
 use include_dir::{Dir, include_dir};
 use oxrdf::{NamedNode, Term};
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::term::Object;
 use rudof_rdf::{NeighsRDF, RDFFormat};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -32,16 +31,13 @@ static SHACL_1_2: Suite = Suite {
     dir: &include_dir!("$CARGO_MANIFEST_DIR/tests/data-shapes/shacl12-test-suite/tests/core"),
 };
 
-/// One case id per line, `#` comments; an id followed by an interpretation
-/// (`eval`, `sql`) fails only there.
-const EXPECTED_FAILURES: &str = include_str!("w3c-expected-failures.txt");
-
 /// The base the suite's relative IRIs resolve against: `<base><suite>/<path>`.
 const BASE: &str = "http://w3c-test.invalid/";
 
 const MF: &str = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#";
 const SHT: &str = "http://www.w3.org/ns/shacl-test#";
 const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+const SH: &str = "http://www.w3.org/ns/shacl#";
 
 struct Suite {
     name: &'static str,
@@ -144,60 +140,74 @@ impl Suite {
             .map_err(|e| format!("shapes: {e}"))?;
         let schema = IRSchema::try_from(&shapes).map_err(|e| format!("shapes: {e}"))?;
         let result = one(manifest, entry, MF, "result")?;
-        let expected = ValidationReport::parse(manifest, result).map_err(|e| format!("expected report: {e}"))?;
+        let expected =
+            ValidationReport::parse(manifest, result.clone()).map_err(|e| format!("expected report: {e}"))?;
         let actual = interpretation.validate(&schema, &data)?;
-        if actual == expected {
-            Ok(())
-        } else {
-            Err(format!(
+        if actual != expected {
+            return Err(format!(
                 "expected {:#?}\nactual {:#?}",
                 expected.results(),
                 actual.results()
-            ))
+            ));
         }
+        messages_hold(manifest, &result, &actual)
     }
 
-    /// Runs the suite and holds its failures to the expected ones.
+    /// Runs the suite: every case holds.
     fn check(&self, interpretation: Interpretation) {
-        let expected: BTreeSet<String> = EXPECTED_FAILURES
-            .lines()
-            .map(|l| {
-                l.split('#')
-                    .next()
-                    .unwrap_or_default()
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-            })
-            .filter(|w| w.first().is_some_and(|id| id.starts_with(self.name)))
-            .filter(|w| w.get(1).is_none_or(|i| *i == interpretation.name()))
-            .map(|w| w[0].to_owned())
-            .collect();
         let outcomes = self.run(interpretation);
         assert!(!outcomes.is_empty(), "{} has no cases", self.name);
-        let mut wrong = Vec::new();
-        for (id, outcome) in &outcomes {
-            match (outcome, expected.contains(id)) {
-                (Err(why), false) => wrong.push(format!("FAILS  {id}\n{why}")),
-                (Ok(()), true) => wrong.push(format!("PASSES {id}, listed as an expected failure")),
-                _ => {},
-            }
-        }
-        wrong.extend(
-            expected
-                .iter()
-                .filter(|id| !outcomes.contains_key(*id))
-                .map(|id| format!("UNKNOWN {id}, listed but not a case")),
-        );
-        let passed = outcomes.values().filter(|o| o.is_ok()).count();
+        let failures: Vec<String> = outcomes
+            .iter()
+            .filter_map(|(id, outcome)| outcome.as_ref().err().map(|why| format!("FAILS {id}\n{why}")))
+            .collect();
         assert!(
-            wrong.is_empty(),
-            "{} ({}): {passed} of {} pass\n\n{}",
+            failures.is_empty(),
+            "{} ({}): {} of {} pass\n\n{}",
             self.name,
             interpretation.name(),
+            outcomes.len() - failures.len(),
             outcomes.len(),
-            wrong.join("\n\n")
+            failures.join("\n\n")
         );
     }
+}
+
+/// The messages the expected report states: as the W3C harness does, a
+/// result's `sh:resultMessage` is compared only where the expected report
+/// gives one, and then the actual result with its focus node and component
+/// carries each of them, language tag included.
+fn messages_hold(manifest: &OxigraphInMemory, report: &Term, actual: &ValidationReport) -> Result<(), String> {
+    for result in objects(manifest, report, SH, "result") {
+        let wanted = objects(manifest, &result, SH, "resultMessage");
+        if wanted.is_empty() {
+            continue;
+        }
+        let object = |local: &str| -> Result<Object, String> {
+            Object::try_from(one(manifest, &result, SH, local)?).map_err(|e| e.to_string())
+        };
+        let (focus, component) = (object("focusNode")?, object("sourceConstraintComponent")?);
+        let carries = |r: &&shacl::validator::report::ValidationResult| {
+            wanted.iter().all(|w| match w {
+                Term::Literal(l) => r.message().messages().iter().any(|(lang, text)| {
+                    text == l.value() && lang.as_ref().map(ToString::to_string).as_deref() == l.language()
+                }),
+                _ => false,
+            })
+        };
+        let held = actual
+            .results()
+            .iter()
+            .filter(|r| r.focus_node() == &focus && r.constraint_component() == &component)
+            .any(|r| carries(&r));
+        if !held {
+            return Err(format!(
+                "no result for {focus} of {component} has the messages {}",
+                wanted.iter().map(Term::to_string).collect::<Vec<_>>().join(", ")
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn iri(namespace: &str, local: &str) -> NamedNode {

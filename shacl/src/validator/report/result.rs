@@ -46,7 +46,13 @@ impl ValidationResult {
                 .unwrap_or_default(),
             crate::algebra::Parameters::Own(own) => own.clone(),
         };
-        let message = crate::messages::result_message(schema, shape, &check.component, &parameters, value.as_ref());
+        let message = crate::messages::result_message(
+            schema,
+            check.message.as_ref(),
+            &check.component,
+            &parameters,
+            value.as_ref(),
+        );
         Ok(
             ValidationResult::new(focus, Object::Iri(check.component.clone()), check.severity.clone())
                 .with_source(Some(shape.id().clone()))

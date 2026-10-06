@@ -23,6 +23,7 @@ vocab_term!(ShaclVocab, SH_BLANK_NODE_OR_IRI, "BlankNodeOrIRI");
 vocab_term!(ShaclVocab, SH_BLANK_NODE_OR_LITERAL, "BlankNodeOrLiteral");
 vocab_term!(ShaclVocab, SH_LITERAL, "Literal");
 vocab_term!(ShaclVocab, SH_IRI_OR_LITERAL, "IRIOrLiteral");
+vocab_term!(ShaclVocab, SH_TRIPLE_TERM, "TripleTerm"); // SHACL 1.2
 
 // Severity
 vocab_term!(ShaclVocab, SH_INFO, "Info");
@@ -36,6 +37,7 @@ vocab_term!(ShaclVocab, SH_SCHEMA, "Schema");
 vocab_term!(ShaclVocab, SH_SHAPE, "Shape");
 vocab_term!(ShaclVocab, SH_NODE_SHAPE, "NodeShape");
 vocab_term!(ShaclVocab, SH_PROPERTY_SHAPE, "PropertyShape");
+vocab_term!(ShaclVocab, SH_SHAPE_CLASS, "ShapeClass"); // SHACL 1.2
 
 // Validation
 vocab_term!(ShaclVocab, SH_VALIDATION_REPORT, "ValidationReport");
@@ -67,6 +69,7 @@ vocab_term!(ShaclVocab, SH_DISJOINT, "disjoint");
 vocab_term!(ShaclVocab, SH_EQUALS, "equals");
 vocab_term!(ShaclVocab, SH_LESS_THAN, "lessThan");
 vocab_term!(ShaclVocab, SH_LESS_THAN_OR_EQUALS, "lessThanOrEquals");
+vocab_term!(ShaclVocab, SH_SUBSET_OF, "subsetOf"); // SHACL 1.2
 
 // Non validating
 vocab_term!(ShaclVocab, SH_DESCRIPTION, "description");
@@ -76,10 +79,13 @@ vocab_term!(ShaclVocab, SH_GROUP, "group");
 
 // Other
 vocab_term!(ShaclVocab, SH_CLOSED, "closed");
+vocab_term!(ShaclVocab, SH_BY_TYPES, "ByTypes"); // SHACL 1.2
 vocab_term!(ShaclVocab, SH_ENTAILMENT, "entailment");
 vocab_term!(ShaclVocab, SH_HAS_VALUE, "hasValue");
 vocab_term!(ShaclVocab, SH_IGNORED_PROPERTIES, "ignoredProperties");
 vocab_term!(ShaclVocab, SH_IN, "in");
+vocab_term!(ShaclVocab, SH_ROOT_CLASS, "rootClass"); // SHACL 1.2
+vocab_term!(ShaclVocab, SH_UNIQUE_VALUES_FOR, "uniqueValuesFor"); // SHACL 1.2
 vocab_term!(ShaclVocab, SH_TEXT, "text");
 
 // String based
@@ -89,6 +95,13 @@ vocab_term!(ShaclVocab, SH_LANGUAGE_IN, "languageIn");
 vocab_term!(ShaclVocab, SH_MIN_LENGTH, "minLength");
 vocab_term!(ShaclVocab, SH_MAX_LENGTH, "maxLength");
 vocab_term!(ShaclVocab, SH_UNIQUE_LANG, "uniqueLang");
+vocab_term!(ShaclVocab, SH_SINGLE_LINE, "singleLine"); // SHACL 1.2
+
+// List (SHACL 1.2)
+vocab_term!(ShaclVocab, SH_MEMBER_SHAPE, "memberShape");
+vocab_term!(ShaclVocab, SH_MIN_LIST_LENGTH, "minListLength");
+vocab_term!(ShaclVocab, SH_MAX_LIST_LENGTH, "maxListLength");
+vocab_term!(ShaclVocab, SH_UNIQUE_MEMBERS, "uniqueMembers");
 
 // Cardinality
 vocab_term!(ShaclVocab, SH_MIN_COUNT, "minCount");
@@ -114,6 +127,8 @@ vocab_term!(
 );
 vocab_term!(ShaclVocab, SH_REIFICATION_REQUIRED, "reificationRequired"); // SHACL 1.2
 vocab_term!(ShaclVocab, SH_REIFIER_SHAPE, "reifierShape"); // SHACL 1.2
+vocab_term!(ShaclVocab, SH_SOME_VALUE, "someValue"); // SHACL 1.2
+vocab_term!(ShaclVocab, SH_NODE_BY_EXPRESSION, "nodeByExpression"); // SHACL 1.2
 
 // TODO - For node expressions, do not delete
 // vocab_term!(ShaclVocab, SH_DEFAULT_VALUE, "defaultValue");
@@ -125,6 +140,7 @@ vocab_term!(ShaclVocab, SH_TARGET_CLASS, "targetClass");
 vocab_term!(ShaclVocab, SH_TARGET_SUBJECTS_OF, "targetSubjectsOf");
 vocab_term!(ShaclVocab, SH_TARGET_OBJECTS_OF, "targetObjectsOf");
 vocab_term!(ShaclVocab, SH_TARGET_WHERE, "targetWhere"); // SHACL 1.2
+vocab_term!(ShaclVocab, SH_SHAPE_TARGET, "shape"); // SHACL 1.2: sh:shape in the data graph
 
 // SPARQL
 vocab_term!(ShaclVocab, SH_SOURCE_CONSTRAINT, "sourceConstraint");
@@ -282,6 +298,56 @@ vocab_term!(
     ShaclVocab,
     SH_REIFIER_SHAPE_CONSTRAINT_COMPONENT,
     "ReifierShapeConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_SUBSET_OF_CONSTRAINT_COMPONENT,
+    "SubsetOfConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_SINGLE_LINE_CONSTRAINT_COMPONENT,
+    "SingleLineConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_MEMBER_SHAPE_CONSTRAINT_COMPONENT,
+    "MemberShapeConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_MIN_LIST_LENGTH_CONSTRAINT_COMPONENT,
+    "MinListLengthConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_MAX_LIST_LENGTH_CONSTRAINT_COMPONENT,
+    "MaxListLengthConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_UNIQUE_MEMBERS_CONSTRAINT_COMPONENT,
+    "UniqueMembersConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_SOME_VALUE_CONSTRAINT_COMPONENT,
+    "SomeValueConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_ROOT_CLASS_CONSTRAINT_COMPONENT,
+    "RootClassConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_UNIQUE_VALUES_FOR_CONSTRAINT_COMPONENT,
+    "UniqueValuesForConstraintComponent"
+); // SHACL 1.2
+vocab_term!(
+    ShaclVocab,
+    SH_NODE_BY_EXPRESSION_CONSTRAINT_COMPONENT,
+    "NodeByExpressionConstraintComponent"
 ); // SHACL 1.2
 
 vocab_term!(ShaclVocab, SH_SOURCE_CONSTRAINT_COMPONENT, "sourceConstraintComponent");

@@ -16,7 +16,7 @@
 //! `NULL` (an incomparable comparison, a regular expression on a `NULL`) is
 //! read through [`known_true`] before anything negates it.
 
-use crate::algebra::{Check, CmpOp, Col, Expr as AExpr, Kind, Op, Plan, Pred, RelId, Sort};
+use crate::algebra::{Check, CmpOp, Col, Expr as AExpr, Key, Kind, Op, Plan, Pred, RelId, Sort};
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
     SelectBuilder, and, and_all, balanced, boolean, case, col, compare, count_star, cte, cte_ref, derived, eq, exists,
@@ -25,7 +25,8 @@ use crate::validator::sql::ast::{
 };
 use crate::validator::sql::dialect::SqlDialect;
 use crate::validator::sql::mapping::{PREDICATE_COLUMN, RelationalMapping};
-use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, TermExpr, compare_terms, well_formed_for};
+use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, TRIPLE, TermExpr, compare_terms, well_formed_for};
+use rudof_rdf::vocab::RdfVocab;
 use sqlparser::ast::{BinaryOperator, Expr, Query, SelectItem, SetExpr, TableFactor};
 use std::cell::Cell;
 
@@ -114,6 +115,7 @@ fn kind(k: Kind) -> &'static str {
         Kind::Iri => IRI,
         Kind::Blank => BLANK,
         Kind::Literal => LITERAL,
+        Kind::TripleTerm => TRIPLE,
     }
 }
 
@@ -301,7 +303,6 @@ where
                 ))
                 .into_query(),
             Op::Compose(a, b) => SelectBuilder::new(pair(&x("a"), &v("b")))
-                .distinct()
                 .from(self.from(*a, "a")?)
                 .join(join(self.from(*b, "b")?, v("a").same(&x("b"))))
                 .into_query(),
@@ -358,20 +359,24 @@ where
                     .filter(compare(n, binary(*op), number(*bound)))
                     .into_query()
             },
-            Op::LangDuplicates(pairs) => {
-                // One row per focus node and language held by more than one value.
-                let f = x("a");
-                let lang = function("LOWER", vec![v("a").lang]);
+            Op::Duplicates { pairs, key } => {
+                // One row per focus node and key held by more than one value.
+                let (f, value) = (x("a"), v("a"));
+                let mut group = vec![f.kind.clone(), f.lex.clone(), f.datatype.clone(), f.lang.clone()];
+                let held = match key {
+                    Key::Lang => {
+                        group.push(function("LOWER", vec![value.lang.clone()]));
+                        and(value.is_kind(LITERAL), not_eq(value.lang, string("")))
+                    },
+                    Key::Term => {
+                        group.extend([value.kind, value.lex, value.datatype, value.lang]);
+                        boolean(true)
+                    },
+                };
                 SelectBuilder::new(row(&f, &TermExpr::null(), null()))
                     .from(self.from(*pairs, "a")?)
-                    .filter(and(v("a").is_kind(LITERAL), not_eq(v("a").lang, string(""))))
-                    .group_by(vec![
-                        f.kind.clone(),
-                        f.lex.clone(),
-                        f.datatype.clone(),
-                        f.lang.clone(),
-                        lang,
-                    ])
+                    .filter(held)
+                    .group_by(group)
                     .having(compare(count_star(), BinaryOperator::Gt, number(1)))
                     .into_query()
             },
@@ -379,12 +384,39 @@ where
                 pairs,
                 triples,
                 allowed,
+                by_type,
             } => {
                 let p = col("t", PREDICATE_COLUMN);
+                let mut permitted = in_list(p.clone(), allowed.iter().map(|a| string(a.as_str())).collect());
+                // A property a class of the value node permits: read from the
+                // mapping's `rdf:type`, so the triples are read once.
+                if let (false, Some(types)) = (by_type.is_empty(), self.mapping.predicate(&RdfVocab::rdf_type())) {
+                    let class = TermExpr::columns("ty", "o");
+                    let by_class = or_all(by_type.iter().map(|(class_iri, properties)| {
+                        and(
+                            class.same(&TermExpr::constant(&[
+                                IRI.to_owned(),
+                                class_iri.as_str().to_owned(),
+                                String::new(),
+                                String::new(),
+                            ])),
+                            in_list(p.clone(), properties.iter().map(|q| string(q.as_str())).collect()),
+                        )
+                    }));
+                    permitted = or(
+                        permitted,
+                        exists(
+                            SelectBuilder::new(one())
+                                .from(derived(types.0, "ty"))
+                                .filter(and(TermExpr::columns("ty", "s").same(&v("a")), by_class))
+                                .into_query(),
+                        ),
+                    );
+                }
                 SelectBuilder::new(row(&x("a"), &v("t"), p.clone()))
                     .from(self.from(*pairs, "a")?)
                     .join(join(self.from(*triples, "t")?, x("t").same(&v("a"))))
-                    .filter(not(in_list(p, allowed.iter().map(|a| string(a.as_str())).collect())))
+                    .filter(not(permitted))
                     .into_query()
             },
             Op::PairJoin { left, right, pred } => {
@@ -392,7 +424,7 @@ where
                     row: "a",
                     other: Some("o"),
                 };
-                SelectBuilder::new(row(&x("a"), &v("a"), null()))
+                SelectBuilder::new(pair(&x("a"), &v("a")))
                     .from(self.from(*left, "a")?)
                     .join(join(self.from(*right, "o")?, x("o").same(&x("a"))))
                     .filter(self.pred(pred, &scope)?)
@@ -412,6 +444,7 @@ where
                 "v",
             ),
             AExpr::Const(object) => TermExpr::object(object)?,
+            AExpr::Triple(s, p, o) => TermExpr::triple(&self.expr(s, scope)?, p, &self.expr(o, scope)?),
         })
     }
 

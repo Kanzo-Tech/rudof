@@ -1,6 +1,6 @@
 use crate::ast::error::ASTError;
 use crate::ast::{ASTComponent, ASTSchema, defined_properties_for};
-use crate::types::{ClosedInfo, MessageMap, Presentation, Severity, Target};
+use crate::types::{Annotation, Annotations, ClosedInfo, MessageMap, Presentation, Severity, Target};
 use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,9 @@ pub struct ASTNodeShape {
     // ignored_properties: Vec<IriRef>,
     message: Option<MessageMap>,
     severity: Option<Severity>,
+    /// The reifiers of the shape's constraint triples (SHACL 1.2).
+    #[serde(default)]
+    annotations: Annotations,
     name: MessageMap,
     description: MessageMap,
     group: Option<Object>,
@@ -35,6 +38,7 @@ impl ASTNodeShape {
             property_shapes: Vec::new(),
             message: None,
             severity: None,
+            annotations: Annotations::new(),
             name: MessageMap::new(),
             description: MessageMap::new(),
             group: None,
@@ -45,6 +49,21 @@ impl ASTNodeShape {
     pub fn with_targets(mut self, targets: Vec<Target>) -> Self {
         self.targets = targets;
         self
+    }
+
+    pub fn with_annotations(mut self, annotations: Annotations) -> Self {
+        self.annotations = annotations;
+        self
+    }
+
+    /// What the reifiers of `component`'s triples say about it.
+    pub fn annotation(&self, component: &ASTComponent) -> Annotation {
+        Annotation::of(&self.annotations, &component.parameters())
+    }
+
+    /// Whether a reifier deactivates the triple `(self, predicate, object)`.
+    pub fn deactivates(&self, predicate: &IriS, object: &Object) -> bool {
+        Annotation::deactivates(&self.annotations, predicate, object)
     }
 
     pub fn with_severity(mut self, severity: Option<Severity>) -> Self {
@@ -114,6 +133,7 @@ impl ASTNodeShape {
             if let ASTComponent::Closed {
                 is_closed,
                 ignored_properties,
+                ..
             } = component
             {
                 return (*is_closed, ignored_properties.clone());

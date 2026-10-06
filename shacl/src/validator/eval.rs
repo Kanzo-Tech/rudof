@@ -7,11 +7,11 @@
 //! SQL; they become [`Object`]s only where a test reads their value
 //! (comparisons, datatypes, languages) and in the report.
 
-use crate::algebra::{Check, CmpOp, Col, Expr, Kind, Op, Plan, Pred, RelId, denote, denote_shape};
+use crate::algebra::{Check, CmpOp, Col, Expr, Key, Kind, Op, Plan, Pred, RelId, denote, denote_shape};
 use crate::error::ValidationError;
 use crate::ir::{IRSchema, ShapeLabelIdx};
 use crate::validator::report::{ValidationReport, ValidationResult};
-use oxrdf::{NamedNode, Term};
+use oxrdf::{NamedNode, NamedOrBlankNode, Term, Triple};
 use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::term::Object;
@@ -19,6 +19,7 @@ use rudof_rdf::term::Triple as _;
 use rudof_rdf::term::literal::ConcreteLiteral;
 use rudof_rdf::utils::RDFRegex;
 use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -76,7 +77,8 @@ fn kind_of(term: &Term) -> Kind {
     match term {
         Term::NamedNode(_) => Kind::Iri,
         Term::BlankNode(_) => Kind::Blank,
-        _ => Kind::Literal,
+        Term::Literal(_) => Kind::Literal,
+        Term::Triple(_) => Kind::TripleTerm,
     }
 }
 
@@ -366,26 +368,37 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
         Ok(())
     }
 
-    fn expr<'r>(e: &Expr, scope: &Scope<'r>, constants: &'r HashMap<String, Term>) -> Option<&'r Term> {
+    fn expr<'r>(e: &Expr, scope: &Scope<'r>, constants: &'r HashMap<String, Term>) -> Option<Cow<'r, Term>> {
         match e {
-            Expr::Col(Col::F) => Some(scope.f),
-            Expr::Col(Col::V) => scope.v,
-            Expr::Col(Col::O) => scope.o,
-            Expr::Const(c) => constants.get(&format!("{c:?}")),
+            Expr::Col(Col::F) => Some(Cow::Borrowed(scope.f)),
+            Expr::Col(Col::V) => scope.v.map(Cow::Borrowed),
+            Expr::Col(Col::O) => scope.o.map(Cow::Borrowed),
+            Expr::Const(c) => constants.get(&format!("{c:?}")).map(Cow::Borrowed),
+            Expr::Triple(s, p, o) => {
+                let subject = match Self::expr(s, scope, constants)?.into_owned() {
+                    Term::NamedNode(n) => NamedOrBlankNode::NamedNode(n),
+                    Term::BlankNode(b) => NamedOrBlankNode::BlankNode(b),
+                    _ => return None,
+                };
+                let object = Self::expr(o, scope, constants)?.into_owned();
+                let triple = Triple::new(subject, NamedNode::new_unchecked(p.as_str()), object);
+                Some(Cow::Owned(Term::Triple(Box::new(triple))))
+            },
         }
     }
 
     /// Whether `pred` is true of the row in `scope`.
     fn test(&self, pred: &Pred, scope: &Scope<'_>, constants: &HashMap<String, Term>) -> bool {
         let term = |e: &Expr| Self::expr(e, scope, constants);
+        let text = |t: Cow<'_, Term>| text(&t).map(str::to_owned);
         match pred {
             Pred::True => true,
             Pred::And(ps) => ps.iter().all(|p| self.test(p, scope, constants)),
             Pred::Or(ps) => ps.iter().any(|p| self.test(p, scope, constants)),
             Pred::Not(p) => !self.test(p, scope, constants),
             Pred::ExactlyOne(ps) => ps.iter().filter(|p| self.test(p, scope, constants)).count() == 1,
-            Pred::KindIn(e, kinds) => term(e).is_some_and(|t| kinds.contains(&kind_of(t))),
-            Pred::Datatype(e, datatypes) => match term(e).and_then(object) {
+            Pred::KindIn(e, kinds) => term(e).is_some_and(|t| kinds.contains(&kind_of(&t))),
+            Pred::Datatype(e, datatypes) => match term(e).and_then(|t| object(&t)) {
                 Some(Object::Literal(ConcreteLiteral::WrongDatatypeLiteral { .. })) | None => false,
                 Some(Object::Literal(lit)) => lit
                     .datatype()
@@ -393,7 +406,7 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
                     .is_ok_and(|d| datatypes.iter().any(|x| x.as_str() == d.as_str())),
                 Some(_) => false,
             },
-            Pred::LangIn(e, ranges) => match term(e) {
+            Pred::LangIn(e, ranges) => match term(e).as_deref() {
                 Some(Term::Literal(l)) => l.language().is_some_and(|tag| {
                     let tag = tag.to_lowercase();
                     ranges.iter().any(|r| {
@@ -406,19 +419,22 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
             Pred::Regex(e, pattern, flags) => term(e).and_then(text).is_some_and(|s| {
                 self.regexes
                     .get(&(pattern.clone(), flags.clone()))
-                    .is_some_and(|r| r.is_match(s))
+                    .is_some_and(|r| r.is_match(&s))
             }),
             Pred::StrLen(e, op, n) => term(e)
                 .and_then(text)
                 .is_some_and(|s| holds((s.chars().count() as i64).cmp(n), *op)),
-            Pred::Compare(a, op, b) => match (term(a).and_then(object), term(b).and_then(object)) {
+            Pred::Compare(a, op, b) => match (term(a).and_then(|t| object(&t)), term(b).and_then(|t| object(&t))) {
                 (Some(a), Some(b)) => a.sparql_compare(&b).is_some_and(|o| holds(o, *op)),
                 _ => false,
             },
             Pred::Same(a, b) => matches!((term(a), term(b)), (Some(a), Some(b)) if a == b),
-            Pred::Member(e, rel) => term(e).is_some_and(|t| self.members.get(rel).is_some_and(|s| s.contains(t))),
+            Pred::Member(e, rel) => term(e).is_some_and(|t| self.members.get(rel).is_some_and(|s| s.contains(&*t))),
             Pred::PairMember(a, b, rel) => match (term(a), term(b)) {
-                (Some(a), Some(b)) => self.pairs.get(rel).is_some_and(|s| s.contains(&(a.clone(), b.clone()))),
+                (Some(a), Some(b)) => self
+                    .pairs
+                    .get(rel)
+                    .is_some_and(|s| s.contains(&(a.into_owned(), b.into_owned()))),
                 _ => false,
             },
         }
@@ -488,7 +504,7 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
                         out.push((f.clone(), (*w).clone()));
                     }
                 }
-                Rel::Pairs(distinct(&out))
+                Rel::Pairs(out)
             },
             Op::Closure { base, step } => {
                 let step = by_focus(self.pairs_of(*step)?);
@@ -602,13 +618,15 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
                         .collect(),
                 )
             },
-            Op::LangDuplicates(pairs) => {
-                let mut counts: HashMap<(&Term, String), usize> = HashMap::new();
+            Op::Duplicates { pairs, key } => {
+                let mut counts: HashMap<(&Term, Cow<'_, Term>), usize> = HashMap::new();
                 for (f, v) in self.pairs_of(*pairs)? {
-                    if let Term::Literal(l) = v
-                        && let Some(tag) = l.language()
-                    {
-                        *counts.entry((f, tag.to_lowercase())).or_default() += 1;
+                    let key = match key {
+                        Key::Term => Some(Cow::Borrowed(v)),
+                        Key::Lang => lang_key(v).map(Cow::Owned),
+                    };
+                    if let Some(key) = key {
+                        *counts.entry((f, key)).or_default() += 1;
                     }
                 }
                 Rel::Rows(
@@ -627,6 +645,7 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
                 pairs,
                 triples,
                 allowed,
+                by_type,
             } => {
                 let mut out_of: HashMap<&Term, Vec<(&NamedNode, &Term)>> = HashMap::new();
                 match self.rel(*triples)? {
@@ -638,10 +657,26 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
                     _ => return Err("outgoing arcs of a relation that is not triples".to_owned()),
                 }
                 let allowed: HashSet<&str> = allowed.iter().map(|a| a.as_str()).collect();
+                let by_type: HashMap<&str, HashSet<&str>> = by_type
+                    .iter()
+                    .map(|(t, ps)| (t.as_str(), ps.iter().map(|p| p.as_str()).collect()))
+                    .collect();
+                let rdf_type = RdfVocab::rdf_type();
                 let mut out = Vec::new();
                 for (f, v) in self.pairs_of(*pairs)? {
-                    for (p, o) in out_of.get(v).into_iter().flatten() {
-                        if !allowed.contains(p.as_str()) {
+                    let arcs = out_of.get(v).map(Vec::as_slice).unwrap_or_default();
+                    let permitted: HashSet<&str> = arcs
+                        .iter()
+                        .filter(|(p, _)| p.as_str() == rdf_type.as_str())
+                        .filter_map(|(_, t)| match t {
+                            Term::NamedNode(t) => by_type.get(t.as_str()),
+                            _ => None,
+                        })
+                        .flatten()
+                        .copied()
+                        .collect();
+                    for (p, o) in arcs {
+                        if !allowed.contains(p.as_str()) && !permitted.contains(p.as_str()) {
                             out.push(Row {
                                 focus: f.clone(),
                                 value: Some((*o).clone()),
@@ -663,18 +698,25 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
                             o: Some(o),
                         };
                         if self.test(pred, &scope, &constants) {
-                            out.push(Row {
-                                focus: f.clone(),
-                                value: Some(v.clone()),
-                                path: None,
-                            });
+                            out.push((f.clone(), v.clone()));
                         }
                     }
                 }
-                Rel::Rows(out)
+                Rel::Pairs(out)
             },
         })
     }
+}
+
+/// What [`Key::Lang`] compares a value by: its language tag, lower-cased,
+/// and its base direction, as a term; `None` for a value without a tag.
+fn lang_key(term: &Term) -> Option<Term> {
+    let Term::Literal(l) = term else { return None };
+    let tag = l.language()?.to_lowercase();
+    let direction = l.direction().map(|d| format!("--{d}")).unwrap_or_default();
+    Some(Term::Literal(oxrdf::Literal::new_simple_literal(format!(
+        "{tag}{direction}"
+    ))))
 }
 
 /// The values of each focus node of a pair relation.
@@ -716,12 +758,17 @@ fn collect_patterns(pred: &Pred, out: &mut Vec<(String, Option<String>)>) {
 /// The constants of a predicate, as terms, keyed by their spelling: an
 /// [`Object`]'s own equality is by value, and `"1"` and `"01"` are two terms.
 fn constants(pred: &Pred) -> Result<HashMap<String, Term>, String> {
+    fn push(e: &Expr, out: &mut Vec<Object>) {
+        match e {
+            Expr::Const(c) => out.push(c.clone()),
+            Expr::Triple(s, _, o) => {
+                push(s, out);
+                push(o, out);
+            },
+            Expr::Col(_) => {},
+        }
+    }
     fn walk(pred: &Pred, out: &mut Vec<Object>) {
-        let mut push = |e: &Expr| {
-            if let Expr::Const(c) = e {
-                out.push(c.clone());
-            }
-        };
         match pred {
             Pred::And(ps) | Pred::Or(ps) | Pred::ExactlyOne(ps) => ps.iter().for_each(|p| walk(p, out)),
             Pred::Not(p) => walk(p, out),
@@ -730,10 +777,10 @@ fn constants(pred: &Pred) -> Result<HashMap<String, Term>, String> {
             | Pred::LangIn(e, _)
             | Pred::Regex(e, _, _)
             | Pred::StrLen(e, _, _)
-            | Pred::Member(e, _) => push(e),
+            | Pred::Member(e, _) => push(e, out),
             Pred::Compare(a, _, b) | Pred::Same(a, b) | Pred::PairMember(a, b, _) => {
-                push(a);
-                push(b);
+                push(a, out);
+                push(b, out);
             },
             Pred::True => {},
         }

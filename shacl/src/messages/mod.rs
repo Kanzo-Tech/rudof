@@ -182,14 +182,19 @@ pub fn display(schema: &crate::ir::IRSchema, term: &Object) -> String {
 pub fn parameters(component: &crate::ir::IRComponent, schema: &crate::ir::IRSchema) -> Parameters {
     use crate::ir::IRComponent as C;
     let iri = |i: &IriS| display(schema, &Object::Iri(i.clone()));
+    let path = |p: &rudof_rdf::SHACLPath| match p {
+        rudof_rdf::SHACLPath::Predicate { pred } => iri(pred),
+        other => other.to_string(),
+    };
+    let iris = |is: &[IriS]| is.iter().map(iri).collect::<Vec<_>>().join(", ");
     let list = |items: Vec<String>| items.join(", ");
     match component {
-        C::Class(c) => vec![("class", display(schema, c))],
+        C::Class(cs) => vec![("class", iris(cs))],
         C::Datatype(ds) => vec![(
             "datatype",
             list(ds.iter().map(|d| schema.prefix_map().qualify(d)).collect()),
         )],
-        C::NodeKind(k) => vec![("nodeKind", k.to_string())],
+        C::NodeKind(ks) => vec![("nodeKind", list(ks.iter().map(ToString::to_string).collect()))],
         C::MinCount(n) => vec![("minCount", n.to_string())],
         C::MaxCount(n) => vec![("maxCount", n.to_string())],
         C::MinExclusive(l) => vec![("minExclusive", l.lexical_form())],
@@ -200,13 +205,23 @@ pub fn parameters(component: &crate::ir::IRComponent, schema: &crate::ir::IRSche
         C::MaxLength(n) => vec![("maxLength", n.to_string())],
         C::Pattern(p) => vec![("pattern", p.pattern().to_string())],
         C::LanguageIn(ls) => vec![("languageIn", list(ls.iter().map(ToString::to_string).collect()))],
-        C::Equals(p) => vec![("equals", iri(p))],
-        C::Disjoint(p) => vec![("disjoint", iri(p))],
-        C::LessThan(p) => vec![("lessThan", iri(p))],
-        C::LessThanOrEquals(p) => vec![("lessThanOrEquals", iri(p))],
+        C::MinListLength(n) => vec![("minListLength", n.to_string())],
+        C::MaxListLength(n) => vec![("maxListLength", n.to_string())],
+        C::Equals(p) => vec![("equals", path(p))],
+        C::Disjoint(p) => vec![("disjoint", path(p))],
+        C::SubsetOf(p) => vec![("subsetOf", path(p))],
+        C::LessThan(p) => vec![("lessThan", path(p))],
+        C::LessThanOrEquals(p) => vec![("lessThanOrEquals", path(p))],
         C::HasValue(v) => vec![("hasValue", display(schema, v))],
         C::In(vs) => vec![("in", list(vs.iter().map(|v| display(schema, v)).collect()))],
-        C::UniqueLang(_)
+        C::RootClass(cs) => vec![("rootClass", iris(cs))],
+        C::UniqueValuesFor(ps) => vec![("uniqueValuesFor", iris(ps))],
+        C::SingleLine(_)
+        | C::UniqueLang(_)
+        | C::MemberShape(_)
+        | C::UniqueMembers(_)
+        | C::NodeByExpression(_)
+        | C::SomeValue(_)
         | C::Or(_)
         | C::And(_)
         | C::Not(_)
@@ -222,6 +237,9 @@ pub fn parameters(component: &crate::ir::IRComponent, schema: &crate::ir::IRSche
 
 /// The `sh:resultMessage` set of a result of `component`.
 ///
+/// `author` is the `sh:message` the shapes graph states for the constraint
+/// (SHACL 1.2 §2.1.4: on a reifier of its triple) or else for its shape.
+///
 /// `sh:message` is declared on the *shape*, so every result of the shape owes
 /// the author their text, language tags included: "If a shape has at least one
 /// value for `sh:message` in the shapes graph, then all validation results
@@ -236,12 +254,12 @@ pub fn parameters(component: &crate::ir::IRComponent, schema: &crate::ir::IRSche
 /// value node.
 pub fn result_message(
     schema: &crate::ir::IRSchema,
-    shape: &crate::ir::IRShape,
+    author: Option<&MessageMap>,
     component: &IriS,
     parameters: &[(&str, String)],
     value: Option<&Object>,
 ) -> MessageMap {
-    match shape.message() {
+    match author {
         Some(author) if !author.messages().is_empty() => author.clone(),
         _ => schema.messages().render(component, |name| match name {
             "value" => value.map(|v| display(schema, v)),

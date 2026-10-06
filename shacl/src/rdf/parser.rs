@@ -2,13 +2,15 @@ use crate::ast::{ASTSchema, ASTShape};
 use crate::rdf::State;
 use crate::rdf::error::ShaclParserError;
 use crate::rdf::parsers::{node_shape, property_shape};
+use crate::types::{Annotation, Annotations, MessageMap, Severity};
 use itertools::Itertools;
+use rudof_iri::IriS;
 use rudof_rdf::parser::RDFParse;
 use rudof_rdf::parser::rdf_node_parser::constructors::{ListParser, SuccessParser};
 use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
-use rudof_rdf::term::Object;
 use rudof_rdf::term::Triple;
-use rudof_rdf::vocab::{RdfVocab, ShaclVocab};
+use rudof_rdf::term::{IriOrBlankNode, Object};
+use rudof_rdf::vocab::{RdfVocab, RdfsVocab, ShaclVocab};
 use rudof_rdf::{Any, Matcher, NeighsRDF};
 use std::collections::{HashMap, HashSet};
 
@@ -29,11 +31,23 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
         let pm = self.rdf_parser.prefixmap().unwrap_or_default();
 
         let mut state: State = self.shapes_candidates()?.into();
+        let mut annotations = self.annotations()?;
+        let mut by_types = None;
 
         while let Some(node) = state.pop_pending() {
             if !self.shapes.contains_key(&node) {
                 self.rdf_parser.set_focus(&node.clone().into());
-                let shape = shape().parse_focused(&mut self.rdf_parser.ctx())?;
+                let mut shape = shape().parse_focused(&mut self.rdf_parser.ctx())?;
+                if let Some(a) = annotations.remove(&node) {
+                    shape = shape.with_annotations(a);
+                }
+                if shape.closed_by_types() {
+                    let map = match &by_types {
+                        Some(map) => map,
+                        None => by_types.insert(self.properties_by_type()?),
+                    };
+                    shape = shape.with_properties_by_type(map);
+                }
                 self.shapes.insert(node, shape);
             }
         }
@@ -41,6 +55,141 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
         Ok(
             ASTSchema::new().with_prefixmap(pm).with_shapes(self.shapes.clone()), // TODO - Maybe avoid the shapes clone
         )
+    }
+
+    /// The pairs of `predicate`, as objects.
+    fn pairs(&self, predicate: IriS) -> Result<Vec<(Object, Object)>, ShaclParserError> {
+        let rdf = self.rdf_parser.rdf();
+        rdf.triples_with_predicate(&predicate.into())
+            .map_err(|e| ShaclParserError::TriplesLookupError(e.to_string()))?
+            .map(|t| {
+                let (s, _, o) = t.into_components();
+                Ok((RDF::subject_as_node(&s)?, RDF::term_as_object(&o)?))
+            })
+            .collect()
+    }
+
+    /// What the reifiers of each shape's triples say about its constraints
+    /// (SHACL 1.2 §2.1.3–§2.1.5): for every `r rdf:reifies <<( s p o )>>`, the
+    /// `sh:severity`, `sh:message` and `sh:deactivated` of `r`, under `s` and `p`.
+    fn annotations(&self) -> Result<HashMap<Object, Annotations>, ShaclParserError> {
+        let values = |predicate: IriS| -> Result<HashMap<Object, Vec<Object>>, ShaclParserError> {
+            Ok(self.pairs(predicate)?.into_iter().into_group_map())
+        };
+        let severities = values(ShaclVocab::sh_severity())?;
+        let messages = values(ShaclVocab::sh_message())?;
+        let deactivated = values(ShaclVocab::sh_deactivated())?;
+        let mut out: HashMap<Object, Annotations> = HashMap::new();
+        for (reifier, triple) in self.pairs(RdfVocab::rdf_reifies())? {
+            let Object::Triple {
+                subject,
+                predicate,
+                object,
+            } = triple
+            else {
+                continue;
+            };
+            let annotation = Annotation {
+                severity: severities.get(&reifier).and_then(|vs| match vs.first() {
+                    Some(Object::Iri(iri)) => Some(Severity::from(iri)),
+                    _ => None,
+                }),
+                message: messages.get(&reifier).map(|vs| {
+                    vs.iter().fold(MessageMap::new(), |map, v| match v {
+                        Object::Literal(lit) => map.with_message(lit.lang(), lit.lexical_form()),
+                        _ => map,
+                    })
+                }),
+                deactivated: deactivated
+                    .get(&reifier)
+                    .is_some_and(|vs| vs.contains(&Object::boolean(true))),
+            };
+            let shape = match *subject {
+                IriOrBlankNode::Iri(iri) => Object::Iri(iri),
+                IriOrBlankNode::BlankNode(b) => Object::BlankNode(b),
+            };
+            out.entry(shape).or_default().push((predicate, *object, annotation));
+        }
+        Ok(out)
+    }
+
+    /// `collectProperties` (SHACL 1.2 §8.4.1) of every node of the shapes graph
+    /// that can permit a property: the properties a value node of that type
+    /// may have under `sh:closed sh:ByTypes`, besides `rdf:type`.
+    fn properties_by_type(&self) -> Result<Vec<(IriS, Vec<IriS>)>, ShaclParserError> {
+        let edges = |predicate: IriS| -> Result<HashMap<Object, Vec<Object>>, ShaclParserError> {
+            Ok(self.pairs(predicate)?.into_iter().into_group_map())
+        };
+        let sub_class_of = edges(RdfsVocab::rdfs_subclass_of_str())?;
+        let node = edges(ShaclVocab::sh_node())?;
+        let property = edges(ShaclVocab::sh_property())?;
+        let path = edges(ShaclVocab::sh_path())?;
+        let types = edges(RdfVocab::rdf_type())?;
+        let mut targeting: HashMap<Object, Vec<Object>> = HashMap::new();
+        for (shape, class) in self.pairs(ShaclVocab::sh_target_class())? {
+            targeting.entry(class).or_default().push(shape);
+        }
+        // SHACL instances of a class within the shapes graph.
+        let instance_of = |node: &Object, roots: &[IriS]| {
+            let mut seen: HashSet<&Object> = HashSet::new();
+            let mut pending: Vec<&Object> = types.get(node).into_iter().flatten().collect();
+            while let Some(class) = pending.pop() {
+                if matches!(class, Object::Iri(iri) if roots.contains(iri)) {
+                    return true;
+                }
+                if seen.insert(class) {
+                    pending.extend(sub_class_of.get(class).into_iter().flatten());
+                }
+            }
+            false
+        };
+        let class_roots = [RdfsVocab::rdfs_class(), ShaclVocab::sh_shape_class()];
+        let shape_roots = [ShaclVocab::sh_node_shape(), ShaclVocab::sh_shape_class()];
+        let collect = |start: &Object| {
+            let mut properties: Vec<IriS> = Vec::new();
+            let mut seen: HashSet<Object> = HashSet::new();
+            let mut pending = vec![start.clone()];
+            while let Some(s) = pending.pop() {
+                if !seen.insert(s.clone()) {
+                    continue;
+                }
+                for p in property.get(&s).into_iter().flatten() {
+                    for path in path.get(p).into_iter().flatten() {
+                        if let Object::Iri(iri) = path
+                            && !properties.contains(iri)
+                        {
+                            properties.push(iri.clone());
+                        }
+                    }
+                }
+                if instance_of(&s, &class_roots) {
+                    pending.extend(sub_class_of.get(&s).into_iter().flatten().cloned());
+                    pending.extend(targeting.get(&s).into_iter().flatten().cloned());
+                }
+                if instance_of(&s, &shape_roots) {
+                    pending.extend(node.get(&s).into_iter().flatten().cloned());
+                }
+            }
+            properties.sort();
+            properties
+        };
+        let mut out: Vec<(IriS, Vec<IriS>)> = types
+            .keys()
+            .chain(targeting.keys())
+            .chain(property.keys())
+            .filter_map(|t| match t {
+                Object::Iri(iri) => Some(iri.clone()),
+                _ => None,
+            })
+            .unique()
+            .map(|t| {
+                let properties = collect(&Object::Iri(t.clone()));
+                (t, properties)
+            })
+            .filter(|(_, properties)| !properties.is_empty())
+            .collect();
+        out.sort();
+        Ok(out)
     }
 
     /// Shapes candidates are defined in Appendix A of SHACL spec (Syntax rules)
@@ -70,6 +219,12 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
             &Any,
             &RdfVocab::rdf_type().into(),
             &ShaclVocab::sh_shape().into(),
+        )?;
+        // instances of `sh:ShapeClass`, a subclass of `sh:NodeShape` (SHACL 1.2)
+        let shape_class_instances = self.get_triples::<_, RDF::IRI, RDF::Term>(
+            &Any,
+            &RdfVocab::rdf_type().into(),
+            &ShaclVocab::sh_shape_class().into(),
         )?;
         // subjects of sh:targetClass
         let subjects_target_class =
@@ -114,6 +269,10 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
             self.objects_with_predicate(&ShaclVocab::sh_qualified_value_shape().into())?;
         // elements of `sh:node` list
         let sh_node_values = self.objects_with_predicate(&ShaclVocab::sh_node().into())?;
+        // values of the shape-expecting parameters of SHACL 1.2
+        let sh_member_shape_values = self.objects_with_predicate(&ShaclVocab::sh_member_shape().into())?;
+        let sh_some_value_values = self.objects_with_predicate(&ShaclVocab::sh_some_value().into())?;
+        let sh_node_by_expression_values = self.objects_with_predicate(&ShaclVocab::sh_node_by_expression().into())?;
         // elements of `sh:xone` list
         let sh_xone_values = self.get_triples_list(&ShaclVocab::sh_xone().into(), "sh:xone", |v, ctx| {
             ShaclParserError::ValueNotExpected {
@@ -131,6 +290,10 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
 
         node_shapes_instances.extend(property_shapes_instances);
         node_shapes_instances.extend(shape_instances);
+        node_shapes_instances.extend(shape_class_instances);
+        node_shapes_instances.extend(sh_member_shape_values);
+        node_shapes_instances.extend(sh_some_value_values);
+        node_shapes_instances.extend(sh_node_by_expression_values);
         node_shapes_instances.extend(subjects_target_class);
         node_shapes_instances.extend(subjects_target_subjects_of);
         node_shapes_instances.extend(subjects_target_objects_of);

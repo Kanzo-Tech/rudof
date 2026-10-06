@@ -63,8 +63,8 @@ impl PropertyShapeBuilder {
         self.component(ASTComponent::Datatype(vec![dt]))
     }
 
-    pub fn class(self, class: impl Into<Object>) -> Self {
-        self.component(ASTComponent::Class(class.into()))
+    pub fn class(self, class: IriRef) -> Self {
+        self.component(ASTComponent::Class(vec![class]))
     }
 
     pub fn min_count(self, n: isize) -> Self {
@@ -76,7 +76,7 @@ impl PropertyShapeBuilder {
     }
 
     pub fn node_kind(self, nk: crate::types::NodeKind) -> Self {
-        self.component(ASTComponent::NodeKind(nk))
+        self.component(ASTComponent::NodeKind(vec![nk]))
     }
 
     pub fn target(mut self, target: Target) -> Self {
@@ -146,8 +146,8 @@ impl NodeShapeBuilder {
         self
     }
 
-    pub fn class(self, class: impl Into<Object>) -> Self {
-        self.component(ASTComponent::Class(class.into()))
+    pub fn class(self, class: IriRef) -> Self {
+        self.component(ASTComponent::Class(vec![class]))
     }
 
     pub fn target(mut self, target: Target) -> Self {

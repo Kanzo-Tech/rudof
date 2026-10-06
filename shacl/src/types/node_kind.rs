@@ -9,6 +9,8 @@ pub enum NodeKind {
     BNodeOrIri,
     BNodeOrLit,
     IriOrLit,
+    /// SHACL 1.2: an RDF 1.2 triple term.
+    TripleTerm,
 }
 
 impl Display for NodeKind {
@@ -20,6 +22,7 @@ impl Display for NodeKind {
             NodeKind::BNodeOrIri => write!(f, "BlankNodeOrIri"),
             NodeKind::BNodeOrLit => write!(f, "BlankNodeOrLiteral"),
             NodeKind::IriOrLit => write!(f, "IriOrLiteral"),
+            NodeKind::TripleTerm => write!(f, "TripleTerm"),
         }
     }
 }

@@ -1,6 +1,6 @@
 use prefixmap::{PrefixMap, Show};
 use rudof_iri::IriS;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
 /// Represents a SHACL property path for navigating RDF graphs.
@@ -9,7 +9,7 @@ use std::fmt::Display;
 /// which are a subset of SPARQL property paths.
 /// They enable complex navigation patterns through RDF graphs, extending simple predicate-based traversal with operations
 /// like sequences, alternatives, inverses, and quantifiers.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SHACLPath {
     /// A direct predicate path using a single IRI.
     Predicate { pred: IriS },

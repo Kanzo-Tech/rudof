@@ -24,6 +24,10 @@ js-sys = "=0.3.97"
 wasm-bindgen-futures = "=0.4.70"
 serde = { workspace = true, features = ["derive"] }
 serde-wasm-bindgen = "0.6"
+# The TypeScript declaration of every DTO, derived from the serde struct it
+# describes, so the `.d.ts` cannot drift from what crosses the boundary. `js`
+# is the serde-wasm-bindgen flavour the binding marshals with (maps as `Map`).
+tsify = { version = "0.5", default-features = false, features = ["js"] }
 console_error_panic_hook = "0.1"
 
 # The binding routes every GRAPH / VALIDATE / PROJECT / SERIALIZE operation

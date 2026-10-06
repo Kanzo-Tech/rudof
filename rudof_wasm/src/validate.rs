@@ -80,19 +80,23 @@ pub(crate) fn severity_iri(s: &Severity) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rudof_lib::form::{FormEngine, RDFFormat};
+    use rudof_lib::form::{FormEngine, RDFFormat, Shapes};
     use wasm_bindgen_test::wasm_bindgen_test;
 
     const PREFIXES: &str = "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix : <http://example.org/> .\n";
 
-    /// One shape requiring `:p` twice, one node with none. `message` is the
-    /// shape's own `sh:message`, when it has one.
-    fn engine(message: &str) -> FormEngine {
-        let mut engine = FormEngine::new();
+    /// One shape requiring `:p` twice. `message` is the shape's own
+    /// `sh:message`, when it has one.
+    fn shapes(message: &str) -> Shapes {
         let shapes = format!(
             "{PREFIXES}:S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; sh:minCount 2 {message} ] ."
         );
-        engine.load_shapes(&shapes, &RDFFormat::Turtle, None).unwrap();
+        Shapes::parse(&shapes, &RDFFormat::Turtle, None).unwrap()
+    }
+
+    /// Those shapes over one node with no `:p`.
+    fn engine(shapes: Shapes) -> FormEngine {
+        let mut engine = FormEngine::new(shapes);
         engine
             .load_data(&format!("{PREFIXES}:n a :C ."), &RDFFormat::Turtle, None)
             .unwrap();
@@ -117,13 +121,13 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn the_shapes_own_messages_are_the_only_ones() {
-        let m = messages(&engine("; sh:message \"Falta\"@es , \"Missing\"@en"));
+        let m = messages(&engine(shapes("; sh:message \"Falta\"@es , \"Missing\"@en")));
         assert_eq!(m, [pair("en", "Missing"), pair("es", "Falta")]);
     }
 
     #[wasm_bindgen_test]
     fn a_silent_shape_gets_one_tagged_message_per_catalog_language() {
-        let m = messages(&engine(""));
+        let m = messages(&engine(shapes("")));
         assert_eq!(
             m,
             [
@@ -136,8 +140,8 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn loaded_messages_add_a_language_and_reword_one() {
-        let mut engine = engine("");
-        engine
+        let mut shapes = shapes("");
+        shapes
             .load_messages(
                 &format!(
                     "{PREFIXES}sh:MinCountConstraintComponent sh:message \"Au moins {{$minCount}}\"@fr , \"Need {{$minCount}}\"@en ."
@@ -145,11 +149,11 @@ mod tests {
                 &RDFFormat::Turtle,
             )
             .unwrap();
-        let m = messages(&engine);
+        let m = messages(&engine(shapes.clone()));
         assert_eq!(m.len(), 4);
         assert!(m.contains(&pair("fr", "Au moins 2")));
         assert!(m.contains(&pair("en", "Need 2")));
-        assert!(engine.load_messages("nonsense", &RDFFormat::Turtle).is_err());
-        assert_eq!(messages(&engine).len(), 4);
+        assert!(shapes.load_messages("nonsense", &RDFFormat::Turtle).is_err());
+        assert_eq!(messages(&engine(shapes)).len(), 4);
     }
 }

@@ -5,8 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tsify::Tsify;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct TermValue {
     #[serde(rename = "termType")]
     pub term_type: String,
@@ -44,13 +45,13 @@ impl TermValue {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 pub struct LangString {
     pub value: String,
     pub language: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PathExpr {
     Predicate { iri: String },
@@ -62,7 +63,7 @@ pub enum PathExpr {
     ZeroOrOne { path: Box<PathExpr> },
 }
 
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Default, Debug)]
 pub struct Cardinality {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min: Option<i64>,
@@ -70,7 +71,7 @@ pub struct Cardinality {
     pub max: Option<i64>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ValueConstraints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -110,7 +111,7 @@ pub struct ValueConstraints {
 /// A conditional requirement on a node shape: `sh:or ( [ sh:not C ] T )` in SHACL
 /// Core, or this engine's own `sh:if` / `sh:then` / `sh:else`. The `then`/`else`
 /// property shapes are the fields shown when the condition (does not) hold.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ConditionalIR {
     /// stable id of the condition shape (IRI, or "_:b" for a blank node).
@@ -134,7 +135,7 @@ pub struct ConditionalIR {
 /// xsd:date] [sh:datatype xsd:dateTime] )` is one shape per datatype — so typing
 /// these as property shapes does not simplify the model, it makes the usual member
 /// unrepresentable and forces the mapper to drop it.
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Default, Debug)]
 pub struct LogicalConstraints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub or: Option<Vec<ShapeIR>>,
@@ -146,7 +147,7 @@ pub struct LogicalConstraints {
     pub not: Option<Box<ShapeIR>>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PresentationHints {
     pub names: Vec<LangString>,
@@ -179,7 +180,7 @@ pub struct PresentationHints {
 
 /// Where a shape's editor comes from. `declared` and `scored` are SHACL UI's;
 /// `branch` and `fallback` are not.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum EditorSource {
     /// An explicit `shui:editor` on the shape, which wins the score function.
@@ -196,13 +197,13 @@ pub enum EditorSource {
 
 /// One result of the SHACL UI score function: an editor and the score of the
 /// `shui:WidgetScore` that matched.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct EditorScore {
     pub editor: String,
     pub score: f64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 pub struct ComponentIR {
     pub iri: String,
     pub params: HashMap<String, Vec<TermValue>>,
@@ -219,7 +220,7 @@ pub struct ComponentIR {
 ///
 /// One struct rather than two, so a combinator can hold either kind without a
 /// conversion between them, and `serde` skips the absent path.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ShapeIR {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -257,7 +258,7 @@ impl From<PropertyShapeIR> for ShapeIR {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PropertyShapeIR {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -282,7 +283,7 @@ pub struct PropertyShapeIR {
     pub deactivated: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeShapeIR {
     pub id: String,
@@ -319,7 +320,7 @@ pub struct NodeShapeIR {
     pub deactivated: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 pub struct PropertyGroupIR {
     pub id: String,
     pub labels: Vec<LangString>,
@@ -327,7 +328,7 @@ pub struct PropertyGroupIR {
     pub order: Option<f64>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ShapeModelJson {
     pub node_shapes: Vec<NodeShapeIR>,
@@ -337,14 +338,14 @@ pub struct ShapeModelJson {
 
 // ---- projection + validation (abi.ts) ---------------------------------------
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectedValue {
     pub value: TermValue,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nested: Option<TermValue>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectedProperty {
     pub path_key: String,
@@ -355,7 +356,7 @@ pub struct ProjectedProperty {
     pub path_labels: Vec<LangString>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectedForm {
     pub focus: TermValue,
     pub properties: Vec<ProjectedProperty>,
@@ -365,14 +366,14 @@ pub struct ProjectedForm {
     pub satisfied: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 pub struct RudofQuad {
     pub subject: TermValue,
     pub predicate: TermValue,
     pub object: TermValue,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RudofResult {
     pub focus_node: TermValue,
@@ -407,8 +408,19 @@ pub struct RudofResult {
 }
 
 // The validation report crossing the ABI (also produced by the Node fake).
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 pub struct RudofReport {
     pub conforms: bool,
     pub results: Vec<RudofResult>,
+}
+
+/// How `Shapes.parse` reads its text: the media type (Turtle when omitted) and
+/// the base relative IRIs resolve against.
+#[derive(Tsify, Serialize, Deserialize, Clone, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ParseOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
 }

@@ -7,13 +7,13 @@
 //! The native [`crate::Rudof`] façade is endpoint/SPARQL-aware and pulls in
 //! `sparql_service` (not part of the wasm build), so this module is a separate,
 //! `cfg(target_family = "wasm")` surface that operates directly on an in-memory
-//! graph. It owns the live data graph plus the loaded shapes (graph + parsed
-//! AST), and exposes:
+//! graph. [`Shapes`] is a parsed shapes graph, validated against through SQL on
+//! the host's engine; [`FormEngine`] owns a live data graph under one of them,
+//! and exposes:
 //!
 //! * graph mutation — [`FormEngine::add_triple`] / [`FormEngine::remove_triple`],
 //!   [`FormEngine::new_data`], pattern read via [`FormEngine::quads`];
-//! * (de)serialization — [`FormEngine::load_data`] / [`FormEngine::load_shapes`]
-//!   / [`FormEngine::serialize`];
+//! * (de)serialization — [`FormEngine::load_data`] / [`FormEngine::serialize`];
 //! * SHACL property-path projection — [`FormEngine::eval_path`];
 //! * validation — whole-graph [`FormEngine::validate`], shape-scoped
 //!   [`FormEngine::validate_shape`] and single-focus [`FormEngine::validate_focus`].
@@ -54,8 +54,6 @@ pub enum FormError {
     Serialize(String),
     #[error("{0}")]
     Graph(String),
-    #[error("no shapes loaded; call loadShapes first")]
-    NoShapes,
     #[error("shape not found in shapes graph: {0}")]
     ShapeNotFound(String),
     #[error("{0}")]
@@ -71,21 +69,105 @@ pub struct ValidationOutcome {
     pub results: Vec<ValidationResult>,
 }
 
-/// One form session: the live data graph plus the source of the loaded shapes
-/// (the shapes graph, kept for annotation reads, and the parsed validation AST).
-#[derive(Default)]
-pub struct FormEngine {
-    data: OxigraphInMemory,
-    shapes_graph: Option<OxigraphInMemory>,
-    shapes_ast: Option<ASTSchema>,
-    /// The wording of results whose shape has no `sh:message`: the built-in
-    /// catalog until [`FormEngine::load_messages`] extends it.
+/// A parsed SHACL shapes graph: the graph itself, kept for annotation reads, its
+/// validation AST, and the catalog that words the results of shapes with no
+/// `sh:message` of their own.
+#[derive(Clone)]
+pub struct Shapes {
+    graph: OxigraphInMemory,
+    ast: ASTSchema,
+    /// The built-in catalog until [`Shapes::load_messages`] extends it.
     messages: Option<MessageCatalog>,
 }
 
+impl Shapes {
+    /// Parse `text` as a SHACL shapes graph, resolving its relative IRIs against
+    /// `base` (see [`FormEngine::parse_graph`]).
+    pub fn parse(text: &str, format: &RDFFormat, base: Option<&str>) -> Result<Self, FormError> {
+        let graph = FormEngine::parse_graph(text, format, base)?;
+        let ast = ShaclParser::new(graph.clone())
+            .parse()
+            .map_err(|e| FormError::Parse(e.to_string()))?;
+        Ok(Shapes {
+            graph,
+            ast,
+            messages: None,
+        })
+    }
+
+    /// Add the `sh:message` literals of `text` to the message catalog that words
+    /// the results of shapes with no `sh:message` of their own (SHACL §3.6.2.7).
+    /// The built-in catalog (English, Spanish, Catalan) is the starting point; per
+    /// constraint component and language, the later document wins. Adding a
+    /// language needs no code. Nothing changes when `text` does not parse.
+    pub fn load_messages(&mut self, text: &str, format: &RDFFormat) -> Result<(), FormError> {
+        let mut catalog = self
+            .messages
+            .clone()
+            .unwrap_or_else(|| MessageCatalog::builtin().clone());
+        catalog
+            .load(text, format)
+            .map_err(|e| FormError::Parse(e.to_string()))?;
+        self.messages = Some(catalog);
+        Ok(())
+    }
+
+    /// The parsed shapes AST (form-IR projection input).
+    pub fn ast(&self) -> &ASTSchema {
+        &self.ast
+    }
+
+    /// The raw shapes graph (presentation/annotation reads).
+    pub fn graph(&self) -> &OxigraphInMemory {
+        &self.graph
+    }
+
+    /// Validate, through SQL on the host's `engine`, the data in the relation
+    /// `triples` (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`). Messages are worded
+    /// as [`FormEngine::validate`] words them. The shapes are compiled now; the
+    /// future owns what it needs, so it outlives this borrow.
+    pub fn validate_sql<E: SqlEngine + 'static>(
+        &self,
+        triples: String,
+        engine: E,
+    ) -> Result<impl std::future::Future<Output = Result<ValidationOutcome, FormError>> + 'static, FormError> {
+        let schema = self.compile()?;
+        Ok(async move {
+            shacl::validator::sql::validate(&schema, &triples, &engine)
+                .await
+                .map(outcome)
+                .map_err(|e| FormError::Validation(e.to_string()))
+        })
+    }
+
+    /// Compile the AST into the validator's internal representation.
+    fn compile(&self) -> Result<IRSchema, FormError> {
+        let ir = IRSchema::try_from(&self.ast).map_err(|e| FormError::Validation(e.to_string()))?;
+        Ok(match &self.messages {
+            Some(catalog) => ir.with_messages(catalog.clone()),
+            None => ir,
+        })
+    }
+}
+
+/// One form session: a live data graph under a set of [`Shapes`].
+pub struct FormEngine {
+    data: OxigraphInMemory,
+    shapes: Shapes,
+}
+
 impl FormEngine {
-    pub fn new() -> Self {
-        Self::default()
+    /// A session under `shapes`, with an empty data graph.
+    pub fn new(shapes: Shapes) -> Self {
+        FormEngine {
+            data: OxigraphInMemory::new(),
+            shapes,
+        }
+    }
+
+    /// The shapes the session validates and projects against.
+    pub fn shapes(&self) -> &Shapes {
+        &self.shapes
     }
 
     /// Parse RDF text into an in-memory graph, resolving relative IRIs against
@@ -108,55 +190,13 @@ impl FormEngine {
     ///
     /// This façade follows that convention rather than inventing a third one:
     /// the caller supplies the base when it knows one (the wasm binding takes it
-    /// as an optional argument on `loadData` / `loadShapes`), and when it does
+    /// as an optional argument on `loadData` / `Shapes.parse`), and when it does
     /// not, a string has no location to derive a base from, so the parse falls
     /// back to the workspace's own synthetic string base, [`STRING_BASE`].
     pub fn parse_graph(text: &str, format: &RDFFormat, base: Option<&str>) -> Result<OxigraphInMemory, FormError> {
         let base = base.unwrap_or(STRING_BASE);
         OxigraphInMemory::from_str(text, format, Some(base), &ReaderMode::Strict)
             .map_err(|e| FormError::Parse(e.to_string()))
-    }
-
-    // ---- shapes --------------------------------------------------------------
-
-    /// Parse `text` as a SHACL shapes graph and load it: stores both the raw
-    /// graph (annotation reads) and the parsed validation AST. Returns the AST so
-    /// the binding can project its form-IR JSON without re-parsing.
-    pub fn load_shapes(&mut self, text: &str, format: &RDFFormat, base: Option<&str>) -> Result<&ASTSchema, FormError> {
-        let graph = Self::parse_graph(text, format, base)?;
-        let schema = ShaclParser::new(graph.clone())
-            .parse()
-            .map_err(|e| FormError::Parse(e.to_string()))?;
-        self.shapes_graph = Some(graph);
-        self.shapes_ast = Some(schema);
-        Ok(self.shapes_ast.as_ref().expect("just set"))
-    }
-
-    /// Add the `sh:message` literals of `text` to the message catalog that words
-    /// the results of shapes with no `sh:message` of their own (SHACL §3.6.2.7).
-    /// The built-in catalog (English, Spanish, Catalan) is the starting point; per
-    /// constraint component and language, the later document wins. Adding a
-    /// language needs no code. Nothing changes when `text` does not parse.
-    pub fn load_messages(&mut self, text: &str, format: &RDFFormat) -> Result<(), FormError> {
-        let mut catalog = self
-            .messages
-            .clone()
-            .unwrap_or_else(|| MessageCatalog::builtin().clone());
-        catalog
-            .load(text, format)
-            .map_err(|e| FormError::Parse(e.to_string()))?;
-        self.messages = Some(catalog);
-        Ok(())
-    }
-
-    /// The parsed shapes AST, if any (form-IR projection input).
-    pub fn shapes_ast(&self) -> Option<&ASTSchema> {
-        self.shapes_ast.as_ref()
-    }
-
-    /// The raw shapes graph, if any (presentation/annotation reads).
-    pub fn shapes_graph(&self) -> Option<&OxigraphInMemory> {
-        self.shapes_graph.as_ref()
     }
 
     // ---- data ----------------------------------------------------------------
@@ -301,33 +341,9 @@ impl FormEngine {
             .map_err(|e| FormError::Validation(e.to_string()))
     }
 
-    /// Validate, through SQL on the host's `engine`, the data in the
-    /// relation `triples` (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`) against
-    /// the loaded shapes. Messages are worded as [`FormEngine::validate`]
-    /// words them. The shapes are read now; the future owns what it needs, so
-    /// it outlives the session's borrow.
-    pub fn validate_sql<E: SqlEngine + 'static>(
-        &self,
-        triples: String,
-        engine: E,
-    ) -> Result<impl std::future::Future<Output = Result<ValidationOutcome, FormError>> + 'static, FormError> {
-        let schema = self.compile()?;
-        Ok(async move {
-            shacl::validator::sql::validate(&schema, &triples, &engine)
-                .await
-                .map(outcome)
-                .map_err(|e| FormError::Validation(e.to_string()))
-        })
-    }
-
-    /// Compile the loaded shapes AST into the validator's internal representation.
+    /// Compile the shapes into the validator's internal representation.
     fn compile(&self) -> Result<IRSchema, FormError> {
-        let ast = self.shapes_ast.as_ref().ok_or(FormError::NoShapes)?;
-        let ir = IRSchema::try_from(ast).map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(match &self.messages {
-            Some(catalog) => ir.with_messages(catalog.clone()),
-            None => ir,
-        })
+        self.shapes.compile()
     }
 }
 

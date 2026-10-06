@@ -2,6 +2,7 @@
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
 
 // Every rudof-native type the binding marshals against comes from the façade
@@ -23,11 +24,16 @@ pub fn start() {
     console_error_panic_hook::set_once();
 }
 
-fn to_js<T: Serialize>(v: &T) -> Result<JsValue, JsError> {
-    serde_wasm_bindgen::to_value(v).map_err(|e| JsError::new(&e.to_string()))
+/// A DTO as the JavaScript value its TypeScript declaration describes.
+fn to_js<T: Tsify + Serialize>(v: &T) -> Result<Ts<T>, JsError> {
+    Ts::from_rust(v).map_err(|e| JsError::new(&e.to_string()))
 }
-fn from_js<T: DeserializeOwned>(v: JsValue) -> Result<T, JsError> {
-    serde_wasm_bindgen::from_value(v).map_err(|e| JsError::new(&e.to_string()))
+/// A JavaScript value as the DTO its TypeScript declaration names.
+fn from_js<T: Tsify + DeserializeOwned>(v: Ts<T>) -> Result<T, JsError>
+where
+    T::JsType: Clone,
+{
+    v.to_rust().map_err(|e| JsError::new(&e.to_string()))
 }
 
 fn format_of(media_type: &str) -> RDFFormat {
@@ -95,51 +101,121 @@ pub(crate) fn object_to_value(o: &OxTerm) -> TermValue {
     }
 }
 
-// ---- The session -------------------------------------------------------------
+// ---- TypeScript declarations the DTOs cannot carry -----------------------------
 
-/// One form session: the live data graph plus the source of the loaded shapes.
+#[wasm_bindgen(typescript_custom_section)]
+const TS_TYPES: &'static str = r#"
+/** The page's SQL engine: `@kanzo-tech/mosaic`'s `engine()` as it is. */
+export interface Engine {
+  query(sql: string, options: { signal: AbortSignal }): Promise<{ toArray(): Record<string, unknown>[] }>;
+}
+
+/** What `Shapes.validate` reads: a triples relation, on an engine. */
+export interface TableValidation {
+  /** A relation of columns `s_k, s_v, p, o_k, o_v, o_d, o_l`, e.g. `"job".triples`. */
+  table: string;
+  engine: Engine;
+  /** Stops the running statement. */
+  signal?: AbortSignal;
+}
+"#;
+
+// ---- Shapes ------------------------------------------------------------------
+
+/// A parsed SHACL shapes graph. It validates a triples relation on the page's
+/// engine, and a `FormSession` edits data under it.
 #[wasm_bindgen]
-pub struct Session {
-    engine: FormEngine,
+pub struct Shapes {
+    inner: rudof_lib::form::Shapes,
 }
 
 #[wasm_bindgen]
-impl Session {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Session {
-        Session {
-            engine: FormEngine::new(),
-        }
+impl Shapes {
+    /// Parse a SHACL shapes graph. `options.mediaType` defaults to Turtle;
+    /// `options.base` is the document base relative IRIs resolve against — the
+    /// URL the shapes were fetched from, when the caller knows it. Omitted, the
+    /// parse falls back to the workspace's synthetic string base; see
+    /// [`FormEngine::parse_graph`].
+    pub fn parse(text: String, options: Option<Ts<ParseOptions>>) -> Result<Shapes, JsError> {
+        let ParseOptions { media_type, base } = options.map(from_js).transpose()?.unwrap_or_default();
+        let inner = rudof_lib::form::Shapes::parse(
+            &text,
+            &format_of(media_type.as_deref().unwrap_or("text/turtle")),
+            base.as_deref(),
+        )
+        .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Shapes { inner })
     }
 
-    /// Parse and load a SHACL shapes graph.
-    ///
-    /// `base` is the document base relative IRIs in `text` resolve against — the
-    /// URL the shapes were fetched from, when the caller knows it. Omitted
-    /// (`undefined`/`null`), the parse falls back to the workspace's synthetic
-    /// string base; see [`FormEngine::parse_graph`].
-    #[wasm_bindgen(js_name = loadShapes)]
-    pub fn load_shapes(&mut self, text: String, media_type: String, base: Option<String>) -> Result<JsValue, JsError> {
-        self.engine
-            .load_shapes(&text, &format_of(&media_type), base.as_deref())
-            .map_err(|e| JsError::new(&e.to_string()))?;
-        let ast = self.engine.shapes_ast().expect("shapes just loaded");
-        let graph = self.engine.shapes_graph().expect("shapes just loaded");
-        let json = shapes::schema_to_json(ast, graph);
-        to_js(&json)
+    /// The shapes as the vocabulary-agnostic model a form renders.
+    pub fn model(&self) -> Result<Ts<ShapeModelJson>, JsError> {
+        to_js(&shapes::schema_to_json(self.inner.ast(), self.inner.graph()))
     }
 
     /// Add default validation messages: `sh:message` literals on constraint
     /// components (`sh:MinCountConstraintComponent sh:message "..."@fr`, with
     /// `{$minCount}`-style placeholders), used for results whose shape has no
     /// `sh:message`. They extend the built-in English, Spanish and Catalan
-    /// messages; per component and language the later document wins. `media_type`
-    /// defaults to Turtle.
+    /// messages; per component and language the later document wins. `mediaType`
+    /// defaults to Turtle. A `FormSession` words its results with the messages
+    /// its shapes had when it was made.
     #[wasm_bindgen(js_name = loadMessages)]
     pub fn load_messages(&mut self, text: String, media_type: Option<String>) -> Result<(), JsError> {
-        self.engine
+        self.inner
             .load_messages(&text, &format_of(media_type.as_deref().unwrap_or("text/turtle")))
             .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Validate, through SQL on the page's engine, the data in a triples
+    /// relation: `table` names it (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`,
+    /// e.g. `"job".triples`, the view `@fossil-lang/corpus`'s `open` creates);
+    /// `engine` is `{ query(sql, { signal }): Promise<Table> }`, which
+    /// `@kanzo-tech/mosaic`'s `engine()` is; `signal` stops the running
+    /// statement. Every statement runs through `engine.query`, on its one
+    /// connection.
+    ///
+    /// Resolves to a `RudofReport`, worded as `FormSession.validate` words it.
+    /// Shapes the engine refuses (recursive ones, `sh:sparql`) reject it, never
+    /// skipped.
+    #[wasm_bindgen(unchecked_return_type = "Promise<RudofReport>")]
+    pub fn validate(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "TableValidation")] options: JsValue,
+    ) -> Result<js_sys::Promise, JsError> {
+        let field = |name: &str| js_sys::Reflect::get(&options, &name.into()).unwrap_or(JsValue::UNDEFINED);
+        let table = field("table")
+            .as_string()
+            .ok_or_else(|| JsError::new("table: expected the name of a triples relation"))?;
+        let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
+        let validation = self
+            .inner
+            .validate_sql(table, engine)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(wasm_bindgen_futures::future_to_promise(async move {
+            let outcome = validation.await.map_err(|e| JsError::new(&e.to_string()))?;
+            Ok(to_js(&validate::report_from_outcome(&outcome))?.into())
+        }))
+    }
+}
+
+// ---- The form session --------------------------------------------------------
+
+/// One form session: a live data graph under a set of `Shapes`, edited,
+/// projected and validated in memory.
+#[wasm_bindgen]
+pub struct FormSession {
+    engine: FormEngine,
+}
+
+#[wasm_bindgen]
+impl FormSession {
+    /// A session under `shapes`, with an empty data graph. It keeps the shapes
+    /// as they are now: messages loaded into them later do not reach it.
+    #[wasm_bindgen(constructor)]
+    pub fn new(shapes: &Shapes) -> FormSession {
+        FormSession {
+            engine: FormEngine::new(shapes.inner.clone()),
+        }
     }
 
     /// Replace the live data graph with the parse of `text`.
@@ -160,26 +236,41 @@ impl Session {
         self.engine.new_data();
     }
 
-    pub fn add(&mut self, subject: JsValue, predicate: JsValue, object: JsValue) -> Result<(), JsError> {
+    pub fn add(
+        &mut self,
+        subject: Ts<TermValue>,
+        predicate: Ts<TermValue>,
+        object: Ts<TermValue>,
+    ) -> Result<(), JsError> {
         let (s, p, o): (TermValue, TermValue, TermValue) = (from_js(subject)?, from_js(predicate)?, from_js(object)?);
         self.engine
             .add_triple(term_to_subject(&s)?, named(&p.value), term_to_object(&o))
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
-    pub fn remove(&mut self, subject: JsValue, predicate: JsValue, object: JsValue) -> Result<(), JsError> {
+    pub fn remove(
+        &mut self,
+        subject: Ts<TermValue>,
+        predicate: Ts<TermValue>,
+        object: Ts<TermValue>,
+    ) -> Result<(), JsError> {
         let (s, p, o): (TermValue, TermValue, TermValue) = (from_js(subject)?, from_js(predicate)?, from_js(object)?);
         self.engine
             .remove_triple(term_to_subject(&s)?, named(&p.value), term_to_object(&o))
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
-    pub fn quads(&self, subject: JsValue, predicate: JsValue, object: JsValue) -> Result<JsValue, JsError> {
-        let s: Option<TermValue> = from_js(subject)?;
-        let p: Option<TermValue> = from_js(predicate)?;
-        let o: Option<TermValue> = from_js(object)?;
-        let out: Vec<RudofQuad> = self
-            .engine
+    /// The triples matching a pattern; `null` matches anything.
+    pub fn quads(
+        &self,
+        subject: Option<Ts<TermValue>>,
+        predicate: Option<Ts<TermValue>>,
+        object: Option<Ts<TermValue>>,
+    ) -> Result<Vec<Ts<RudofQuad>>, JsError> {
+        let s = subject.map(from_js).transpose()?;
+        let p = predicate.map(from_js).transpose()?;
+        let o = object.map(from_js).transpose()?;
+        self.engine
             .quads()
             .filter(|q| {
                 s.as_ref().is_none_or(|t| &subject_to_value(&q.subject) == t)
@@ -191,8 +282,8 @@ impl Session {
                 predicate: TermValue::named(q.predicate.as_str()),
                 object: object_to_value(&q.object),
             })
-            .collect();
-        to_js(&out)
+            .map(|q| to_js(&q))
+            .collect()
     }
 
     pub fn serialize(&self, media_type: String) -> Result<String, JsError> {
@@ -201,10 +292,10 @@ impl Session {
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
-    /// Serialize only the subgraph reachable from `focus` (a `TermValue`) — the
-    /// focus-scoped form output, vs whole-graph [`serialize`].
+    /// Serialize only the subgraph reachable from `focus` — the focus-scoped
+    /// form output, vs whole-graph [`serialize`].
     #[wasm_bindgen(js_name = serializeFocus)]
-    pub fn serialize_focus(&self, focus: JsValue, media_type: String) -> Result<String, JsError> {
+    pub fn serialize_focus(&self, focus: Ts<TermValue>, media_type: String) -> Result<String, JsError> {
         let focus: TermValue = from_js(focus)?;
         let focus = term_to_object(&focus);
         self.engine
@@ -213,24 +304,22 @@ impl Session {
     }
 
     #[wasm_bindgen(js_name = projectForm)]
-    pub fn project_form(&self, focus: JsValue, shape_id: String) -> Result<JsValue, JsError> {
+    pub fn project_form(&self, focus: Ts<TermValue>, shape_id: String) -> Result<Ts<ProjectedForm>, JsError> {
         let focus: TermValue = from_js(focus)?;
-        match self.engine.shapes_ast() {
-            Some(ast) => to_js(&project::project_form(&self.engine, ast, &focus, &shape_id)),
-            None => to_js(&ProjectedForm {
-                focus,
-                properties: vec![],
-                satisfied: vec![],
-            }),
-        }
+        to_js(&project::project_form(
+            &self.engine,
+            self.engine.shapes().ast(),
+            &focus,
+            &shape_id,
+        ))
     }
 
-    /// Validate the current data graph against the loaded shapes (in memory).
+    /// Validate the current data graph against the shapes (in memory).
     ///
     /// * `shape_id == None`     → validate the whole graph against every shape.
     /// * `shape_id == Some(id)` → validate only that shape (and its nested
     ///   property shapes) against its own targets — shape-scoped.
-    pub fn validate(&self, shape_id: Option<String>) -> Result<JsValue, JsError> {
+    pub fn validate(&self, shape_id: Option<String>) -> Result<Ts<RudofReport>, JsError> {
         let outcome = match shape_id {
             Some(id) => self.engine.validate_shape(&id),
             None => self.engine.validate(),
@@ -242,12 +331,8 @@ impl Session {
     /// Validate a single focus node against a single shape (scoped). This is the
     /// per-field / per-keystroke revalidation path used by the React form: it
     /// validates just `focus` against `shape_id`, not the whole graph.
-    ///
-    /// `focus` is a `TermValue` (the same `{ termType, value, datatype?,
-    /// language? }` shape used everywhere else on this ABI), normally a
-    /// `NamedNode`/`BlankNode` resource.
     #[wasm_bindgen(js_name = validateFocus)]
-    pub fn validate_focus(&self, focus: JsValue, shape_id: String) -> Result<JsValue, JsError> {
+    pub fn validate_focus(&self, focus: Ts<TermValue>, shape_id: String) -> Result<Ts<RudofReport>, JsError> {
         let focus: TermValue = from_js(focus)?;
         let focus = validate::focus_object(&focus).map_err(|e| JsError::new(&e))?;
         let outcome = self
@@ -258,49 +343,15 @@ impl Session {
     }
 }
 
-#[wasm_bindgen]
-impl Session {
-    /// Validate, through SQL, the data in a triples relation against the
-    /// loaded shapes, on the page's engine.
-    ///
-    /// `options` is `{ table, engine, signal? }`: `table` names the relation
-    /// (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`, e.g. `"job".triples`, the
-    /// view `@fossil-lang/corpus`'s `open` creates); `engine` is
-    /// `{ query(sql, { signal }): Promise<Table> }`, which `@kanzo-tech/mosaic`'s
-    /// `engine()` is; `signal` stops the running statement. Every statement
-    /// runs through `engine.query`, on its one connection.
-    ///
-    /// Resolves to a `RudofReport`, worded as the in-memory `validate` words
-    /// it. Shapes the engine refuses (recursive ones, `sh:sparql`) reject it,
-    /// never skipped.
-    #[wasm_bindgen(js_name = validateTable)]
-    pub fn validate_table(&self, options: JsValue) -> Result<js_sys::Promise, JsError> {
-        let field = |name: &str| js_sys::Reflect::get(&options, &name.into()).unwrap_or(JsValue::UNDEFINED);
-        let table = field("table")
-            .as_string()
-            .ok_or_else(|| JsError::new("table: expected the name of a triples relation"))?;
-        let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
-        let validation = self
-            .engine
-            .validate_sql(table, engine)
-            .map_err(|e| JsError::new(&e.to_string()))?;
-        Ok(wasm_bindgen_futures::future_to_promise(async move {
-            let outcome = validation.await.map_err(|e| JsError::new(&e.to_string()))?;
-            Ok(to_js(&validate::report_from_outcome(&outcome))?)
-        }))
-    }
-}
-
-impl Default for Session {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use wasm_bindgen_test::wasm_bindgen_test;
+
+    /// A session under no shapes at all: these tests are about reading data.
+    fn empty() -> FormSession {
+        FormSession::new(&Shapes::parse(String::new(), None).expect("an empty shapes graph"))
+    }
 
     /// Turtle's `IRIREF` production excludes `|`, so `<http://example.org/bad|iri>`
     /// is a syntax error. Under the reader's lax mode the offending triple was
@@ -315,7 +366,7 @@ ex:a a ex:T ; ex:p <http://example.org/bad|iri> .
 ex:a ex:q "ok" .
 "#;
 
-        let mut session = Session::new();
+        let mut session = empty();
         let outcome = session.load_data(DOC.to_string(), "text/turtle".to_string(), None);
         assert!(
             outcome.is_err(),
@@ -323,7 +374,7 @@ ex:a ex:q "ok" .
         );
 
         // The same document with the `|` removed is valid and still loads.
-        let mut session = Session::new();
+        let mut session = empty();
         session
             .load_data(DOC.replace('|', "-"), "text/turtle".to_string(), None)
             .expect("a well-formed document must still load");
@@ -340,7 +391,7 @@ ex:a ex:p <http://example.org/thing#a#b> .
 "#;
 
         for base in [None, Some("http://example.org/doc".to_string())] {
-            let mut session = Session::new();
+            let mut session = empty();
             assert!(
                 session
                     .load_data(DOC.to_string(), "text/turtle".to_string(), base)
@@ -361,7 +412,7 @@ ex:a ex:p <http://example.org/thing#a#b> .
 <person/1> ex:knows <person/2> .
 "#;
 
-        let mut session = Session::new();
+        let mut session = empty();
         session
             .load_data(
                 DOC.to_string(),
@@ -370,12 +421,12 @@ ex:a ex:p <http://example.org/thing#a#b> .
             )
             .expect("a relative IRI is legal Turtle and must load");
 
-        let quads: Vec<RudofQuad> = from_js(
-            session
-                .quads(JsValue::NULL, JsValue::NULL, JsValue::NULL)
-                .expect("quads"),
-        )
-        .expect("quads decode");
+        let quads: Vec<RudofQuad> = session
+            .quads(None, None, None)
+            .expect("quads")
+            .into_iter()
+            .map(|q| from_js(q).expect("quad decodes"))
+            .collect();
 
         assert_eq!(quads.len(), 1, "the relative-IRI triple must be in the graph");
         assert_eq!(quads[0].subject.value, "http://example.org/dir/person/1");
@@ -392,17 +443,17 @@ ex:a ex:p <http://example.org/thing#a#b> .
 <person/1> ex:knows <person/2> .
 "#;
 
-        let mut session = Session::new();
+        let mut session = empty();
         session
             .load_data(DOC.to_string(), "text/turtle".to_string(), None)
             .expect("a relative IRI must load even with no caller base");
 
-        let quads: Vec<RudofQuad> = from_js(
-            session
-                .quads(JsValue::NULL, JsValue::NULL, JsValue::NULL)
-                .expect("quads"),
-        )
-        .expect("quads decode");
+        let quads: Vec<RudofQuad> = session
+            .quads(None, None, None)
+            .expect("quads")
+            .into_iter()
+            .map(|q| from_js(q).expect("quad decodes"))
+            .collect();
 
         assert_eq!(quads.len(), 1, "the relative-IRI triple must be in the graph");
         assert!(

@@ -1,6 +1,5 @@
 use oxrdf::TryFromTermError;
 use shacl::error::{IRError, ShaclParserError};
-use sparql_service::RdfDataError;
 use std::io;
 use thiserror::Error;
 
@@ -11,9 +10,6 @@ pub(crate) enum TestSuiteError {
 
     #[error(transparent)]
     InputOutput(#[from] io::Error),
-
-    #[error(transparent)]
-    RdfData(#[from] Box<RdfDataError>),
 
     // TODO - Maybe remove TestShapesCompilation variant?
     #[error(transparent)]
@@ -30,12 +26,6 @@ pub(crate) enum TestSuiteError {
 
     #[error(transparent)]
     TryFromTerm(#[from] Box<TryFromTermError>),
-}
-
-impl From<RdfDataError> for TestSuiteError {
-    fn from(value: RdfDataError) -> Self {
-        Self::RdfData(Box::new(value))
-    }
 }
 
 impl From<IRError> for TestSuiteError {

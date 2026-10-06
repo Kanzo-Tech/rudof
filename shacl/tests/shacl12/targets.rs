@@ -1,14 +1,6 @@
-#[cfg(test)]
-mod tests {
-    use crate::common::TestSuiteError;
-    use crate::test;
-    use shacl::validator::ShaclValidationMode;
+//! SHACL 1.2 `targets`, through both interpretations.
 
-    const PATH: &str = "tests/shacl12/targets/";
-
-    #[test]
-    fn target_where_001() -> Result<(), TestSuiteError> {
-        let path = format!("{}/{}.ttl", PATH, "targetWhere-001");
-        test(path, ShaclValidationMode::Native)
-    }
+w3c_tests! {
+    "tests/shacl12/targets/";
+    target_where_001 => "targetWhere-001",
 }

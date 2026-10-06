@@ -50,7 +50,7 @@ use rudof_rdf::term::literal::Lang;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
-pub use denote::{DenoteError, denote};
+pub use denote::{DenoteError, denote, denote_shape};
 
 /// A relation of a [`Plan`]: an index into its arena.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

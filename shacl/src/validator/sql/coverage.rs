@@ -125,7 +125,10 @@ pub const COVERAGE: &[(&str, Coverage)] = &[
         "IfConstraintComponent",
         Coverage::Compiled("SHACL 1.2: fails(then) where cond holds, fails(else) where not"),
     ),
-    ("targetWhere", Coverage::Refused("SHACL 1.2 target, not compiled yet")),
+    (
+        "targetWhere",
+        Coverage::Compiled("SHACL 1.2: the nodes of the data graph that do not fail the shape"),
+    ),
     (
         "ReifierShapeConstraintComponent",
         Coverage::Refused("SHACL 1.2 reifier shapes, not compiled yet"),

@@ -1,7 +1,7 @@
 //! The Fossil → rudof contract, end to end: the RML mapping a Fossil corpus
 //! ships (`fixtures/fossil`, the verbatim output of
 //! `@fossil-lang/corpus@0.3.0-alpha.26`), compiled by `compile_sql` and run
-//! on DuckDB tables shaped as the corpus stores them, gives the native
+//! on DuckDB tables shaped as the corpus stores them, gives the in-memory
 //! engine's report on the same data as RDF.
 //!
 //! The mapping names its tables as delimited identifiers (`"Person"`, and
@@ -12,10 +12,9 @@
 #![cfg(not(target_family = "wasm"))]
 
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
-use rudof_rdf::{BuildRDF, RDFFormat};
+use rudof_rdf::RDFFormat;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
-use shacl::validator::processor::validate_with_subset;
 use shacl::validator::report::ValidationReport;
 use shacl::validator::sql::{DuckDb, DuckDbExecutor, Tables, compile_sql};
 
@@ -89,11 +88,10 @@ fn components(report: &ValidationReport) -> Vec<String> {
 }
 
 #[test]
-fn the_fossil_mapping_validates_the_corpus_tables_as_the_native_engine_validates_its_rdf() {
+fn the_fossil_mapping_validates_the_corpus_tables_as_the_evaluator_validates_its_rdf() {
     let schema = IRSchema::try_from(&ShaclParser::new(graph(SHAPES)).parse().expect("shapes parse")).expect("compile");
-    let native = validate_with_subset(&graph(DATA), &schema, OxigraphInMemory::empty())
-        .expect("native validates")
-        .0;
+    let in_memory = shacl::validator::validate(&schema, &graph(DATA))
+        .expect("in memory validates");
 
     let executor = DuckDbExecutor::in_memory().expect("duckdb opens");
     executor.connection().execute_batch(TABLES).expect("tables load");
@@ -104,16 +102,16 @@ fn the_fossil_mapping_validates_the_corpus_tables_as_the_native_engine_validates
     // Bob's score (2.5 < 3) and missing birth time: the two violations, and no
     // hasValue among them — every term of alice's row came out exact.
     assert_eq!(
-        components(&native),
+        components(&in_memory),
         [
             "http://example.org/bob http://www.w3.org/ns/shacl#MinCountConstraintComponent",
             "http://example.org/bob http://www.w3.org/ns/shacl#MinInclusiveConstraintComponent",
         ],
-        "{native}"
+        "{in memory}"
     );
     assert_eq!(
-        sql, native,
-        "SQL over the corpus tables vs native\n{sql}\n---\n{native}"
+        sql, in_memory,
+        "SQL over the corpus tables vs in memory\n{sql}\n---\n{in memory}"
     );
 }
 
@@ -165,9 +163,8 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Thing ; sh:closed true ; sh:ignoredPrope
 "#;
     let data = r#"@prefix ex: <http://example.org/> . ex:t a ex:Thing ; ex:extra "v" ."#;
     let schema = IRSchema::try_from(&ShaclParser::new(graph(shapes)).parse().expect("parses")).expect("compiles");
-    let native = validate_with_subset(&graph(data), &schema, OxigraphInMemory::empty())
-        .expect("native")
-        .0;
+    let in_memory = shacl::validator::validate(&schema, &graph(data))
+        .expect("in memory");
     let executor = DuckDbExecutor::in_memory().expect("duckdb opens");
     executor
         .connection()
@@ -180,6 +177,6 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Thing ; sh:closed true ; sh:ignoredPrope
         .expect("compiles")
         .validate(&schema, &executor)
         .expect("runs");
-    assert_eq!(native.results().len(), 1);
-    assert_eq!(sql, native, "{sql}\n---\n{native}");
+    assert_eq!(in_memory.results().len(), 1);
+    assert_eq!(sql, in_memory, "{sql}\n---\n{in memory}");
 }

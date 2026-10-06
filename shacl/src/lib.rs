@@ -6,14 +6,8 @@ pub mod ast;
 pub mod ir;
 pub mod messages;
 pub mod rdf;
-// Capa-4 graph-subset recorder (prototype): a generic, dyn/Arc-free decorator
-// over `NeighsRDF::triples_matching` that captures the visited frontier.
-pub mod subset;
 pub mod types;
 pub mod vocab;
-// metadata-form fork: un-gate the validator on wasm so SHACL validation can run
-// in the browser. Still needs rayon made sequential/optional on wasm (see
-// validator/processor: par_iter → iter under cfg(target_family = "wasm")).
 pub mod validator;
 
 pub mod error {

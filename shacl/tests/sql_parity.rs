@@ -1,13 +1,12 @@
 //! The SQL engine reads the same report from one dataset whether it sits in a
 //! triple table or in ordinary tables described by an RML mapping — and
-//! that report is the native engine's.
+//! that report is the in-memory evaluator's.
 #![cfg(not(target_family = "wasm"))]
 
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
-use rudof_rdf::{BuildRDF, RDFFormat};
+use rudof_rdf::RDFFormat;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
-use shacl::validator::processor::validate_with_subset;
 use shacl::validator::report::ValidationReport;
 use shacl::validator::sql::{
     DuckDb, DuckDbExecutor, SqlCompileError, SqlPlan, Tables, compile_sql, validate_with_duckdb,
@@ -142,10 +141,9 @@ ex:AdultShape a sh:NodeShape ;
     sh:property [ sh:path ex:knows ] .
 "#;
 
-fn native(data: &OxigraphInMemory, schema: &IRSchema) -> ValidationReport {
-    validate_with_subset(data, schema, OxigraphInMemory::empty())
-        .expect("native validates")
-        .0
+fn in_memory(data: &OxigraphInMemory, schema: &IRSchema) -> ValidationReport {
+    shacl::validator::validate(schema, data)
+        .expect("in memory validates")
 }
 
 /// Validates through the RML mapping, with the tables in `db_schema` (the
@@ -168,28 +166,28 @@ fn through_tables(schema: &IRSchema, db_schema: Option<&str>) -> ValidationRepor
 }
 
 #[test]
-fn tables_and_triple_table_yield_the_native_report() {
+fn tables_and_triple_table_yield_the_evaluators_report() {
     let data = graph(&format!(
         "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n{DATA}"
     ));
     let schema = schema(SHAPES);
 
-    let native = native(&data, &schema);
+    let in_memory = in_memory(&data, &schema);
     let triples = validate_with_duckdb(&data, &schema).expect("triple table validates");
     let tables = through_tables(&schema, None);
     let in_a_schema = through_tables(&schema, Some("warehouse"));
 
     assert!(
-        native.results().len() > 15,
-        "the dataset violates many components: {native}"
+        in_memory.results().len() > 15,
+        "the dataset violates many components: {in memory}"
     );
-    assert_eq!(triples, native, "triple table vs native\n{triples}\n---\n{native}");
-    assert_eq!(tables, native, "tables vs native\n{tables}\n---\n{native}");
-    assert_eq!(in_a_schema, native, "tables in a schema vs native");
+    assert_eq!(triples, in_memory, "triple table vs in memory\n{triples}\n---\n{in memory}");
+    assert_eq!(tables, in_memory, "tables vs in memory\n{tables}\n---\n{in memory}");
+    assert_eq!(in_a_schema, in_memory, "tables in a schema vs in memory");
 }
 
 #[test]
-fn messages_are_the_native_engines() {
+fn messages_are_the_evaluators() {
     let data = graph(&format!(
         "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n{DATA}"
     ));
@@ -208,11 +206,11 @@ fn messages_are_the_native_engines() {
         out.sort_by(|a, b| a.0.cmp(&b.0));
         out
     };
-    let native = keyed(&native(&data, &schema));
+    let in_memory = keyed(&in_memory(&data, &schema));
     let sql = keyed(&validate_with_duckdb(&data, &schema).expect("validates"));
-    assert_eq!(sql.len(), native.len());
-    for ((key, sql), (_, native)) in sql.iter().zip(&native) {
-        assert_eq!(sql, native, "the message of {key}");
+    assert_eq!(sql.len(), in_memory.len());
+    for ((key, sql), (_, in_memory)) in sql.iter().zip(&in_memory) {
+        assert_eq!(sql, in_memory, "the message of {key}");
     }
 }
 
@@ -243,14 +241,21 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
 }
 
 #[test]
-fn target_where_is_refused_not_skipped() {
+fn target_where_selects_the_same_focus_nodes_through_sql() {
+    let data = graph(
+        r#"
+ex:a a ex:Person .
+ex:b a ex:Person ; ex:name "B" .
+ex:c ex:name "C" .
+"#,
+    );
     let schema = schema(
         r#"
 ex:S a sh:NodeShape ; sh:targetWhere ex:W ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .
 ex:W a sh:NodeShape ; sh:class ex:Person .
 "#,
     );
-    let mapping = Tables::from_rml(MAPPING, None, DuckDb).expect("mapping reads");
-    let refused = compile_sql(&schema, &mapping, &DuckDb).expect_err("sh:targetWhere is refused");
-    assert!(matches!(refused, SqlCompileError::Unsupported(_)), "{refused}");
+    let sql = validate_with_duckdb(&data, &schema).expect("sql validates");
+    assert_eq!(sql, in_memory(&data, &schema));
+    assert_eq!(sql.results().len(), 1);
 }

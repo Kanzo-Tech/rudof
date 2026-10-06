@@ -3,17 +3,16 @@ use crate::common::test_instance::TestInstance;
 use oxrdf::{NamedNode, NamedOrBlankNode, Term};
 use rudof_rdf::term::Triple;
 use rudof_rdf::vocab::{RdfVocab, ShaclTestVocab, TestManifestVocab};
+use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use rudof_rdf::{Any, NeighsRDF, RDFFormat};
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
-use shacl::validator::store::{Graph, Store};
-use sparql_service::RdfData;
 use std::collections::HashSet;
 use std::path::Path;
 
 pub(crate) struct Manifest {
     base: String,
-    store: RdfData,
+    store: OxigraphInMemory,
     entries: HashSet<Term>,
 }
 
@@ -30,10 +29,7 @@ impl Manifest {
 
         let subject = NamedOrBlankNode::NamedNode(NamedNode::new_unchecked(base.clone()));
 
-        let graph = Graph::from_path(path, &RDFFormat::Turtle, Some(&base))
-            .map_err(|e| TestSuiteError::Validation(e.to_string()))?;
-
-        let mut store = graph.store().clone();
+        let mut store = read(path, &base)?;
 
         let entries = Manifest::parse_entries(&mut store, subject)?;
         Ok(Self { base, store, entries })
@@ -46,12 +42,13 @@ impl Manifest {
         chars.as_str().to_string().replace("file:/", "")
     }
 
-    fn parse_entries(store: &mut RdfData, subject: NamedOrBlankNode) -> Result<HashSet<Term>, TestSuiteError> {
+    fn parse_entries(store: &mut OxigraphInMemory, subject: NamedOrBlankNode) -> Result<HashSet<Term>, TestSuiteError> {
         let mut entry_terms = HashSet::new();
 
         let mf_entries: NamedNode = TestManifestVocab::mf_entries().into();
         let entry_subject = store
-            .triples_matching(&subject, &mf_entries, &Any)?
+            .triples_matching(&subject, &mf_entries, &Any)
+            .map_err(|e| TestSuiteError::Validation(e.to_string()))?
             .map(Triple::into_object)
             .next();
 
@@ -60,7 +57,8 @@ impl Manifest {
                 let inner_subject: NamedOrBlankNode = subject.clone().try_into()?;
                 let rdf_first: NamedNode = RdfVocab::rdf_first().into();
                 match store
-                    .triples_matching(&inner_subject, &rdf_first, &Any)?
+                    .triples_matching(&inner_subject, &rdf_first, &Any)
+                    .map_err(|e| TestSuiteError::Validation(e.to_string()))?
                     .map(Triple::into_object)
                     .next()
                 {
@@ -70,7 +68,8 @@ impl Manifest {
 
                 let rdf_rest: NamedNode = RdfVocab::rdf_rest().into();
                 subject = match store
-                    .triples_matching(&inner_subject, &rdf_rest, &Any)?
+                    .triples_matching(&inner_subject, &rdf_rest, &Any)
+                    .map_err(|e| TestSuiteError::Validation(e.to_string()))?
                     .map(Triple::into_object)
                     .next()
                 {
@@ -83,7 +82,7 @@ impl Manifest {
         Ok(entry_terms)
     }
 
-    pub fn collect_tests(&mut self) -> Result<Vec<TestInstance<RdfData>>, TestSuiteError> {
+    pub fn collect_tests(&mut self) -> Result<Vec<TestInstance<OxigraphInMemory>>, TestSuiteError> {
         let mut entries = Vec::new();
 
         for entry in &self.entries {
@@ -97,7 +96,7 @@ impl Manifest {
             let action: NamedOrBlankNode = match self
                 .store
                 .triples_matching(&entry, &mf_action, &Any)
-                .map_err(<sparql_service::RdfDataError as Into<TestSuiteError>>::into)?
+                .map_err(|e| TestSuiteError::Validation(e.to_string()))?
                 .map(Triple::into_object)
                 .next()
                 .unwrap()
@@ -115,7 +114,7 @@ impl Manifest {
             let results = self
                 .store
                 .triples_with_subject_predicate(&entry, &mf_result)
-                .map_err(<sparql_service::RdfDataError as Into<TestSuiteError>>::into)?
+                .map_err(|e| TestSuiteError::Validation(e.to_string()))?
                 .map(Triple::into_object)
                 .next()
                 .unwrap();
@@ -127,7 +126,7 @@ impl Manifest {
             let data_graph_iri = self
                 .store
                 .triples_with_subject_predicate(&action, &sht_data_graph)
-                .map_err(<sparql_service::RdfDataError as Into<TestSuiteError>>::into)?
+                .map_err(|e| TestSuiteError::Validation(e.to_string()))?
                 .map(Triple::into_object)
                 .next()
                 .unwrap();
@@ -136,7 +135,7 @@ impl Manifest {
             let shapes_graph_iri = self
                 .store
                 .triples_with_subject_predicate(&action, &sht_shapes_graph)
-                .map_err(<sparql_service::RdfDataError as Into<TestSuiteError>>::into)?
+                .map_err(|e| TestSuiteError::Validation(e.to_string()))?
                 .map(Triple::into_object)
                 .next()
                 .unwrap();
@@ -144,19 +143,22 @@ impl Manifest {
             let data_graph_path = Self::format_path(data_graph_iri.to_string());
             let shapes_graph_path = Self::format_path(shapes_graph_iri.to_string());
 
-            let graph = Graph::from_path(Path::new(&data_graph_path), &RDFFormat::Turtle, Some(&self.base))
-                .map_err(|e| TestSuiteError::Validation(e.to_string()))?;
+            let graph = read(Path::new(&data_graph_path), &self.base)?;
+            let shapes = read(Path::new(&shapes_graph_path), &self.base)?;
 
-            let shapes = Graph::from_path(Path::new(&shapes_graph_path), &RDFFormat::Turtle, Some(&self.base))
-                .map_err(|e| TestSuiteError::Validation(e.to_string()))?;
-
-            let schema = ShaclParser::new(shapes.store().clone())
+            let schema = ShaclParser::new(shapes)
                 .parse()
                 .map_err(|e| TestSuiteError::Validation(e.to_string()))?;
 
-            entries.push(TestInstance::new(graph.store().clone(), schema, report));
+            entries.push(TestInstance::new(graph, schema, report));
         }
 
         Ok(entries)
     }
+}
+
+/// A Turtle file of the suite, resolved against `base`.
+fn read(path: &Path, base: &str) -> Result<OxigraphInMemory, TestSuiteError> {
+    OxigraphInMemory::from_path(path, &RDFFormat::Turtle, Some(base), &ReaderMode::default())
+        .map_err(|e| TestSuiteError::Validation(e.to_string()))
 }

@@ -7,9 +7,9 @@
 //! SQL; they become [`Object`]s only where a test reads their value
 //! (comparisons, datatypes, languages) and in the report.
 
-use crate::algebra::{Check, CmpOp, Col, Expr, Kind, Op, Plan, Pred, RelId, denote};
+use crate::algebra::{Check, CmpOp, Col, Expr, Kind, Op, Plan, Pred, RelId, denote, denote_shape};
 use crate::error::ValidationError;
-use crate::ir::IRSchema;
+use crate::ir::{IRSchema, ShapeLabelIdx};
 use crate::validator::report::{ValidationReport, ValidationResult};
 use rudof_iri::IriS;
 use oxrdf::{NamedNode, Term};
@@ -110,26 +110,41 @@ pub fn validate<S>(schema: &IRSchema, store: &S) -> Result<ValidationReport, Val
 where
     S: NeighsRDF<Term = Term>,
 {
-    let plan = denote(schema)?;
-    let rows = evaluate(&plan, store)?;
+    report(schema, &denote(schema)?, store)
+}
+
+/// Validates `store` against one shape and its property shapes: `focus` when
+/// given, otherwise the shape's own targets.
+pub fn validate_shape<S>(
+    schema: &IRSchema,
+    store: &S,
+    shape: ShapeLabelIdx,
+    focus: Option<&Object>,
+) -> Result<ValidationReport, ValidationError>
+where
+    S: NeighsRDF<Term = Term>,
+{
+    report(schema, &denote_shape(schema, shape, focus)?, store)
+}
+
+/// The report of `plan`'s rows over `store`.
+fn report<S>(schema: &IRSchema, plan: &Plan, store: &S) -> Result<ValidationReport, ValidationError>
+where
+    S: NeighsRDF<Term = Term>,
+{
+    let rows = evaluate(plan, store)?;
     let mut results = Vec::new();
     for (check, rows) in plan.checks.iter().zip(rows) {
+        let err = |message: String| EvalError {
+            relation: check.rows.to_string(),
+            message,
+        };
         for row in rows {
-            let as_object = |t: Term| {
-                Object::try_from(t).map_err(|e| EvalError {
-                    relation: check.rows.to_string(),
-                    message: e.to_string(),
-                })
-            };
+            let as_object = |t: Term| Object::try_from(t).map_err(|e| err(e.to_string()));
             let focus = as_object(row.focus)?;
             let value = row.value.map(as_object).transpose()?;
             let path = row.path.map(|p| IriS::new_unchecked(p.as_str()));
-            results.push(
-                ValidationResult::of(schema, check, focus, value, path).map_err(|message| EvalError {
-                    relation: check.rows.to_string(),
-                    message,
-                })?,
-            );
+            results.push(ValidationResult::of(schema, check, focus, value, path).map_err(err)?);
         }
     }
     let mut prefixes = schema.prefix_map().clone();
@@ -154,12 +169,8 @@ where
         pairs: HashMap::new(),
         regexes: HashMap::new(),
     };
-    for id in plan.reached(&roots) {
-        let rel = eval.relation(id).map_err(|message| EvalError {
-            relation: format!("{id} = {:?}", plan.op(id)),
-            message,
-        })?;
-        eval.rels[id.index()] = Some(rel);
+    for root in &roots {
+        eval.force(*root)?;
     }
     plan.checks.iter().map(|c: &Check| eval.rows(c.rows)).collect()
 }
@@ -176,6 +187,79 @@ struct Evaluator<'a, S> {
 }
 
 impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
+    /// Computes `id`, and first what it reads, on demand: a relation no check
+    /// reaches is never computed. The arcs of a predicate from a set of nodes
+    /// are looked up node by node ([`Self::arcs`]), so a path read from a few
+    /// focus nodes never reads the whole predicate.
+    fn force(&mut self, id: RelId) -> Result<(), EvalError> {
+        if self.rels[id.index()].is_some() {
+            return Ok(());
+        }
+        let plan = self.plan;
+        let error = |message: String| EvalError {
+            relation: format!("{id} = {:?}", plan.op(id)),
+            message,
+        };
+        let rel = match self.arcs_of(id) {
+            Some((predicate, inverse, nodes)) => {
+                self.force(nodes)?;
+                self.arcs(&predicate, inverse, nodes).map_err(error)?
+            },
+            None => {
+                for input in plan.op(id).inputs() {
+                    self.force(input)?;
+                }
+                self.relation(id).map_err(error)?
+            },
+        };
+        self.rels[id.index()] = Some(rel);
+        Ok(())
+    }
+
+    /// `Restrict` of a predicate, or of its inverse, to a node relation.
+    fn arcs_of(&self, id: RelId) -> Option<(NamedNode, bool, RelId)> {
+        let Op::Restrict { pairs, nodes } = self.plan.op(id) else {
+            return None;
+        };
+        match self.plan.op(*pairs) {
+            Op::Predicate(iri) => Some((NamedNode::new_unchecked(iri.as_str()), false, *nodes)),
+            Op::Inverse(edges) => match self.plan.op(*edges) {
+                Op::Predicate(iri) => Some((NamedNode::new_unchecked(iri.as_str()), true, *nodes)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// The arcs of `predicate` (inverted when `inverse`) from each node of
+    /// `nodes`, distinct.
+    fn arcs(&self, predicate: &NamedNode, inverse: bool, nodes: RelId) -> Result<Rel, String> {
+        let iri: S::IRI = IriS::new_unchecked(predicate.as_str()).into();
+        let mut out = Vec::new();
+        for node in distinct(self.nodes(nodes)?) {
+            if inverse {
+                let triples = self
+                    .store
+                    .triples_with_predicate_object(&iri, &node)
+                    .map_err(|e| e.to_string())?;
+                for t in triples {
+                    let (s, _, _) = t.into_components();
+                    out.push((node.clone(), S::subject_as_term(&s)));
+                }
+            } else if let Ok(subject) = S::term_as_subject(&node) {
+                let triples = self
+                    .store
+                    .triples_with_subject_predicate(&subject, &iri)
+                    .map_err(|e| e.to_string())?;
+                for t in triples {
+                    let (_, _, o) = t.into_components();
+                    out.push((node.clone(), o));
+                }
+            }
+        }
+        Ok(Rel::Pairs(distinct(&out)))
+    }
+
     fn rel(&self, id: RelId) -> Result<&Rel, String> {
         self.rels[id.index()]
             .as_ref()

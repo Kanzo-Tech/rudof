@@ -57,12 +57,6 @@ impl From<SortError> for DenoteError {
 
 /// The SHACL 1.2 and SHACL-SPARQL features of `shape` outside the algebra.
 fn refuse(shape: &IRShape) -> Result<(), DenoteError> {
-    if shape.targets().iter().any(|t| matches!(t, Target::Where(_))) {
-        return Err(DenoteError::Unsupported(format!(
-            "sh:targetWhere (SHACL 1.2) on {}",
-            shape.id()
-        )));
-    }
     if shape.reifier_info().is_some() {
         return Err(DenoteError::Unsupported(format!(
             "sh:reifierShape (SHACL 1.2) on {}",
@@ -91,28 +85,30 @@ fn refuse(shape: &IRShape) -> Result<(), DenoteError> {
 /// reached only through another (as a property shape, or by `sh:node`,
 /// `sh:and`, …). Deactivated shapes yield nothing and conform everywhere.
 pub fn denote(schema: &IRSchema) -> Result<Plan, DenoteError> {
-    let graph = schema.dependency_graph();
-    if graph.has_cycles() {
-        return Err(DenoteError::RecursiveShapes(format!("{graph}")));
-    }
-    for (_, shape) in schema.iter() {
-        refuse(shape)?;
-    }
-    let mut d = Denoter {
-        schema,
-        b: PlanBuilder::new(),
-        fails: HashMap::new(),
-    };
+    let mut d = Denoter::new(schema)?;
     for level in schema.shapes_with_targets_by_level() {
         for idx in level {
             let shape = d.shape(idx)?;
-            if shape.deactivated() {
-                continue;
+            if !shape.deactivated() {
+                let focus = d.focus(shape)?;
+                d.emit(idx, focus, false)?;
             }
-            let focus = d.focus(shape)?;
-            d.emit(idx, focus, false)?;
         }
     }
+    Ok(d.b.finish())
+}
+
+/// The plan of one shape and its property shapes: for `focus` when given,
+/// otherwise for the shape's own targets. The checks a form revalidates when
+/// one node or one shape changes.
+pub fn denote_shape(schema: &IRSchema, idx: ShapeLabelIdx, focus: Option<&Object>) -> Result<Plan, DenoteError> {
+    let mut d = Denoter::new(schema)?;
+    let shape = d.shape(idx)?;
+    let focus = match focus {
+        Some(node) => d.op(Op::Constants(vec![node.clone()]))?,
+        None => d.focus(shape)?,
+    };
+    d.emit(idx, focus, false)?;
     Ok(d.b.finish())
 }
 
@@ -173,6 +169,22 @@ struct Rows {
 }
 
 impl<'a> Denoter<'a> {
+    /// A denoter for `schema`, once it is known to have a denotation.
+    fn new(schema: &'a IRSchema) -> Result<Self, DenoteError> {
+        let graph = schema.dependency_graph();
+        if graph.has_cycles() {
+            return Err(DenoteError::RecursiveShapes(format!("{graph}")));
+        }
+        for (_, shape) in schema.iter() {
+            refuse(shape)?;
+        }
+        Ok(Self {
+            schema,
+            b: PlanBuilder::new(),
+            fails: HashMap::new(),
+        })
+    }
+
     fn op(&mut self, op: Op) -> Result<RelId, DenoteError> {
         Ok(self.b.add(op)?)
     }
@@ -232,7 +244,19 @@ impl<'a> Denoter<'a> {
                 let v = self.op(Op::Values(edges))?;
                 self.op(Op::Distinct(v))
             },
-            Target::Where(shape) => Err(DenoteError::Unsupported(format!("sh:targetWhere {shape} (SHACL 1.2)"))),
+            // SHACL 1.2 §3.1.3.6: the nodes of the data graph that conform to
+            // the shape.
+            Target::Where(shape) => {
+                let idx = *self.schema.get_idx(shape).ok_or_else(|| {
+                    DenoteError::MalformedTarget(format!("sh:targetWhere value {shape} is not a shape"))
+                })?;
+                let all = self.op(Op::AllNodes)?;
+                let candidates = self.op(Op::Distinct(all))?;
+                match self.fails(idx, candidates)? {
+                    None => Ok(candidates),
+                    Some(fails) => self.op(Op::Filter(candidates, Pred::not(Pred::Member(Expr::f(), fails)))),
+                }
+            },
             Target::WrongNode(_)
             | Target::WrongClass(_)
             | Target::WrongSubjectsOf(_)

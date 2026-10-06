@@ -1,21 +1,10 @@
-//! SHACL validation
-//! This module contains the code for SHACL validation
+//! SHACL validation: a shapes graph denoted once ([`crate::algebra`]) and
+//! interpreted over the data, in memory ([`eval`]) or as SQL ([`sql`]).
 
-mod cache;
-mod config;
-pub mod constraints;
-pub mod engine;
 pub mod eval;
 pub(crate) mod error;
-mod index;
-mod iteration;
-mod mode;
-pub mod nodes;
-pub mod processor;
 pub mod report;
 #[cfg(feature = "sql")]
 pub mod sql;
-pub mod store;
 
-pub use config::ShaclConfig;
-pub use mode::ShaclValidationMode;
+pub use eval::{validate, validate_shape};

@@ -1,11 +1,8 @@
-//! The SQL engine: SHACL Core compiled to set-based SQL.
-//!
-//! The native and SPARQL engines walk the data node by node (the SPARQL one
-//! asks one `ASK` per value node). This one compiles the whole shapes graph,
-//! once, into relational queries — one `SELECT` per shape, constraint
-//! component and context — that a host runs on its own engine over its own
-//! tables. One semantics, a second execution strategy: the W3C suite holds the
-//! reports of both engines equal.
+//! The SQL interpretation of the [algebra](crate::algebra): the plan of a
+//! shapes graph rendered as relational queries, one `SELECT` per shape,
+//! constraint component and context, that a host runs on its own engine over
+//! its own tables. The in-memory evaluator ([`crate::validator::eval`]) reads
+//! the same plan, and the W3C suite holds the two reports equal.
 //!
 //! ```text
 //! compile_sql(&IRSchema, &impl RelationalMapping, &impl SqlDialect) -> SqlPlan
@@ -22,10 +19,10 @@
 //! - [`SqlExecutor`] is implemented by the host: rudof links no engine. A
 //!   DuckDB one exists behind the native-only `duckdb` feature.
 //!
-//! Everything SHACL Core defines compiles ([`COVERAGE`]). What does not is
-//! **refused** when the plan is compiled, never skipped: recursive shapes
-//! (their semantics is undefined), SHACL-SPARQL, and the SHACL 1.2
-//! `sh:targetWhere` and reifier shapes.
+//! Everything SHACL Core defines compiles ([`COVERAGE`]), and `sh:targetWhere`.
+//! What the algebra does not denote is **refused**, never skipped: recursive
+//! shapes (their semantics is undefined), SHACL-SPARQL, and SHACL 1.2 reifier
+//! shapes.
 //!
 //! The module builds for wasm: it depends on no engine, thread or I/O.
 

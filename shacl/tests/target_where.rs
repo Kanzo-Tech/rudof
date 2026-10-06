@@ -3,10 +3,9 @@
 #![cfg(not(target_family = "wasm"))]
 
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
-use rudof_rdf::{BuildRDF, RDFFormat};
+use rudof_rdf::RDFFormat;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
-use shacl::validator::processor::validate_with_subset;
 
 const PREFIXES: &str = r#"
 @prefix sh:  <http://www.w3.org/ns/shacl#> .
@@ -24,7 +23,7 @@ fn graph(ttl: &str) -> OxigraphInMemory {
 fn results(shapes: &str, data: &str) -> Vec<(String, String, String)> {
     let ast = ShaclParser::new(graph(shapes)).parse().expect("sh:targetWhere parses");
     let schema = IRSchema::try_from(&ast).expect("schema compiles");
-    let (report, _) = validate_with_subset(&graph(data), &schema, OxigraphInMemory::empty()).expect("validates");
+    let report = shacl::validator::validate(&schema, &graph(data)).expect("validates");
     let mut out: Vec<_> = report
         .results()
         .iter()

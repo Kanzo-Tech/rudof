@@ -53,8 +53,8 @@ pub fn encode_object(object: &Object) -> Result<EncodedTerm, SqlCompileError> {
     encode(&Term::from(object.clone()))
 }
 
-/// Decodes the four columns back into the term the native engine would have
-/// built for it (through the same `oxrdf::Term → Object` conversion).
+/// Decodes the four columns back into the term the in-memory evaluator
+/// holds for it (through the same `oxrdf::Term → Object` conversion).
 pub fn decode(kind: &str, lexical: &str, datatype: &str, lang: &str) -> Result<Object, String> {
     let term: Term = match kind {
         IRI => NamedNode::new_unchecked(lexical).into(),
@@ -140,7 +140,7 @@ impl TermExpr {
     }
 }
 
-/// How the native engine reads a literal's lexical form against its datatype.
+/// How the in-memory evaluator reads a literal's lexical form against its datatype.
 ///
 /// `check_literal_datatype` in `rudof_rdf` parses a fixed set of XSD types and
 /// turns an ill-formed lexical form into a `WrongDatatypeLiteral`: a value of
@@ -352,7 +352,7 @@ fn boolean_value(t: &TermExpr) -> Expr {
     in_list(t.lex.clone(), vec![string("true"), string("1")])
 }
 
-/// `a op b` under the order the native engine uses (`Object::sparql_compare`
+/// `a op b` under the order the in-memory evaluator uses (`Object::sparql_compare`
 /// over `ConcreteLiteral::sparql_compare`): a boolean, or `NULL` when the two
 /// terms are incomparable.
 ///

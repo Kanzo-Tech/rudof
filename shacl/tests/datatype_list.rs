@@ -3,10 +3,9 @@
 #![cfg(not(target_family = "wasm"))]
 
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
-use rudof_rdf::{BuildRDF, RDFFormat};
+use rudof_rdf::RDFFormat;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
-use shacl::validator::processor::validate_with_subset;
 
 const SHAPES: &str = r#"
 @prefix sh:  <http://www.w3.org/ns/shacl#> .
@@ -28,7 +27,7 @@ fn conforms(data: &str) -> bool {
         .parse()
         .expect("a list-valued sh:datatype parses");
     let schema = IRSchema::try_from(&ast).expect("schema compiles");
-    let (report, _) = validate_with_subset(&graph(data), &schema, OxigraphInMemory::empty()).expect("validates");
+    let report = shacl::validator::validate(&schema, &graph(data)).expect("validates");
     report.conforms()
 }
 

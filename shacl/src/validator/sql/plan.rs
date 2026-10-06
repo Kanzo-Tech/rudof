@@ -100,9 +100,8 @@ impl SqlPlan {
     }
 
     /// The validation report of the rows of every check (`rows_by_check[i]`
-    /// are the rows of `checks[i]`). Messages come from the native engine's
-    /// own wording ([`ValidationResult::of`]), so every interpretation's report
-    /// reads alike.
+    /// are the rows of `checks[i]`), built by [`ValidationResult::of`] as the
+    /// in-memory evaluator builds its own, so both reports read alike.
     pub fn report(&self, schema: &IRSchema, rows_by_check: &[Vec<Row>]) -> Result<ValidationReport, SqlRowError> {
         // One row set per check: a missing set is not an empty one, and
         // reading it as such would report conformance for checks never run.

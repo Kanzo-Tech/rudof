@@ -3,11 +3,11 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 
 ## [Unreleased]
 ### Added
-- SHACL SQL engine (`shacl::validator::sql`): `compile_sql` turns a shapes graph into one SQL statement over a relational mapping (a `UNION ALL` of a branch per check, tagged by a `check` column; a relation several checks read is one materialized CTE) (`TripleTable` for arbitrary RDF, `Tables` for ordinary tables described by an RML 2.0 mapping: RML-Core term maps and joins, RML-IO SQL tables, RML-LV logical views with inner/left joins), with DuckDB as the first dialect, behind the `sql` feature. All of SHACL Core compiles; recursive shapes, SHACL-SPARQL and reifier shapes are refused. The W3C core suite runs through both the in-memory evaluator and the SQL engine
+- SHACL SQL engine (`shacl::validator::sql`): `compile_sql` turns a shapes graph into a SQL script over a relational mapping (a `CREATE TEMPORARY TABLE` per relation several checks read, then one query, a `UNION ALL` of a branch per check tagged by a `check` column, then the drops; `SqlExecutor` gains `execute`) (`TripleTable` for arbitrary RDF, `Tables` for ordinary tables described by an RML 2.0 mapping: RML-Core term maps and joins, RML-IO SQL tables, RML-LV logical views with inner/left joins), with DuckDB as the first dialect, behind the `sql` feature. All of SHACL Core compiles; recursive shapes and SHACL-SPARQL are refused. The W3C core suite runs through both the in-memory evaluator and the SQL engine
 - `Rudof::compile_sql`; `shacl::validator::sql::validate_with_duckdb` (feature `duckdb`, native only)
 - `sh:targetWhere` (SHACL 1.2), in both interpretations
 - RML reading: table names and references are read as SQL identifiers (delimited, qualified); a literal keeps its natural lexical form under an `rml:datatype` override (timestamps, binary, time, double specials); a mapping names one `rml:Source`, located by the schema the host passes
-- wasm: `Session.compileSql(rmlTurtle, schema?, dialect)` (one `sql` statement plus per-check metadata) and `Session.reportFromRows(rows)`; validation results carry `sourceShape`
+- wasm: `Session.compileSql(rmlTurtle, schema?, dialect)` (the script as `setup`, `query` and `teardown`, plus per-check metadata) and `Session.reportFromRows(rows)`; validation results carry `sourceShape`
 ### Fixed
 - SHACL `sh:minLength` / `sh:maxLength` count characters (SPARQL `STRLEN`), not UTF-8 bytes
 - SHACL value ranges compare numerics by value across every XSD numeric type (e.g. `xsd:long` against `xsd:integer`); `xsd:int` literals are checked for well-formedness; `xsd:short` values keep their datatype in reports

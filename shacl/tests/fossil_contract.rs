@@ -16,7 +16,7 @@ use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
-use shacl::validator::sql::{DuckDb, DuckDbExecutor, Tables, compile_sql};
+use shacl::validator::sql::{DuckDb, DuckDbExecutor, SqlPlan, Tables, compile_sql};
 
 const MAPPING: &str = include_str!("fixtures/fossil/fossil-mapping.rml.ttl");
 
@@ -127,7 +127,7 @@ fn every_table_name_reaches_duckdb_delimited_once() {
     )
     .expect("compiles");
     let plan = compile_sql(&schema, &mapping, &DuckDb).expect("compiles");
-    let sql = plan.sql();
+    let sql = script(&plan);
     assert!(sql.contains(r#""Fossil Corpus"."acme.Org""#), "{sql}");
     assert!(sql.contains(r#""Fossil Corpus"."Person_worksFor_acme.Org""#), "{sql}");
     assert!(!sql.contains(r#""""#), "an identifier was quoted twice: {sql}");
@@ -152,18 +152,35 @@ fn a_row_naming_no_check_of_the_plan_is_an_error_not_a_result() {
     assert!(plan.report(&schema, &[row("one")]).is_err());
 }
 
-/// The plan is one statement, and a relation several checks read is one CTE,
-/// materialized: the `Person` table is scanned for `sh:targetClass` once,
-/// whatever the number of property shapes reached from it (rudof#6).
+/// A relation several checks read is one temporary table: the focus nodes
+/// of `sh:targetClass` are computed once, whatever the number of property
+/// shapes reached from them (rudof#6), and the query has one branch per check.
 #[test]
 fn checks_share_the_relations_they_read() {
     let schema = IRSchema::try_from(&ShaclParser::new(graph(SHAPES)).parse().expect("shapes parse")).expect("compile");
     let mapping = Tables::from_rml(MAPPING, Some(r#""Fossil Corpus""#), DuckDb).expect("reads");
     let plan = compile_sql(&schema, &mapping, &DuckDb).expect("compiles");
-    let sql = plan.sql();
     assert!(plan.checks.len() > 1);
-    assert_eq!(sql.matches(r#" AS "check""#).count(), plan.checks.len(), "{sql}");
-    assert!(sql.contains(" AS MATERIALIZED ("), "{sql}");
+    let query = plan.query();
+    assert_eq!(query.matches(r#" AS "check""#).count(), plan.checks.len(), "{query}");
+    assert!(!plan.setup().is_empty());
+    assert!(
+        plan.setup().iter().all(|s| s.starts_with("CREATE TEMPORARY TABLE ")),
+        "{:?}",
+        plan.setup()
+    );
+    assert_eq!(plan.teardown().len(), plan.setup().len());
+}
+
+/// The plan's statements, in the order a host runs them.
+fn script(plan: &SqlPlan) -> String {
+    plan.setup()
+        .iter()
+        .map(String::as_str)
+        .chain([plan.query()])
+        .chain(plan.teardown().iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join(";\n")
 }
 
 /// An RDF graph is a set: a triple the mapping yields twice (two rules, here)

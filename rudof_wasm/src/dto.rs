@@ -433,16 +433,21 @@ pub struct SqlCheckDto {
     pub path_key: Option<String>,
 }
 
-/// The SQL plan of the loaded shapes: one statement, and one check per
-/// shape, constraint component and context. Run `sql`, then hand its rows to
-/// `reportFromRows`.
+/// The SQL plan of the loaded shapes: a script, and one check per shape,
+/// constraint component and context. On one connection, run each of `setup`,
+/// then `query`, whose rows go to `reportFromRows`, then each of `teardown`.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlPlanDto {
     pub dialect: String,
-    /// The statement, rendered for the dialect. Its columns are `columns`.
-    pub sql: String,
-    /// The columns of the statement's rows: the index of the row's check in
+    /// A `CREATE TEMPORARY TABLE` per relation the checks share, in order.
+    pub setup: Vec<String>,
+    /// The query whose rows are the results. Its columns are `columns`.
+    pub query: String,
+    /// A `DROP TABLE IF EXISTS` per table of `setup`; run it whether or not
+    /// the setup or the query failed.
+    pub teardown: Vec<String>,
+    /// The columns of the query's rows: the index of the row's check in
     /// `checks`, then the focus term, the value term and a path override,
     /// each term as kind (`I`/`B`/`L`), lexical form, datatype and language.
     pub columns: Vec<String>,

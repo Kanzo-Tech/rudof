@@ -9,10 +9,10 @@
 
 use sqlparser::ast::helpers::attached_token::AttachedToken;
 use sqlparser::ast::{
-    BinaryOperator, CaseWhen, CastKind, Cte, CteAsMaterialized, DataType, Distinct, Expr, Function, FunctionArg,
-    FunctionArgExpr, FunctionArgumentList, FunctionArguments, GroupByExpr, Ident, Join, JoinConstraint, JoinOperator,
-    ObjectName, ObjectNamePart, Query, Select, SelectFlavor, SelectItem, SetExpr, SetOperator, SetQuantifier,
-    TableAlias, TableFactor, TableWithJoins, UnaryOperator, Value, With,
+    BinaryOperator, CaseWhen, CastKind, Cte, DataType, Distinct, Expr, Function, FunctionArg, FunctionArgExpr,
+    FunctionArgumentList, FunctionArguments, GroupByExpr, Ident, Join, JoinConstraint, JoinOperator, ObjectName,
+    ObjectNamePart, Query, Select, SelectFlavor, SelectItem, SetExpr, SetOperator, SetQuantifier, TableAlias,
+    TableFactor, TableWithJoins, UnaryOperator, Value, With,
 };
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
@@ -460,7 +460,7 @@ pub fn union_all_of(bodies: Vec<SetExpr>, all: bool) -> Option<SetExpr> {
 }
 
 /// A CTE `name AS (query)`, or `name AS MATERIALIZED (query)`.
-pub fn cte(name: &str, body: Query, materialized: bool) -> Cte {
+pub fn cte(name: &str, body: Query) -> Cte {
     Cte {
         alias: TableAlias {
             explicit: false,
@@ -470,7 +470,7 @@ pub fn cte(name: &str, body: Query, materialized: bool) -> Cte {
         },
         query: Box::new(body),
         from: None,
-        materialized: materialized.then_some(CteAsMaterialized::Materialized),
+        materialized: None,
         closing_paren_token: AttachedToken::empty(),
     }
 }

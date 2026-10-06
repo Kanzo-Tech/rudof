@@ -7,9 +7,10 @@ use shacl::validator::sql::SqlPlan;
 
 /// Builder for the `compile_sql` operation.
 ///
-/// Compiles the loaded SHACL shapes into a [`SqlPlan`]: one SQL query per
-/// shape, constraint component and context, which a host runs on its own
-/// engine; `SqlPlan::report` turns the rows back into a validation report.
+/// Compiles the loaded SHACL shapes into a [`SqlPlan`]: a SQL script, a
+/// temporary table per shared relation and one query with a branch per shape,
+/// constraint component and context, which a host runs on its own engine;
+/// `SqlPlan::report` turns the query's rows back into a validation report.
 pub struct CompileSqlBuilder<'a> {
     rudof: &'a Rudof,
     mapping: &'a SqlMapping,

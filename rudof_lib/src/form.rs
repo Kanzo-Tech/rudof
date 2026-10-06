@@ -304,10 +304,10 @@ impl FormEngine {
             .map_err(|e| FormError::Validation(e.to_string()))
     }
 
-    /// Compile the loaded shapes into one SQL statement over the tables the
-    /// RML mapping `rml` (Turtle) describes, in `dialect` (`duckdb`), its
+    /// Compile the loaded shapes into a SQL script over the tables the RML
+    /// mapping `rml` (Turtle) describes, in `dialect` (`duckdb`), its
     /// unqualified table names resolved against `schema` when given. The host
-    /// runs the statement on its own engine and hands the rows to
+    /// runs the script on its own engine and hands the query's rows to
     /// [`FormEngine::report_from_rows`]; the plan is kept for that until the
     /// next compilation.
     pub fn compile_sql(&mut self, rml: &str, schema: Option<&str>, dialect: &str) -> Result<&SqlPlan, FormError> {

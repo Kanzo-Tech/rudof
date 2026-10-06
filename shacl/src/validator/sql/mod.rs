@@ -1,12 +1,13 @@
 //! The SQL interpretation of the [algebra](crate::algebra): the plan of a
-//! shapes graph rendered as one relational statement, a `UNION ALL` of a
-//! `SELECT` per shape, constraint component and context over CTEs they share,
-//! that a host runs on its own engine over its own tables. The in-memory evaluator ([`crate::validator::eval`]) reads
+//! shapes graph rendered as a script, a temporary table per relation the
+//! checks share and then one query, a `UNION ALL` of a `SELECT` per shape,
+//! constraint component and context, that a host runs on its own engine over
+//! its own tables. The in-memory evaluator ([`crate::validator::eval`]) reads
 //! the same plan, and the W3C suite holds the two reports equal.
 //!
 //! ```text
 //! compile_sql(&IRSchema, &impl RelationalMapping, &impl SqlDialect) -> SqlPlan
-//! SqlPlan::execute(&impl SqlExecutor) -> rows       (the host's engine, one statement)
+//! SqlPlan::execute(&impl SqlExecutor) -> rows       (the host's engine: setup, query, teardown)
 //! SqlPlan::report(&IRSchema, rows) -> ValidationReport
 //! ```
 //!
@@ -21,8 +22,7 @@
 //!
 //! Everything SHACL Core defines compiles ([`COVERAGE`]), and `sh:targetWhere`.
 //! What the algebra does not denote is **refused**, never skipped: recursive
-//! shapes (their semantics is undefined), SHACL-SPARQL, and SHACL 1.2 reifier
-//! shapes.
+//! shapes (their semantics is undefined) and SHACL-SPARQL.
 //!
 //! The module builds for wasm: it depends on no engine, thread or I/O.
 
@@ -58,6 +58,8 @@ pub use triple_table::{TRIPLE_TABLE_COLUMNS, TripleTable};
 use crate::algebra::{DenoteError, denote};
 use crate::ir::IRSchema;
 use render::Renderer;
+use sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;
+use sqlparser::ast::{Ident, ObjectName, ObjectType, Statement};
 
 /// Why a shapes graph does not compile to SQL.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -106,9 +108,36 @@ where
     D: SqlDialect + ?Sized,
 {
     let plan = denote(schema)?;
-    let statement = Renderer::new(&plan, mapping, dialect).statement(&plan.checks)?;
+    let (tables, query) = Renderer::new(&plan, mapping, dialect).script(&plan.checks)?;
+    let table = |name: &str| ObjectName::from(vec![Ident::with_quote('"', name)]);
     Ok(SqlPlan {
-        sql: dialect.render(&statement),
+        setup: tables
+            .iter()
+            .map(|(name, body)| {
+                let create = CreateTableBuilder::new(table(name))
+                    .temporary(true)
+                    .query(Some(Box::new(body.clone())))
+                    .build();
+                dialect.render(&Statement::CreateTable(create))
+            })
+            .collect(),
+        query: dialect.render(&Statement::Query(Box::new(query))),
+        teardown: tables
+            .iter()
+            .rev()
+            .map(|(name, _)| {
+                dialect.render(&Statement::Drop {
+                    object_type: ObjectType::Table,
+                    if_exists: true,
+                    names: vec![table(name)],
+                    cascade: false,
+                    restrict: false,
+                    purge: false,
+                    temporary: false,
+                    table: None,
+                })
+            })
+            .collect(),
         checks: plan.checks,
     })
 }

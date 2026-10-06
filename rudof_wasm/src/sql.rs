@@ -1,5 +1,5 @@
-//! The SQL engine across the ABI: the plan of the loaded shapes as one SQL
-//! statement plus the metadata of each check, and the report read back from the rows
+//! The SQL engine across the ABI: the plan of the loaded shapes as a SQL
+//! script plus the metadata of each check, and the report read back from the rows
 //! the host's engine returned. Compilation and the report are the façade's
 //! (`FormEngine::compile_sql` / `report_from_rows`); here they are only
 //! marshalled.
@@ -14,7 +14,9 @@ use crate::validate::{object_to_term, path_to_term, severity_iri};
 pub fn plan_dto(engine: &FormEngine, plan: &SqlPlan, dialect: &str) -> SqlPlanDto {
     SqlPlanDto {
         dialect: dialect.to_lowercase(),
-        sql: plan.sql().to_owned(),
+        setup: plan.setup().to_vec(),
+        query: plan.query().to_owned(),
+        teardown: plan.teardown().to_vec(),
         columns: RESULT_COLUMNS.iter().map(|c| (*c).to_string()).collect(),
         checks: plan
             .checks
@@ -67,7 +69,8 @@ mod tests {
         let dto = plan_dto(&engine, &plan, "DuckDB");
         assert_eq!(dto.dialect, "duckdb");
         assert_eq!(dto.columns.len(), 10);
-        assert!(dto.sql.contains("\"warehouse\".\"c\""), "{}", dto.sql);
+        assert!(dto.query.contains("\"warehouse\".\"c\""), "{}", dto.query);
+        assert_eq!(dto.setup.len(), dto.teardown.len());
         assert_eq!(dto.checks.len(), 1);
         let check = &dto.checks[0];
         assert_eq!(

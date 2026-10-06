@@ -8,7 +8,7 @@
 
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{case, cast, eq, function, in_list, string};
-use sqlparser::ast::{CastKind, DataType, Expr, Ident, ObjectName, Query};
+use sqlparser::ast::{CastKind, DataType, Expr, Ident, ObjectName, Statement};
 
 /// A type a lexical form is cast to, to compare it by value or to check that it
 /// lies in a datatype's value space.
@@ -70,15 +70,9 @@ pub trait SqlDialect {
         true
     }
 
-    /// Whether a CTE can be written `AS MATERIALIZED`. A relation more than one
-    /// consumer reads is then computed once; without it the engine decides.
-    fn supports_materialized_cte(&self) -> bool {
-        false
-    }
-
-    /// The text of `query` for this engine.
-    fn render(&self, query: &Query) -> String {
-        query.to_string()
+    /// The text of `statement` for this engine.
+    fn render(&self, statement: &Statement) -> String {
+        statement.to_string()
     }
 }
 
@@ -201,10 +195,6 @@ fn regex_quote(text: &str) -> String {
 impl SqlDialect for DuckDb {
     fn name(&self) -> &'static str {
         "duckdb"
-    }
-
-    fn supports_materialized_cte(&self) -> bool {
-        true
     }
 
     fn regex_match(&self, text: Expr, pattern: &str, flags: Option<&str>) -> Result<Expr, SqlCompileError> {

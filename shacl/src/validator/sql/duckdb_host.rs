@@ -58,6 +58,10 @@ impl DuckDbExecutor {
 impl SqlExecutor for DuckDbExecutor {
     type Error = duckdb::Error;
 
+    fn execute(&self, sql: &str) -> Result<(), Self::Error> {
+        self.connection.execute_batch(sql)
+    }
+
     fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error> {
         let mut statement = self.connection.prepare(sql)?;
         let rows = statement.query_map([], |row| {

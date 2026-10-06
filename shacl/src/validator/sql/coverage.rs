@@ -7,7 +7,7 @@
 
 /// How the engine treats a component or feature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Coverage {
+pub(crate) enum Coverage {
     /// Compiled to SQL; the text says how.
     Compiled(&'static str),
     /// Refused when the plan is compiled; the text says why.
@@ -15,7 +15,7 @@ pub enum Coverage {
 }
 
 /// `(sh: local name, coverage)`, in the order of the Recommendation.
-pub const COVERAGE: &[(&str, Coverage)] = &[
+pub(crate) const COVERAGE: &[(&str, Coverage)] = &[
     // 4.1 Value type
     (
         "ClassConstraintComponent",

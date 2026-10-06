@@ -9,6 +9,11 @@
 //! A suite passes when every case does, in every interpretation, except the
 //! ones `LEFT_OUT` names; a listed case that passes is red too, so the list
 //! only ever shrinks.
+//!
+//! The suites are also the corpus of a differential test: each case's shapes
+//! validate graphs drawn at random from the terms of its data, and the two
+//! interpretations must give the same report, messages included. A difference
+//! is shrunk to the smallest graph that shows it.
 
 use include_dir::{Dir, include_dir};
 use oxrdf::{NamedNode, Term};
@@ -19,6 +24,9 @@ use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
 use std::collections::BTreeMap;
+
+#[cfg(not(target_family = "wasm"))]
+mod common;
 
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -73,7 +81,7 @@ impl Interpretation {
         match self {
             Interpretation::Eval => shacl::validator::validate(schema, data).map_err(|e| e.to_string()),
             #[cfg(not(target_family = "wasm"))]
-            Interpretation::Sql => shacl::validator::sql::validate_with_duckdb(data, schema),
+            Interpretation::Sql => common::validate_with_duckdb(data, schema),
         }
     }
 }
@@ -110,6 +118,15 @@ impl Suite {
     /// whether it holds.
     fn run(&self, interpretation: Interpretation) -> BTreeMap<String, Result<(), String>> {
         let mut outcomes = BTreeMap::new();
+        self.each_case(|id, manifest, entry| {
+            outcomes.insert(id, self.case(manifest, entry, interpretation));
+        });
+        outcomes
+    }
+
+    /// Calls `f` with the id, manifest and entry of every case of every
+    /// manifest reachable from the root one.
+    fn each_case(&self, mut f: impl FnMut(String, &mut OxigraphInMemory, &Term)) {
         let mut manifests = vec![self.iri("manifest.ttl")];
         while let Some(manifest) = manifests.pop() {
             let mut graph = self
@@ -125,20 +142,14 @@ impl Suite {
             for list in objects(&graph, &node, MF, "entries") {
                 for entry in members(&graph, list) {
                     let id = self.id(&unbracket(entry.to_string()));
-                    outcomes.insert(id, self.case(&mut graph, &entry, interpretation));
+                    f(id, &mut graph, &entry);
                 }
             }
         }
-        outcomes
     }
 
-    /// Whether the `sht:Validate` entry `entry` gives its expected report.
-    fn case(
-        &self,
-        manifest: &mut OxigraphInMemory,
-        entry: &Term,
-        interpretation: Interpretation,
-    ) -> Result<(), String> {
+    /// The data graph and the compiled shapes of the entry `entry`.
+    fn inputs(&self, manifest: &OxigraphInMemory, entry: &Term) -> Result<(OxigraphInMemory, IRSchema), String> {
         let action = one(manifest, entry, MF, "action")?;
         let graph_of = |name: &str| -> Result<OxigraphInMemory, String> {
             self.graph(&unbracket(one(manifest, &action, SHT, name)?.to_string()))
@@ -148,6 +159,17 @@ impl Suite {
             .parse()
             .map_err(|e| format!("shapes: {e}"))?;
         let schema = IRSchema::try_from(&shapes).map_err(|e| format!("shapes: {e}"))?;
+        Ok((data, schema))
+    }
+
+    /// Whether the `sht:Validate` entry `entry` gives its expected report.
+    fn case(
+        &self,
+        manifest: &mut OxigraphInMemory,
+        entry: &Term,
+        interpretation: Interpretation,
+    ) -> Result<(), String> {
+        let (data, schema) = self.inputs(manifest, entry)?;
         let result = one(manifest, entry, MF, "result")?;
         let expected =
             ValidationReport::parse(manifest, result.clone()).map_err(|e| format!("expected report: {e}"))?;
@@ -287,4 +309,178 @@ fn shacl_1_0_core_sql() {
 #[test]
 fn shacl_1_2_core_sql() {
     SHACL_1_2.check(Interpretation::Sql);
+}
+
+/// The two interpretations agree on graphs drawn from each case's terms.
+#[cfg(not(target_family = "wasm"))]
+mod differential {
+    use super::*;
+    use oxrdf::{NamedOrBlankNode, Triple};
+    use proptest::collection::vec;
+    use proptest::sample::subsequence;
+    use proptest::test_runner::{Config, RngAlgorithm, TestCaseError, TestError, TestRng, TestRunner};
+
+    /// Graphs drawn per case.
+    const GRAPHS: u32 = 16;
+
+    /// At most this many triples added to a draw from the case's own.
+    const ADDED: usize = 6;
+
+    /// The terms a case's graphs are drawn from: its data's triples, and the
+    /// subjects, predicates and objects they hold.
+    struct Terms {
+        triples: Vec<Triple>,
+        subjects: Vec<NamedOrBlankNode>,
+        predicates: Vec<NamedNode>,
+        objects: Vec<Term>,
+    }
+
+    impl Terms {
+        fn of(data: &OxigraphInMemory) -> Terms {
+            let triples: Vec<Triple> = data.triples().expect("an in-memory graph lists its triples").collect();
+            let mut subjects: Vec<NamedOrBlankNode> = triples.iter().map(|t| t.subject.clone()).collect();
+            let mut predicates: Vec<NamedNode> = triples.iter().map(|t| t.predicate.clone()).collect();
+            let mut objects: Vec<Term> = triples.iter().map(|t| t.object.clone()).collect();
+            // A node that is only ever an object is drawn as a subject too.
+            subjects.extend(objects.iter().filter_map(|o| match o {
+                Term::NamedNode(n) => Some(n.clone().into()),
+                Term::BlankNode(b) => Some(b.clone().into()),
+                _ => None,
+            }));
+            objects.extend(subjects.iter().cloned().map(Term::from));
+            subjects.sort_by_key(ToString::to_string);
+            subjects.dedup();
+            predicates.sort();
+            predicates.dedup();
+            objects.sort_by_key(ToString::to_string);
+            objects.dedup();
+            Terms {
+                triples,
+                subjects,
+                predicates,
+                objects,
+            }
+        }
+
+        /// The graph of `kept` and of the triples `added` indexes.
+        fn graph(&self, kept: &[Triple], added: &[(usize, usize, usize)]) -> OxigraphInMemory {
+            let added = added.iter().map(|&(s, p, o)| {
+                Triple::new(
+                    self.subjects[s].clone(),
+                    self.predicates[p].clone(),
+                    self.objects[o].clone(),
+                )
+            });
+            let text: String = kept.iter().cloned().chain(added).map(|t| format!("{t} .\n")).collect();
+            OxigraphInMemory::from_str(&text, &RDFFormat::NTriples, None, &ReaderMode::Strict)
+                .unwrap_or_else(|e| panic!("a drawn graph reads back: {e}\n{text}"))
+        }
+    }
+
+    /// A report as the sorted spellings of its results, messages included in
+    /// language order (a message map is a hash map, in no order of its own).
+    fn spelled(report: Result<ValidationReport, String>) -> Result<Vec<String>, String> {
+        let mut results: Vec<String> = report?
+            .results()
+            .iter()
+            .map(|r| {
+                let mut messages: Vec<String> = r
+                    .message()
+                    .messages()
+                    .iter()
+                    .map(|(lang, text)| format!("{text:?}@{lang:?}"))
+                    .collect();
+                messages.sort();
+                format!(
+                    "{} {} {:?} {:?} {:?} {:?} {:?} {messages:?}",
+                    r.focus_node(),
+                    r.constraint_component(),
+                    r.severity(),
+                    r.path(),
+                    r.value(),
+                    r.source(),
+                    r.details(),
+                )
+            })
+            .collect();
+        results.sort();
+        Ok(results)
+    }
+
+    /// The smallest graph drawn for `id` on which the interpretations differ.
+    fn agree(id: &str, data: &OxigraphInMemory, schema: &IRSchema) -> Result<(), String> {
+        let terms = Terms::of(data);
+        if terms.predicates.is_empty() {
+            return Ok(());
+        }
+        let added = vec(
+            (
+                0..terms.subjects.len(),
+                0..terms.predicates.len(),
+                0..terms.objects.len(),
+            ),
+            0..=ADDED,
+        );
+        let strategy = (subsequence(terms.triples.clone(), 0..=terms.triples.len()), added);
+        let mut runner = TestRunner::new_with_rng(
+            Config {
+                cases: GRAPHS,
+                failure_persistence: None,
+                ..Config::default()
+            },
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        runner
+            .run(&strategy, |(kept, added)| {
+                let graph = terms.graph(&kept, &added);
+                let eval = spelled(Interpretation::Eval.validate(schema, &graph));
+                let sql = spelled(Interpretation::Sql.validate(schema, &graph));
+                if eval == sql {
+                    Ok(())
+                } else {
+                    Err(TestCaseError::fail(format!(
+                        "eval {eval:#?}\nsql {sql:#?}\ngraph\n{}",
+                        kept.iter()
+                            .map(|t| format!("{t} ."))
+                            .chain(added.iter().map(|&(s, p, o)| format!(
+                                "{} {} {} .",
+                                terms.subjects[s], terms.predicates[p], terms.objects[o]
+                            )))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    )))
+                }
+            })
+            .map_err(|e| match e {
+                TestError::Fail(why, _) => format!("DIFFERS {id}\n{why}"),
+                TestError::Abort(why) => format!("ABORTED {id}\n{why}"),
+            })
+    }
+
+    fn check(suite: &Suite) {
+        let mut differences = Vec::new();
+        suite.each_case(|id, manifest, entry| {
+            let (data, schema) = suite.inputs(manifest, entry).unwrap_or_else(|e| panic!("{id}: {e}"));
+            if let Err(why) = agree(&id, &data, &schema) {
+                differences.push(why);
+            }
+        });
+        assert!(
+            differences.is_empty(),
+            "{}: {} cases differ\n\n{}",
+            suite.name,
+            differences.len(),
+            differences.join("\n\n")
+        );
+    }
+
+    #[test]
+    fn shacl_1_0_core_in_memory_is_sql() {
+        check(&SHACL_1_0);
+    }
+
+    #[test]
+    fn shacl_1_2_core_in_memory_is_sql() {
+        check(&SHACL_1_2);
+    }
 }

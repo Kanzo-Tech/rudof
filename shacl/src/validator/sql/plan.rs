@@ -9,19 +9,24 @@ use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 use std::fmt::Display;
 
-/// One row of the plan's statement, in [`RESULT_COLUMNS`] order: the index of
+/// One row of the plan's query, in [`RESULT_COLUMNS`] order: the index of
 /// its check, the focus term, the value term (all `NULL` when the result has
 /// none) and the path override.
 pub type Row = Vec<Option<String>>;
 
-/// Runs the plan's statement. Hosts implement it over their engine; rudof
+/// Runs the plan's statements. Hosts implement it over their engine; rudof
 /// links none.
 ///
-/// The statement arrives as text, rendered for the plan's dialect: a host
-/// needs no SQL AST, and the plan's public surface does not tie rudof's semver
-/// to the AST crate's.
+/// Statements arrive as text, rendered for the plan's dialect: a host needs no
+/// SQL AST, and the plan's public surface does not tie rudof's semver to the
+/// AST crate's. All of one plan's statements run on one connection, since its
+/// tables are temporary, and a connection runs one plan at a time, since their
+/// names are the plan's.
 pub trait SqlExecutor {
     type Error: Display;
+
+    /// Runs `sql`, a statement without rows.
+    fn execute(&self, sql: &str) -> Result<(), Self::Error>;
 
     /// Every row of `sql`, each in [`RESULT_COLUMNS`] order, as text.
     fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error>;
@@ -44,16 +49,26 @@ pub enum SqlRunError<E: Display> {
     Row(#[from] SqlRowError),
 }
 
-/// What [`compile_sql`](crate::validator::sql::compile_sql) produces: one
-/// statement whose rows are the results, and the checks they belong to (a
-/// shape's constraint component in one context), by index.
+/// What [`compile`](crate::validator::sql::compile) produces: a script whose
+/// query's rows are the results, the checks they belong to (a shape's
+/// constraint component in one context), by index, and the shapes graph they
+/// were compiled from. The script is [`setup`](Self::setup), a
+/// `CREATE TEMPORARY TABLE` per relation the checks share, inputs first; then
+/// [`query`](Self::query); then [`teardown`](Self::teardown), which drops
+/// those tables.
+///
+/// A host that runs statements synchronously implements [`SqlExecutor`] and
+/// calls [`validate`](Self::validate); one that cannot (an asynchronous
+/// engine across the wasm ABI) runs the three parts itself and hands the
+/// query's rows to [`report`](Self::report).
 #[derive(Debug, Clone)]
 pub struct SqlPlan {
     /// What every row of a check reports: shape, component, severity, path.
     pub checks: Vec<Check>,
-    /// The statement as its dialect renders it; its columns are
-    /// [`RESULT_COLUMNS`].
-    pub(crate) sql: String,
+    pub(crate) schema: IRSchema,
+    pub(crate) setup: Vec<String>,
+    pub(crate) query: String,
+    pub(crate) teardown: Vec<String>,
 }
 
 fn cell(row: &Row, i: usize) -> Option<&str> {
@@ -74,20 +89,34 @@ fn term(row: &Row, offset: usize) -> Result<Option<Object>, String> {
 }
 
 impl SqlPlan {
-    /// The statement, as the plan's dialect renders it.
-    pub fn sql(&self) -> &str {
-        &self.sql
+    /// The statements that create the shared tables, in order.
+    pub fn setup(&self) -> &[String] {
+        &self.setup
     }
 
-    /// Runs the statement through `executor`.
-    pub fn execute<X: SqlExecutor>(&self, executor: &X) -> Result<Vec<Row>, SqlRunError<X::Error>> {
-        executor.rows(&self.sql).map_err(SqlRunError::Executor)
+    /// The query whose rows are the results; its columns are
+    /// [`RESULT_COLUMNS`].
+    pub fn query(&self) -> &str {
+        &self.query
     }
 
-    /// The validation report of the statement's rows, each built by
+    /// The statements that drop the shared tables, which hold whether or not
+    /// all of them were created.
+    pub fn teardown(&self) -> &[String] {
+        &self.teardown
+    }
+
+    /// The shapes graph the plan was compiled from: what a check's
+    /// [`shape`](Check::shape) indexes.
+    pub fn schema(&self) -> &IRSchema {
+        &self.schema
+    }
+
+    /// The validation report of the query's rows, each built by
     /// [`ValidationResult::of`] for the check it names, as the in-memory
     /// evaluator builds its own, so both reports read alike.
-    pub fn report(&self, schema: &IRSchema, rows: &[Row]) -> Result<ValidationReport, SqlRowError> {
+    pub fn report(&self, rows: &[Row]) -> Result<ValidationReport, SqlRowError> {
+        let schema = &self.schema;
         let mut results = Vec::with_capacity(rows.len());
         for (r, row) in rows.iter().enumerate() {
             let err = |message: String| SqlRowError { row: r, message };
@@ -110,13 +139,21 @@ impl SqlPlan {
             .with_prefixmap(schema.prefix_map().clone()))
     }
 
-    /// Runs the plan and builds its report.
-    pub fn validate<X: SqlExecutor>(
-        &self,
-        schema: &IRSchema,
-        executor: &X,
-    ) -> Result<ValidationReport, SqlRunError<X::Error>> {
-        let rows = self.execute(executor)?;
-        Ok(self.report(schema, &rows)?)
+    /// Runs the script through `executor` and builds the report of its rows.
+    /// The teardown runs too when the setup or the query fails; the first
+    /// failure is the one returned.
+    pub fn validate<X: SqlExecutor>(&self, executor: &X) -> Result<ValidationReport, SqlRunError<X::Error>> {
+        let rows = self
+            .setup
+            .iter()
+            .try_for_each(|statement| executor.execute(statement))
+            .and_then(|()| executor.rows(&self.query));
+        let dropped = self
+            .teardown
+            .iter()
+            .try_for_each(|statement| executor.execute(statement));
+        let rows = rows.map_err(SqlRunError::Executor)?;
+        dropped.map_err(SqlRunError::Executor)?;
+        Ok(self.report(&rows)?)
     }
 }

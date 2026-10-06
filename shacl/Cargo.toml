@@ -15,8 +15,8 @@ repository.workspace = true
 # relational mapping. Wasm-clean; off by default so that a plain SHACL build
 # does not pull the SQL AST.
 sql = ["dep:sqlparser"]
-# An in-process DuckDB host for the SQL engine: `DuckDbExecutor` and
-# `validate_with_duckdb`. Native only, never default.
+# An in-process DuckDB host for the SQL engine: `DuckDbExecutor`. Native
+# only, never default.
 duckdb = ["sql", "dep:duckdb"]
 
 [dependencies]
@@ -46,6 +46,8 @@ include_dir.workspace = true
 # The endpoint example reads Wikidata through `OxigraphEndpoint`.
 anyhow.workspace = true
 rudof_rdf = { workspace = true, features = ["sparql"] }
+# The W3C suites' differential test draws its graphs, natively.
+proptest.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 # Pinned with rudof_wasm's, to the release paired with `wasm-bindgen = "=0.2.120"`.

@@ -1,63 +1,64 @@
 //! The SQL interpretation of the [algebra](crate::algebra): the plan of a
-//! shapes graph rendered as one relational statement, a `UNION ALL` of a
-//! `SELECT` per shape, constraint component and context over CTEs they share,
-//! that a host runs on its own engine over its own tables. The in-memory evaluator ([`crate::validator::eval`]) reads
+//! shapes graph rendered as a script, a temporary table per relation the
+//! checks share and then one query, a `UNION ALL` of a `SELECT` per shape,
+//! constraint component and context, that a host runs on its own engine over
+//! its own tables. The in-memory evaluator ([`crate::validator::eval`]) reads
 //! the same plan, and the W3C suite holds the two reports equal.
 //!
 //! ```text
-//! compile_sql(&IRSchema, &impl RelationalMapping, &impl SqlDialect) -> SqlPlan
-//! SqlPlan::execute(&impl SqlExecutor) -> rows       (the host's engine, one statement)
-//! SqlPlan::report(&IRSchema, rows) -> ValidationReport
+//! compile(&IRSchema, &SqlMapping, SqlDialect) -> SqlPlan
+//! SqlPlan::validate(&impl SqlExecutor) -> ValidationReport   (a synchronous host)
+//! SqlPlan::report(rows) -> ValidationReport                  (a host that runs the script itself)
 //! ```
 //!
-//! - [`RelationalMapping`] says where the RDF terms live: [`TripleTable`] for
-//!   arbitrary RDF in one `(s, p, o)` table, [`Tables`] for ordinary tables
-//!   described by an RML mapping ([`Tables::from_rml`]).
-//! - [`SqlDialect`] holds what differs between engines; [`DuckDb`] is the
-//!   first.
-//! - The queries are `sqlparser` ASTs, never text; a host renders them.
+//! - [`SqlMapping`] says where the RDF terms live: one `(s, p, o)` table for
+//!   arbitrary RDF, or ordinary tables described by an R2RML mapping.
+//! - [`SqlDialect`] names the engine the SQL is written for.
+//! - The plan is text: the compiler builds `sqlparser` ASTs and renders them
+//!   for the dialect, so a host needs no SQL AST.
 //! - [`SqlExecutor`] is implemented by the host: rudof links no engine. A
-//!   DuckDB one exists behind the native-only `duckdb` feature.
+//!   DuckDB one, [`DuckDbExecutor`], exists behind the native-only `duckdb`
+//!   feature.
 //!
-//! Everything SHACL Core defines compiles ([`COVERAGE`]), and `sh:targetWhere`.
+//! Everything SHACL Core defines compiles (`coverage.rs` holds the list
+//! against the Recommendation), and `sh:targetWhere`.
 //! What the algebra does not denote is **refused**, never skipped: recursive
-//! shapes (their semantics is undefined), SHACL-SPARQL, and SHACL 1.2 reifier
-//! shapes.
+//! shapes (their semantics is undefined) and SHACL-SPARQL.
 //!
 //! The module builds for wasm: it depends on no engine, thread or I/O.
 
 mod ast;
+#[cfg(test)]
 mod coverage;
 mod dialect;
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 mod duckdb_host;
 mod mapping;
 mod plan;
+mod r2rml;
+#[cfg(all(test, feature = "duckdb", not(target_family = "wasm")))]
+mod r2rml_suite;
 mod render;
-mod rml;
 mod tables;
 mod term;
 mod triple_table;
 
-pub use coverage::{COVERAGE, Coverage};
-pub use dialect::{CastTarget, DuckDb, SqlDialect, SqlDialectName};
+pub use dialect::SqlDialect;
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
-pub use duckdb_host::{DuckDbExecutor, validate_with_duckdb};
-pub use mapping::{PREDICATE_COLUMN, PredicateRel, Relation, RelationalMapping, SqlMapping};
+pub use duckdb_host::{DuckDbExecutor, DuckDbLoadError};
+pub use mapping::SqlMapping;
 pub use plan::{Row, SqlExecutor, SqlPlan, SqlRowError, SqlRunError};
 pub use render::RESULT_COLUMNS;
-/// The SQL AST crate the extension traits ([`RelationalMapping`],
-/// [`SqlDialect`]) speak: implementing either means building its AST, so
-/// their signatures follow its versions. The host-facing surface ([`SqlPlan`],
-/// [`SqlExecutor`]) is text and does not.
-pub use sqlparser;
-pub use tables::Tables;
-pub use term::{EncodedTerm, decode, encode};
-pub use triple_table::{TRIPLE_TABLE_COLUMNS, TripleTable};
 
 use crate::algebra::{DenoteError, denote};
 use crate::ir::IRSchema;
+use dialect::{Dialect, DuckDb};
+use mapping::RelationalMapping;
 use render::Renderer;
+use sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;
+use sqlparser::ast::{Ident, ObjectName, ObjectType, Statement};
+use tables::Tables;
+use triple_table::TripleTable;
 
 /// Why a shapes graph does not compile to SQL.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -72,9 +73,9 @@ pub enum SqlCompileError {
     MalformedTarget(String),
     #[error("invalid relational mapping: {0}")]
     Mapping(String),
-    /// An RML term outside the subset the engine reads, named first.
-    #[error("the SQL engine does not read the RML term {0}")]
-    UnsupportedRml(String),
+    /// An R2RML feature the engine refuses, named first.
+    #[error("the SQL engine does not read the R2RML term {0}")]
+    UnsupportedR2rml(String),
     #[error("invalid data: {0}")]
     Data(String),
     #[error("internal error of the SQL compiler: {0}")]
@@ -92,23 +93,67 @@ impl From<DenoteError> for SqlCompileError {
     }
 }
 
-/// Compiles `schema` into the SQL statement that finds its validation results in
-/// the tables `mapping` describes, written for `dialect`.
+/// Compiles `schema` into the SQL script that finds its validation results
+/// in the tables `mapping` describes, written for `dialect`.
 ///
-/// Shapes are compiled in the order of the dependency graph's levels, a shape
-/// after the shapes it refers to. A shape with targets yields the checks of
-/// its components and of its property shapes; a shape without targets is
-/// reached only through another (as a property shape, or by `sh:node`,
-/// `sh:and`, …). Deactivated shapes yield nothing and conform everywhere.
-pub fn compile_sql<M, D>(schema: &IRSchema, mapping: &M, dialect: &D) -> Result<SqlPlan, SqlCompileError>
+/// A shape with targets yields the checks of its components and of its
+/// property shapes; a shape without targets is reached only through another
+/// (as a property shape, or by `sh:node`, `sh:and`, …). Deactivated shapes
+/// yield nothing and conform everywhere.
+pub fn compile(schema: &IRSchema, mapping: &SqlMapping, dialect: SqlDialect) -> Result<SqlPlan, SqlCompileError> {
+    match dialect {
+        SqlDialect::DuckDb => match mapping {
+            SqlMapping::TripleTable { table } => script(schema, &TripleTable::new(table)?, &DuckDb),
+            SqlMapping::R2rml {
+                mapping,
+                schema: db_schema,
+                base_iri,
+            } => script(
+                schema,
+                &Tables::from_r2rml(mapping, db_schema.as_deref(), base_iri.as_deref(), DuckDb)?,
+                &DuckDb,
+            ),
+        },
+    }
+}
+
+fn script<M, D>(schema: &IRSchema, mapping: &M, dialect: &D) -> Result<SqlPlan, SqlCompileError>
 where
-    M: RelationalMapping + ?Sized,
-    D: SqlDialect + ?Sized,
+    M: RelationalMapping,
+    D: Dialect,
 {
     let plan = denote(schema)?;
-    let statement = Renderer::new(&plan, mapping, dialect).statement(&plan.checks)?;
+    let (tables, query) = Renderer::new(&plan, mapping, dialect).script(&plan.checks)?;
+    let table = |name: &str| ObjectName::from(vec![Ident::with_quote('"', name)]);
     Ok(SqlPlan {
-        sql: dialect.render(&statement),
+        setup: tables
+            .iter()
+            .map(|(name, body)| {
+                let create = CreateTableBuilder::new(table(name))
+                    .temporary(true)
+                    .query(Some(Box::new(body.clone())))
+                    .build();
+                dialect.render(&Statement::CreateTable(create))
+            })
+            .collect(),
+        query: dialect.render(&Statement::Query(Box::new(query))),
+        teardown: tables
+            .iter()
+            .rev()
+            .map(|(name, _)| {
+                dialect.render(&Statement::Drop {
+                    object_type: ObjectType::Table,
+                    if_exists: true,
+                    names: vec![table(name)],
+                    cascade: false,
+                    restrict: false,
+                    purge: false,
+                    temporary: false,
+                    table: None,
+                })
+            })
+            .collect(),
         checks: plan.checks,
+        schema: schema.clone(),
     })
 }

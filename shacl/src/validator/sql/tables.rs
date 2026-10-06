@@ -1,72 +1,59 @@
-//! [`Tables`]: ordinary tables, as an RML mapping describes them.
+//! [`Tables`]: ordinary tables, as an R2RML mapping describes them.
 //!
-//! This module holds the *model* the RML reader ([`crate::validator::sql::rml`])
-//! builds — sources, logical views and triple rules — and its translation to
-//! SQL. Each rule yields one `(subject, object)` relation for one predicate;
-//! a predicate's relation is the `UNION ALL` of its rules'.
+//! This module holds the *model* the R2RML reader ([`crate::validator::sql::r2rml`])
+//! builds — logical tables and triple rules — and its translation to SQL,
+//! the unfolding Ontop does. Each rule yields one `(subject, object)`
+//! relation for one predicate; a predicate's relation is the `UNION ALL` of
+//! its rules'.
 //!
-//! - A table source is `SELECT * FROM table`; a logical view is a `SELECT` of
-//!   its fields over its source, joined (`JOIN` / `LEFT JOIN`) to its parent
-//!   views, with each view's columns named after its fields.
-//! - A term built from a reference reads that column, as text; a reference
-//!   that is `NULL` generates no term, so its rows are filtered out.
+//! - A logical table is `SELECT * FROM table`, or an R2RML view's query as a
+//!   derived table (R2RML §5.2: its result is the logical table).
+//! - A term map's value is its column, its template filled with column values
+//!   (R2RML §7.3; IRI-safe when it generates an IRI), or a constant. Values
+//!   are *natural RDF lexical forms* (R2RML §10.2), which the dialect writes.
+//! - A column that is `NULL` generates no term (R2RML §11), so its rows are
+//!   filtered out.
 //! - A literal with neither datatype nor language is the *natural RDF literal*
-//!   of its column's SQL type, which the dialect determines.
-//! - A referencing object map joins the parent triples map's source on its
-//!   join conditions, or reads the parent subject from the same row when
-//!   there are none (the sources being the same).
+//!   of its column's SQL type.
+//! - A referencing object map joins the parent triples map's logical table on
+//!   its join conditions, or reads the parent subject from the same row when
+//!   there are none (the logical tables being the same, R2RML §8).
 
 use crate::validator::sql::ast::{
-    SelectBuilder, and_all, case, col, compare, derived, eq, is_not_null, item, join, left_join, query, string, table,
+    SelectBuilder, and_all, case, col, compare, derived, eq, is_not_null, item, join, query, string, table,
     union_all_of,
 };
-use crate::validator::sql::dialect::SqlDialect;
+use crate::validator::sql::dialect::Dialect;
 use crate::validator::sql::mapping::{PREDICATE_COLUMN, PredicateRel, RelationalMapping, no_triples};
 use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, RDF_LANG_STRING, TermExpr};
 use rudof_iri::IriS;
 use sqlparser::ast::{BinaryOperator, Expr, ObjectName, Query, SelectItem};
 
-/// Where rows come from.
+/// A logical table (R2RML §5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Source {
-    /// A table, by its SQL object name.
+    /// A table or view, by its SQL object name (`rr:tableName`).
     Table(ObjectName),
-    /// An RML logical view.
-    View(Box<View>),
-    /// No source: a triples map whose terms are all constant has one row.
-    Unit,
+    /// An R2RML view (`rr:sqlQuery`), its table names already qualified.
+    Query(Box<Query>),
 }
 
-/// An RML logical view: fields over a source, and joins to parent views.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct View {
-    pub(crate) on: Source,
-    /// `(field name, reference on the source)`.
-    pub(crate) fields: Vec<(String, String)>,
-    pub(crate) joins: Vec<ViewJoin>,
-}
-
-/// A logical view join.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ViewJoin {
-    /// `rml:leftJoin` rather than `rml:innerJoin`.
-    pub(crate) left: bool,
-    pub(crate) parent: Box<View>,
-    /// `(child reference, parent reference)`: a field of the child view, and
-    /// one of the parent view.
-    pub(crate) conditions: Vec<(String, String)>,
-    /// `(field name, reference on the parent view)`.
-    pub(crate) fields: Vec<(String, String)>,
-}
-
-/// What a term map evaluates: a reference (a column), or a constant term.
+/// What a term map evaluates (R2RML §7).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Value {
-    Reference(String),
+    Column(String),
+    Template(Vec<Part>),
     Constant(EncodedTerm),
 }
 
-/// The kind of term a reference-valued term map generates.
+/// A piece of a string template.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Part {
+    Text(String),
+    Column(String),
+}
+
+/// The kind of term a term map generates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TermType {
     Iri,
@@ -79,10 +66,10 @@ pub(crate) enum TermType {
 pub(crate) struct TermRule {
     pub(crate) value: Value,
     pub(crate) term_type: TermType,
-    pub(crate) datatype: Option<Value>,
-    pub(crate) language: Option<Value>,
-    /// `rml:baseIRI`: what a relative IRI is resolved against.
-    pub(crate) base_iri: Option<String>,
+    /// `rr:datatype`, an IRI.
+    pub(crate) datatype: Option<String>,
+    /// `rr:language`, a language tag.
+    pub(crate) language: Option<String>,
 }
 
 /// The object of a rule.
@@ -93,12 +80,12 @@ pub(crate) enum ObjectRule {
     Parent {
         source: Source,
         subject: TermRule,
-        /// `(child reference, parent reference)`; none means the same row.
+        /// `(child column, parent column)`; none means the same row.
         conditions: Vec<(String, String)>,
     },
 }
 
-/// The triples of one predicate from one source.
+/// The triples of one predicate from one logical table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rule {
     pub(crate) predicate: String,
@@ -107,103 +94,94 @@ pub(crate) struct Rule {
     pub(crate) object: ObjectRule,
 }
 
-/// Ordinary tables, as an RML mapping describes them; see the module docs.
+/// Ordinary tables, as an R2RML mapping describes them; see the module docs.
 #[derive(Debug, Clone)]
-pub struct Tables<D> {
+pub(crate) struct Tables<D> {
     rules: Vec<Rule>,
     /// What an unqualified table name is qualified with.
     schema: Option<ObjectName>,
+    /// What a relative IRI is resolved against (R2RML §11).
+    base_iri: Option<String>,
     dialect: D,
 }
 
 const CHILD: &str = "t";
 const PARENT: &str = "p";
 
-impl<D: SqlDialect> Tables<D> {
-    pub(crate) fn new(rules: Vec<Rule>, schema: Option<ObjectName>, dialect: D) -> Self {
-        Self { rules, schema, dialect }
+impl<D: Dialect> Tables<D> {
+    pub(crate) fn new(rules: Vec<Rule>, schema: Option<ObjectName>, base_iri: Option<String>, dialect: D) -> Self {
+        Self {
+            rules,
+            schema,
+            base_iri,
+            dialect,
+        }
     }
 
     /// The predicates the mapping has triples for.
-    pub fn predicates(&self) -> Vec<&str> {
+    #[cfg(test)]
+    pub(crate) fn predicates(&self) -> Vec<&str> {
         let mut out: Vec<&str> = self.rules.iter().map(|r| r.predicate.as_str()).collect();
         out.sort_unstable();
         out.dedup();
         out
     }
 
-    /// `name`, qualified with the schema when it has a single part.
-    fn qualified(&self, name: &ObjectName) -> ObjectName {
-        match &self.schema {
-            Some(schema) if name.0.len() == 1 => ObjectName(schema.0.iter().chain(name.0.iter()).cloned().collect()),
-            _ => name.clone(),
-        }
-    }
-
-    /// The rows of a source, its columns named as the source names them.
+    /// The rows of a logical table, its columns named as it names them.
     fn source_query(&self, source: &Source) -> Query {
         match source {
-            Source::Table(name) => SelectBuilder::new(vec![SelectItem::Wildcard(Default::default())])
-                .from(table(&self.qualified(name), "s"))
-                .into_query(),
-            Source::Unit => SelectBuilder::new(vec![item(crate::validator::sql::ast::number(1), "unit")]).into_query(),
-            Source::View(view) => self.view_query(view),
+            Source::Table(name) => {
+                let name = match &self.schema {
+                    Some(schema) if name.0.len() == 1 => {
+                        ObjectName(schema.0.iter().chain(name.0.iter()).cloned().collect())
+                    },
+                    _ => name.clone(),
+                };
+                SelectBuilder::new(vec![SelectItem::Wildcard(Default::default())])
+                    .from(table(&name, "s"))
+                    .into_query()
+            },
+            Source::Query(query) => (**query).clone(),
         }
     }
 
-    fn view_query(&self, view: &View) -> Query {
-        let mut items: Vec<SelectItem> = view
-            .fields
-            .iter()
-            .map(|(name, reference)| item(col("s", reference), name))
-            .collect();
-        let child_field = |reference: &str| -> Expr {
-            // A join condition's child reference names a field of the child view.
-            match view.fields.iter().find(|(name, _)| name == reference) {
-                Some((_, column)) => col("s", column),
-                None => col("s", reference),
-            }
-        };
-        let mut select = SelectBuilder::new(Vec::new()).from(derived(self.source_query(&view.on), "s"));
-        for (i, j) in view.joins.iter().enumerate() {
-            let alias = format!("j{i}");
-            items.extend(
-                j.fields
-                    .iter()
-                    .map(|(name, reference)| item(col(&alias, reference), name)),
-            );
-            let on = and_all(
-                j.conditions
-                    .iter()
-                    .map(|(child, parent)| eq(child_field(child), col(&alias, parent))),
-            );
-            let parent = derived(self.view_query(&j.parent), &alias);
-            select = select.join(if j.left {
-                left_join(parent, on)
-            } else {
-                join(parent, on)
-            });
-        }
-        select.with_projection(items).into_query()
+    /// The natural RDF lexical form of `alias.column`.
+    fn lexical(&self, alias: &str, column: &str) -> Expr {
+        self.dialect.natural_lexical(col(alias, column))
     }
 
-    /// The term a term map generates on the row `alias`.
-    fn term(&self, rule: &TermRule, alias: &str) -> TermExpr {
-        let reference = match &rule.value {
-            Value::Constant(term) => return TermExpr::constant(term),
-            Value::Reference(reference) => col(alias, reference),
-        };
-        let lex = self.dialect.to_text(reference.clone());
-        let attribute = |value: &Value| match value {
+    /// The string a column- or template-valued term map yields on the row
+    /// `alias`; template values are IRI-safe when it generates an IRI.
+    fn text(&self, value: &Value, term_type: TermType, alias: &str) -> Expr {
+        match value {
+            Value::Column(column) => self.lexical(alias, column),
+            Value::Template(parts) => parts
+                .iter()
+                .map(|part| match part {
+                    Part::Text(text) => string(text),
+                    Part::Column(column) if term_type == TermType::Iri => {
+                        self.dialect.iri_safe(self.lexical(alias, column))
+                    },
+                    Part::Column(column) => self.lexical(alias, column),
+                })
+                .reduce(|a, b| compare(a, BinaryOperator::StringConcat, b))
+                .unwrap_or_else(|| string("")),
             Value::Constant(term) => string(&term[1]),
-            Value::Reference(r) => self.dialect.to_text(col(alias, r)),
-        };
+        }
+    }
+
+    /// The term a term map generates on the row `alias` (R2RML §11).
+    fn term(&self, rule: &TermRule, alias: &str) -> TermExpr {
+        if let Value::Constant(term) = &rule.value {
+            return TermExpr::constant(term);
+        }
+        let lex = self.text(&rule.value, rule.term_type, alias);
         match rule.term_type {
             TermType::Iri => TermExpr {
                 kind: string(IRI),
-                lex: match &rule.base_iri {
-                    // RML-Core §12.2: a value that is not an absolute IRI is
-                    // prepended with the base IRI.
+                lex: match &self.base_iri {
+                    // A value that is not an absolute IRI is appended to the
+                    // base IRI.
                     Some(base) => case(
                         vec![(
                             self.dialect
@@ -224,44 +202,35 @@ impl<D: SqlDialect> Tables<D> {
                 datatype: string(""),
                 lang: string(""),
             },
-            TermType::Literal => {
-                // R2RML §10.2: an overriding datatype keeps the natural lexical form.
-                let lex = self.dialect.natural_lexical(reference.clone());
-                match (&rule.language, &rule.datatype) {
-                    (Some(language), _) => TermExpr {
-                        kind: string(LITERAL),
-                        lex,
-                        datatype: string(RDF_LANG_STRING),
-                        lang: crate::validator::sql::ast::function("LOWER", vec![attribute(language)]),
-                    },
-                    (None, Some(datatype)) => TermExpr {
-                        kind: string(LITERAL),
-                        lex,
-                        datatype: attribute(datatype),
-                        lang: string(""),
-                    },
-                    (None, None) => TermExpr {
-                        kind: string(LITERAL),
-                        lex,
-                        datatype: self.dialect.natural_datatype(reference),
-                        lang: string(""),
-                    },
-                }
+            TermType::Literal => TermExpr {
+                kind: string(LITERAL),
+                datatype: match (&rule.language, &rule.datatype, &rule.value) {
+                    (Some(_), _, _) => string(RDF_LANG_STRING),
+                    (None, Some(datatype), _) => string(datatype),
+                    (None, None, Value::Column(column)) => self.dialect.natural_datatype(col(alias, column)),
+                    (None, None, _) => string(crate::validator::sql::term::XSD_STRING),
+                },
+                lang: string(&rule.language.as_deref().unwrap_or_default().to_lowercase()),
+                lex,
             },
         }
     }
 
-    /// `NOT NULL` for every reference a term map reads: a missing value
-    /// generates no term (RML-Core §12.2).
+    /// `NOT NULL` for every column a term map reads: a `NULL` generates no
+    /// term (R2RML §11).
     fn present(rule: &TermRule, alias: &str) -> Vec<Expr> {
-        [Some(&rule.value), rule.datatype.as_ref(), rule.language.as_ref()]
-            .into_iter()
-            .flatten()
-            .filter_map(|v| match v {
-                Value::Reference(r) => Some(is_not_null(col(alias, r))),
-                Value::Constant(_) => None,
-            })
-            .collect()
+        let columns: Vec<&str> = match &rule.value {
+            Value::Column(column) => vec![column],
+            Value::Template(parts) => parts
+                .iter()
+                .filter_map(|p| match p {
+                    Part::Column(column) => Some(column.as_str()),
+                    Part::Text(_) => None,
+                })
+                .collect(),
+            Value::Constant(_) => Vec::new(),
+        };
+        columns.into_iter().map(|c| is_not_null(col(alias, c))).collect()
     }
 
     /// The `(s, o)` pairs of one rule.
@@ -307,7 +276,7 @@ impl<D: SqlDialect> Tables<D> {
     }
 }
 
-impl<D: SqlDialect> RelationalMapping for Tables<D> {
+impl<D: Dialect> RelationalMapping for Tables<D> {
     fn predicate(&self, predicate: &IriS) -> Option<PredicateRel> {
         let bodies: Vec<_> = self
             .rules

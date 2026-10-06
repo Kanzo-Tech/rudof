@@ -27,8 +27,8 @@ use crate::{
         },
         rdf_config::builders::{LoadRdfConfigBuilder, ResetRdfConfigBuilder, SerializeRdfConfigBuilder},
         shacl::builders::{
-            CompileSqlBuilder, LoadShaclShapesBuilder, ResetShaclBuilder, ResetShaclShapesBuilder,
-            SerializeShaclShapesBuilder, SerializeShaclValidationResultsBuilder, ValidateShaclBuilder,
+            LoadShaclShapesBuilder, ResetShaclBuilder, ResetShaclShapesBuilder, SerializeShaclShapesBuilder,
+            SerializeShaclValidationResultsBuilder, ValidateShaclBuilder,
         },
         shex::builders::{
             AddNodeShapeToShapemapBuilder, CheckShexSchemaBuilder, LoadShapemapBuilder, LoadShexSchemaBuilder,
@@ -39,7 +39,7 @@ use crate::{
     errors::{RudofError, ShExError},
     formats::{
         ComparisonFormat, ComparisonMode, ConversionFormat, ConversionMode, GenerationSchemaFormat, InputSpec,
-        ResultConversionFormat, ResultConversionMode, SqlMapping,
+        ResultConversionFormat, ResultConversionMode,
     },
     types::{Data, QueryResult},
 };
@@ -423,15 +423,6 @@ impl Rudof {
     /// results from the internal state.
     pub fn reset_shacl<'a>(&'a mut self) -> ResetShaclBuilder<'a> {
         ResetShaclBuilder::new(self)
-    }
-
-    /// Returns a `CompileSqlBuilder` that compiles the loaded SHACL shapes to
-    /// SQL checks over the tables `mapping` describes.
-    ///
-    /// # Parameters
-    /// - `mapping`: where the RDF terms live in tables.
-    pub fn compile_sql<'a>(&'a self, mapping: &'a SqlMapping) -> CompileSqlBuilder<'a> {
-        CompileSqlBuilder::new(self, mapping)
     }
 
     // ========================================================================

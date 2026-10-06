@@ -1,19 +1,50 @@
 //! An in-process DuckDB host for the SQL engine (feature `duckdb`, native only).
 //!
-//! rudof's library links no engine: this module exists so that the CLI can
-//! offer `--mode sql` and the W3C suite can run every fixture through the SQL
-//! engine. A browser host implements [`SqlExecutor`] over its own DuckDB.
+//! rudof's library links no engine: this module exists so that the W3C suite
+//! and the differential tests can run every fixture through the SQL engine. A
+//! browser host implements [`SqlExecutor`] over its own DuckDB.
 
-use crate::ir::IRSchema;
-use crate::validator::report::ValidationReport;
-use crate::validator::sql::{DuckDb, RESULT_COLUMNS, Row, SqlExecutor, TRIPLE_TABLE_COLUMNS, TripleTable, compile_sql};
+use crate::validator::sql::term::encode;
+use crate::validator::sql::{RESULT_COLUMNS, Row, SqlCompileError, SqlExecutor, SqlMapping};
 use duckdb::{Connection, appender_params_from_iter};
+use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
-use std::fmt::Display;
+use rudof_rdf::term::Triple;
 
-/// Runs a plan's checks on a DuckDB connection.
+/// Runs a plan's statements on a DuckDB connection.
 pub struct DuckDbExecutor {
     connection: Connection,
+}
+
+/// The columns of a triple table, in order (see [`SqlMapping::TripleTable`]).
+const COLUMNS: [&str; 7] = ["s_k", "s_v", "p", "o_k", "o_v", "o_d", "o_l"];
+
+/// The rows of `store` in [`COLUMNS`] order.
+fn rows<S>(store: &S) -> Result<Vec<[String; 7]>, SqlCompileError>
+where
+    S: NeighsRDF<Term = oxrdf::Term>,
+{
+    let triples = store
+        .triples()
+        .map_err(|e| SqlCompileError::Data(format!("reading the data graph: {e}")))?;
+    let mut rows = Vec::new();
+    for triple in triples {
+        let (subject, predicate, object) = triple.into_components();
+        let [s_k, s_v, _, _] = encode(&S::subject_as_term(&subject))?;
+        let predicate: IriS = predicate.into();
+        let [o_k, o_v, o_d, o_l] = encode(&object)?;
+        rows.push([s_k, s_v, predicate.as_str().to_owned(), o_k, o_v, o_d, o_l]);
+    }
+    Ok(rows)
+}
+
+/// Why a graph does not load into a triple table.
+#[derive(Debug, thiserror::Error)]
+pub enum DuckDbLoadError {
+    #[error(transparent)]
+    Engine(#[from] duckdb::Error),
+    #[error(transparent)]
+    Data(#[from] SqlCompileError),
 }
 
 impl DuckDbExecutor {
@@ -31,32 +62,35 @@ impl DuckDbExecutor {
     }
 
     /// Creates the triple table `table` and loads `store` into it.
-    pub fn load_triples<S>(&self, table: &str, store: &S) -> Result<TripleTable, String>
+    pub fn load_triples<S>(&self, table: &str, store: &S) -> Result<SqlMapping, DuckDbLoadError>
     where
         S: NeighsRDF<Term = oxrdf::Term>,
     {
-        let rows = TripleTable::rows(store).map_err(|e| e.to_string())?;
-        let columns = TRIPLE_TABLE_COLUMNS
+        let rows = rows(store)?;
+        let columns = COLUMNS
             .iter()
             .map(|c| format!("\"{c}\" VARCHAR NOT NULL"))
             .collect::<Vec<_>>()
             .join(", ");
         self.connection
-            .execute_batch(&format!("CREATE TABLE \"{table}\" ({columns})"))
-            .map_err(|e| e.to_string())?;
-        let mut appender = self.connection.appender(table).map_err(|e| e.to_string())?;
+            .execute_batch(&format!("CREATE TABLE \"{table}\" ({columns})"))?;
+        let mut appender = self.connection.appender(table)?;
         for row in &rows {
-            appender
-                .append_row(appender_params_from_iter(row.iter()))
-                .map_err(|e| e.to_string())?;
+            appender.append_row(appender_params_from_iter(row.iter()))?;
         }
-        appender.flush().map_err(|e| e.to_string())?;
-        TripleTable::new(&format!("\"{table}\"")).map_err(|e| e.to_string())
+        appender.flush()?;
+        Ok(SqlMapping::TripleTable {
+            table: format!("\"{table}\""),
+        })
     }
 }
 
 impl SqlExecutor for DuckDbExecutor {
     type Error = duckdb::Error;
+
+    fn execute(&self, sql: &str) -> Result<(), Self::Error> {
+        self.connection.execute_batch(sql)
+    }
 
     fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error> {
         let mut statement = self.connection.prepare(sql)?;
@@ -67,24 +101,4 @@ impl SqlExecutor for DuckDbExecutor {
         })?;
         rows.collect()
     }
-}
-
-/// Validates `store` against `schema` with the SQL engine, on an in-memory
-/// DuckDB holding the graph as a [`TripleTable`].
-pub fn validate_with_duckdb<S>(store: &S, schema: &IRSchema) -> Result<ValidationReport, String>
-where
-    S: NeighsRDF<Term = oxrdf::Term>,
-{
-    fn text(e: impl Display) -> String {
-        e.to_string()
-    }
-    let executor = DuckDbExecutor::in_memory().map_err(text)?;
-    let mapping = executor.load_triples("triples", store)?;
-    let plan = compile_sql(schema, &mapping, &DuckDb).map_err(text)?;
-    let report = plan.validate(schema, &executor).map_err(text)?;
-    let mut pm = schema.prefix_map().clone();
-    if let Some(store_pm) = store.prefixmap() {
-        pm.merge(store_pm);
-    }
-    Ok(report.with_prefixmap(pm))
 }

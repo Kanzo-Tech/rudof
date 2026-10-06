@@ -3,17 +3,17 @@
 //! The compiler builds standard SQL and asks the dialect only for what has no
 //! standard spelling: regular expressions, the names of the types a lexical
 //! form is cast to, and whether `WITH RECURSIVE` is available. DuckDB is the
-//! first dialect; another engine is one more impl of [`SqlDialect`], and the
-//! compiler does not change.
+//! first dialect; another engine is one more impl of [`Dialect`] and a variant
+//! of [`SqlDialect`], and the compiler does not change.
 
 use crate::validator::sql::SqlCompileError;
-use crate::validator::sql::ast::{case, cast, eq, function, in_list, string};
-use sqlparser::ast::{CastKind, DataType, Expr, Ident, ObjectName, Query};
+use crate::validator::sql::ast::{case, cast, compare, eq, function, in_list, not_eq, number, string};
+use sqlparser::ast::{BinaryOperator, CastKind, DataType, Expr, Ident, ObjectName, Statement};
 
 /// A type a lexical form is cast to, to compare it by value or to check that it
 /// lies in a datatype's value space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CastTarget {
+pub(crate) enum CastTarget {
     Int8,
     Int16,
     Int32,
@@ -27,7 +27,7 @@ pub enum CastTarget {
 }
 
 /// The engine-specific parts of the SQL the compiler emits.
-pub trait SqlDialect {
+pub(crate) trait Dialect {
     /// A short name, e.g. `duckdb`.
     fn name(&self) -> &'static str;
 
@@ -47,17 +47,38 @@ pub trait SqlDialect {
         function("LENGTH", vec![text])
     }
 
-    /// The natural RDF lexical form of a column value (R2RML §10.2, which
-    /// RML-Core §12.2 takes over for SQL sources): `2020-01-02T03:04:05Z` for
-    /// a timestamp, hex digits for binary, `INF` for an infinite double, …
-    /// It is the lexical form whether the datatype is natural or overridden
-    /// by `rml:datatype`: an override replaces only the datatype IRI.
+    /// The natural RDF lexical form of a column value (R2RML §10.2):
+    /// `2020-01-02T03:04:05Z` for a timestamp, hex digits for binary, `INF`
+    /// for an infinite double, … It is the lexical form whether the datatype
+    /// is natural or overridden by `rr:datatype`: an override replaces only
+    /// the datatype IRI (§10.3).
     fn natural_lexical(&self, value: Expr) -> Expr;
 
     /// The natural RDF datatype of a column value, from its SQL type: an
     /// integer is an `xsd:integer`, a boolean an `xsd:boolean`, binary an
     /// `xsd:hexBinary`, text an `xsd:string`, and so on.
     fn natural_datatype(&self, value: Expr) -> Expr;
+
+    /// `text` made IRI-safe (R2RML §7.3): every character outside RFC 3987's
+    /// `iunreserved` percent-encoded. `%` goes first, so no escape is escaped
+    /// twice; the characters encoded are ASCII (NUL, which no SQL string
+    /// holds, aside) and the C1 controls, and every
+    /// other non-ASCII character is kept as the `ucschar` it nearly always is
+    /// (the private-use and noncharacter code points are the exception).
+    fn iri_safe(&self, text: Expr) -> Expr {
+        let unreserved = |c: char| c.is_ascii_alphanumeric() || "-._~".contains(c);
+        std::iter::once('%')
+            .chain(
+                (1u32..=0x9f)
+                    .filter_map(char::from_u32)
+                    .filter(|&c| c != '%' && !unreserved(c) && (c.is_ascii() || c.is_control())),
+            )
+            .fold(text, |text, c| {
+                let mut utf8 = [0; 4];
+                let escaped: String = c.encode_utf8(&mut utf8).bytes().map(|b| format!("%{b:02X}")).collect();
+                function("REPLACE", vec![text, string(&c.to_string()), string(&escaped)])
+            })
+    }
 
     /// `expr` as text: a host column becomes a lexical form.
     fn to_text(&self, expr: Expr) -> Expr {
@@ -70,55 +91,36 @@ pub trait SqlDialect {
         true
     }
 
-    /// Whether a CTE can be written `AS MATERIALIZED`. A relation more than one
-    /// consumer reads is then computed once; without it the engine decides.
-    fn supports_materialized_cte(&self) -> bool {
-        false
-    }
-
-    /// The text of `query` for this engine.
-    fn render(&self, query: &Query) -> String {
-        query.to_string()
+    /// The text of `statement` for this engine.
+    fn render(&self, statement: &Statement) -> String {
+        statement.to_string()
     }
 }
 
-/// The dialects a host can name, and the one place a name becomes a dialect:
-/// adding a dialect is an impl of [`SqlDialect`] plus a variant here, and no
-/// caller (facade, CLI, wasm binding) changes.
+/// The engines the SQL is written for. Adding one is a variant here, an impl
+/// of the internal dialect trait and an arm of [`compile`](super::compile);
+/// no caller (facade, CLI, wasm binding) changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SqlDialectName {
-    /// [`DuckDb`], the default.
+pub enum SqlDialect {
+    /// DuckDB, the default.
     #[default]
     DuckDb,
 }
 
-impl SqlDialectName {
-    /// Compiles `schema` for `mapping` in this dialect.
-    pub fn compile(
-        self,
-        mapping: &crate::validator::sql::SqlMapping,
-        schema: &crate::ir::IRSchema,
-    ) -> Result<crate::validator::sql::SqlPlan, SqlCompileError> {
-        match self {
-            SqlDialectName::DuckDb => mapping.compile(schema, &DuckDb),
-        }
-    }
-}
-
-impl std::fmt::Display for SqlDialectName {
+impl std::fmt::Display for SqlDialect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SqlDialectName::DuckDb => write!(f, "duckdb"),
+            SqlDialect::DuckDb => write!(f, "duckdb"),
         }
     }
 }
 
-impl std::str::FromStr for SqlDialectName {
+impl std::str::FromStr for SqlDialect {
     type Err = SqlCompileError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "duckdb" => Ok(SqlDialectName::DuckDb),
+            "duckdb" => Ok(SqlDialect::DuckDb),
             other => Err(SqlCompileError::Unsupported(format!(
                 "the SQL dialect '{other}' (supported: duckdb)"
             ))),
@@ -129,7 +131,7 @@ impl std::str::FromStr for SqlDialectName {
 /// DuckDB: RE2 regular expressions through `regexp_matches`, and its own
 /// names for the unsigned integer types.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct DuckDb;
+pub(crate) struct DuckDb;
 
 /// `expr LIKE 'prefix%'`.
 fn like(expr: &Expr, prefix: &str) -> Expr {
@@ -140,6 +142,106 @@ fn like(expr: &Expr, prefix: &str) -> Expr {
         pattern: Box::new(string(&format!("{prefix}%"))),
         escape_char: None,
     }
+}
+
+/// The canonical `xsd:double` lexical form (XSD 1.0 §3.2.5.2: `3.0E1`,
+/// `-1.23E-3`, `0.0E0`) of DuckDB's text of a finite double, which is
+/// either positional (`30.0`, `0.00123`) or scientific (`1.5e-07`).
+fn canonical_double(text: Expr) -> Expr {
+    let f = |name: &str, args: Vec<Expr>| function(name, args);
+    let concat = |parts: Vec<Expr>| {
+        parts
+            .into_iter()
+            .reduce(|a, b| compare(a, BinaryOperator::StringConcat, b))
+            .unwrap_or_else(|| string(""))
+    };
+    let negative = like(&text, "-");
+    let sign = case(vec![(negative, string("-"))], string(""));
+    let abs = f("ltrim", vec![text, string("-")]);
+    let integer = cast(
+        f("regexp_extract", vec![abs.clone(), string("e(.*)$"), number(1)]),
+        custom("INTEGER"),
+        CastKind::Cast,
+    );
+    let scientific = concat(vec![
+        sign.clone(),
+        f("regexp_extract", vec![abs.clone(), string("^([0-9])"), number(1)]),
+        string("."),
+        f(
+            "coalesce",
+            vec![
+                f(
+                    "nullif",
+                    vec![
+                        f(
+                            "rtrim",
+                            vec![
+                                f(
+                                    "regexp_extract",
+                                    vec![abs.clone(), string("^[0-9]\\.?([0-9]*)e"), number(1)],
+                                ),
+                                string("0"),
+                            ],
+                        ),
+                        string(""),
+                    ],
+                ),
+                string("0"),
+            ],
+        ),
+        string("E"),
+        cast(integer, DataType::Varchar(None), CastKind::Cast),
+    ]);
+    // Positional: the significant digits, and the exponent from where the
+    // first of them sits.
+    let whole = f("split_part", vec![abs.clone(), string("."), number(1)]);
+    let fraction = f("split_part", vec![abs.clone(), string("."), number(2)]);
+    let digits = f(
+        "rtrim",
+        vec![
+            f(
+                "ltrim",
+                vec![f("replace", vec![abs.clone(), string("."), string("")]), string("0")],
+            ),
+            string("0"),
+        ],
+    );
+    let exponent = case(
+        vec![(
+            not_eq(whole.clone(), string("0")),
+            compare(f("length", vec![whole]), BinaryOperator::Minus, number(1)),
+        )],
+        compare(
+            compare(
+                f("length", vec![f("ltrim", vec![fraction.clone(), string("0")])]),
+                BinaryOperator::Minus,
+                f("length", vec![fraction]),
+            ),
+            BinaryOperator::Minus,
+            number(1),
+        ),
+    );
+    let positional = concat(vec![
+        sign.clone(),
+        f("left", vec![digits.clone(), number(1)]),
+        string("."),
+        f(
+            "coalesce",
+            vec![
+                f("nullif", vec![f("substr", vec![digits.clone(), number(2)]), string("")]),
+                string("0"),
+            ],
+        ),
+        string("E"),
+        cast(exponent, DataType::Varchar(None), CastKind::Cast),
+    ]);
+    case(
+        vec![
+            (f("regexp_matches", vec![abs.clone(), string("e")]), scientific),
+            (eq(digits, string("")), concat(vec![sign, string("0.0E0")])),
+        ],
+        positional,
+    )
 }
 
 fn custom(name: &str) -> DataType {
@@ -198,13 +300,9 @@ fn regex_quote(text: &str) -> String {
     out
 }
 
-impl SqlDialect for DuckDb {
+impl Dialect for DuckDb {
     fn name(&self) -> &'static str {
         "duckdb"
-    }
-
-    fn supports_materialized_cte(&self) -> bool {
-        true
     }
 
     fn regex_match(&self, text: Expr, pattern: &str, flags: Option<&str>) -> Result<Expr, SqlCompileError> {
@@ -244,7 +342,7 @@ impl SqlDialect for DuckDb {
                 (eq(text.clone(), string("-inf")), string("-INF")),
                 (eq(text.clone(), string("nan")), string("NaN")),
             ],
-            text.clone(),
+            canonical_double(text.clone()),
         );
         case(
             vec![

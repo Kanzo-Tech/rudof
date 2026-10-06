@@ -1,15 +1,11 @@
 use crate::{
     Result,
     api::shacl::implementations::{
-        compile_sql, load_shacl_schema, reset_shacl_schema, reset_shacl_validation, serialize_shacl_schema,
+        load_shacl_schema, reset_shacl_schema, reset_shacl_validation, serialize_shacl_schema,
         serialize_shacl_validation_results, validate_shacl,
     },
-    formats::{
-        DataReaderMode, InputSpec, ResultShaclValidationFormat, ShaclFormat, ShaclValidationSortByMode,
-        SqlDialectFormat, SqlMapping,
-    },
+    formats::{DataReaderMode, InputSpec, ResultShaclValidationFormat, ShaclFormat, ShaclValidationSortByMode},
 };
-use shacl::validator::sql::SqlPlan;
 use std::io;
 
 /// Operations for SHACL (Shapes Constraint Language) validation.
@@ -84,15 +80,6 @@ pub trait ShaclOperations {
 
     /// Resets the SHACL validation.
     fn reset_shacl_validation(&mut self);
-
-    /// Compiles the loaded SHACL shapes to SQL for the tables `mapping`
-    /// describes, in `dialect` (DuckDB if None).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if no shapes are loaded, or if they use a feature the
-    /// SQL engine refuses (recursive shapes, SHACL-SPARQL, `sh:targetWhere`).
-    fn compile_sql(&self, mapping: &SqlMapping, dialect: Option<&SqlDialectFormat>) -> Result<SqlPlan>;
 }
 
 impl ShaclOperations for crate::Rudof {
@@ -134,9 +121,5 @@ impl ShaclOperations for crate::Rudof {
 
     fn reset_shacl_validation(&mut self) {
         reset_shacl_validation(self)
-    }
-
-    fn compile_sql(&self, mapping: &SqlMapping, dialect: Option<&SqlDialectFormat>) -> Result<SqlPlan> {
-        compile_sql(self, mapping, dialect)
     }
 }

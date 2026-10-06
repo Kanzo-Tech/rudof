@@ -4634,6 +4634,7 @@ dependencies = [
  "oxrdf",
  "petgraph 0.8.3",
  "prefixmap",
+ "proptest",
  "rudof_iri",
  "rudof_rdf",
  "serde",

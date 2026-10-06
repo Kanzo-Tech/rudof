@@ -1,15 +1,19 @@
-//! The SQL interpretation of a [`Plan`]: one statement, a branch per check.
+//! The SQL interpretation of a [`Plan`]: a temporary table per shared
+//! relation, then one query with a branch per check.
 //!
 //! A relation's columns follow its [`Sort`], each term spread over the four
 //! columns of [`crate::validator::sql::term`]: `f_*` for the focus, `v_*` for
 //! the value, `p` for a triple's predicate and `path` for a row's path
-//! override. The plan is one statement: `WITH <the relations read more than
-//! once> SELECT <check 0's rows> UNION ALL SELECT <check 1's rows> …`, so a
-//! relation several consumers read is written, and computed, once (rudof#6),
-//! and a relation read once is the subquery that reads it. Only shared
-//! relations become CTEs because DuckDB binds the CTEs of one `WITH` as a
-//! nested chain, so their number is a recursion depth: the W3C `shacl-shacl`
-//! case reaches 2167 relations, of which 339 are shared.
+//! override. A relation several consumers read is a `CREATE TEMPORARY TABLE`,
+//! written and computed once (rudof#6), and a relation read once is the
+//! subquery that reads it; the query is `SELECT <check 0's rows> UNION ALL
+//! SELECT <check 1's rows> …` over them.
+//!
+//! Tables and not CTEs because an engine plans a table from its statistics
+//! and a CTE blind: on the Health-RI profile DuckDB turns the `EXISTS` over
+//! materialized CTEs into cross products and spills past 20 GB at 395,000
+//! triples, where the same relations as tables take 3.5 s and 0.5 GB. One
+//! statement also cost a second or more of optimizer time per schema.
 //!
 //! The algebra's predicates are two-valued (a row passes a filter only when
 //! its predicate is true), and SQL's are three-valued: every test that can be
@@ -23,7 +27,7 @@ use crate::validator::sql::ast::{
     function, in_list, item, join, known_true, left_join, not, not_eq, null, number, or, or_all, query, string, union,
     union_all_of, with,
 };
-use crate::validator::sql::dialect::SqlDialect;
+use crate::validator::sql::dialect::Dialect;
 use crate::validator::sql::mapping::{PREDICATE_COLUMN, RelationalMapping};
 use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, TRIPLE, TermExpr, compare_terms, well_formed_for};
 use rudof_rdf::vocab::RdfVocab;
@@ -124,7 +128,7 @@ pub(crate) struct Renderer<'a, M: ?Sized, D: ?Sized> {
     plan: &'a Plan,
     mapping: &'a M,
     dialect: &'a D,
-    /// Whether each relation is a CTE of the statement, read by name.
+    /// Whether each relation is a table of the script, read by name.
     named: Vec<bool>,
     /// The body of each relation read once, until its reader takes it.
     inline: Vec<Cell<Option<Query>>>,
@@ -133,7 +137,7 @@ pub(crate) struct Renderer<'a, M: ?Sized, D: ?Sized> {
 impl<'a, M, D> Renderer<'a, M, D>
 where
     M: RelationalMapping + ?Sized,
-    D: SqlDialect + ?Sized,
+    D: Dialect + ?Sized,
 {
     pub(crate) fn new(plan: &'a Plan, mapping: &'a M, dialect: &'a D) -> Self {
         Self {
@@ -145,13 +149,13 @@ where
         }
     }
 
-    /// The one statement of the plan: every relation the checks reach that
-    /// more than one consumer reads (or that reads itself, a closure) as a CTE,
-    /// computed once and materialized where the dialect allows; every other
-    /// relation inline, as the one subquery that reads it; then the rows of
-    /// every check under the public [`RESULT_COLUMNS`], tagged with the check's
+    /// The script of the plan: every relation the checks reach that more than
+    /// one consumer reads (or that reads itself, a closure) as a temporary
+    /// table, inputs first, each with its name; every other relation inline,
+    /// as the one subquery that reads it; then the query of the rows of every
+    /// check under the public [`RESULT_COLUMNS`], tagged with the check's
     /// index, as one `UNION ALL`.
-    pub(crate) fn statement(&mut self, checks: &[Check]) -> Result<Query, SqlCompileError> {
+    pub(crate) fn script(&mut self, checks: &[Check]) -> Result<(Vec<(String, Query)>, Query), SqlCompileError> {
         let roots: Vec<RelId> = checks.iter().map(|c| c.rows).collect();
         let reached = self.plan.reached(&roots);
         let mut readers = vec![0usize; self.plan.len()];
@@ -165,20 +169,28 @@ where
         for id in &reached {
             self.named[id.index()] = readers[id.index()] > 1 || matches!(self.plan.op(*id), Op::Closure { .. });
         }
-        let materialize = self.dialect.supports_materialized_cte();
         // Inputs before their readers (the plan's ids are a topological
         // order), each body built once and without recursion.
-        let mut ctes = Vec::new();
+        let mut tables = Vec::new();
         for id in &reached {
             let body = self.relation(*id)?;
             if self.named[id.index()] {
-                let materialized = materialize && !matches!(self.plan.op(*id), Op::Closure { .. });
-                ctes.push(cte(&name(*id), body, materialized));
+                // A closure reads itself: the recursive CTE of its own table.
+                let body = match self.plan.op(*id) {
+                    Op::Closure { .. } => with(
+                        vec![cte(&name(*id), body)],
+                        true,
+                        SelectBuilder::new(items(self.plan.sort(*id), "c"))
+                            .from(cte_ref(&name(*id), "c"))
+                            .into_query(),
+                    ),
+                    _ => body,
+                };
+                tables.push((name(*id), body));
             } else {
                 *self.inline[id.index()].get_mut() = Some(body);
             }
         }
-        let recursive = reached.iter().any(|id| matches!(self.plan.op(*id), Op::Closure { .. }));
         let mut selects = Vec::with_capacity(checks.len());
         for (index, check) in checks.iter().enumerate() {
             let f = TermExpr::columns("r", "f");
@@ -202,10 +214,10 @@ where
             );
         }
         let body = union_all_of(selects, true).unwrap_or_else(no_results);
-        Ok(with(ctes, recursive, query(body)))
+        Ok((tables, query(body)))
     }
 
-    /// The relation `id` read under `alias`: its CTE when it has one, else its
+    /// The relation `id` read under `alias`: its table when it has one, else its
     /// body as a subquery, handed to its one reader.
     fn from(&self, id: RelId, alias: &str) -> Result<TableFactor, SqlCompileError> {
         Ok(if self.named[id.index()] {
@@ -546,8 +558,10 @@ impl Scope {
 }
 
 /// The CTE name of a relation.
+/// The table of a shared relation, under a prefix of its own so that it
+/// does not shadow a host table.
 fn name(id: RelId) -> String {
-    id.to_string()
+    format!("shacl_{id}")
 }
 
 fn internal(message: &str) -> SqlCompileError {

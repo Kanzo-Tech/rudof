@@ -1,14 +1,15 @@
 //! The SQL engine reads the same report from one dataset whether it sits in a
-//! triple table or in ordinary tables described by an R2RML mapping — and
-//! that report is the in-memory evaluator's.
+//! triples table or in ordinary tables under a triples view — and that report
+//! is the in-memory evaluator's.
 #![cfg(not(target_family = "wasm"))]
 
+use futures::executor::block_on;
 use rudof_rdf::RDFFormat;
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
-use shacl::validator::sql::{DuckDbExecutor, SqlCompileError, SqlDialect, SqlMapping, compile};
+use shacl::validator::sql::{DuckDbEngine, SqlCompileError, SqlError, validate};
 
 mod common;
 use common::validate_with_duckdb;
@@ -59,42 +60,40 @@ CREATE TABLE knows (src INTEGER, dst INTEGER);
 INSERT INTO knows VALUES (1, 2), (1, 3), (1, 4), (1, 5), (2, 1), (2, 5), (3, 4);
 "#;
 
-/// Where those tables' terms are, in R2RML: classes and literal columns, an
-/// edge table whose source key is resolved by an R2RML view joining the
-/// vertex table, and whose target is a referencing object map joined on the
-/// target key. The subclass triple comes from a triples map whose terms are
-/// constants, over a one-row view.
-const MAPPING: &str = r#"
-@prefix rr:   <http://www.w3.org/ns/r2rml#> .
-@prefix ex:   <http://example.org/> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-<#Node> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "node" ] ;
-    rr:subjectMap [ rr:column "iri" ] .
-
-<#Person> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "person" ] ;
-    rr:subjectMap [ rr:column "iri" ; rr:class ex:Person ] ;
-    rr:predicateObjectMap [ rr:predicate ex:name ; rr:objectMap [ rr:column "name" ] ] ;
-    rr:predicateObjectMap [ rr:predicate ex:age ; rr:objectMap [ rr:column "age" ] ] ;
-    rr:predicateObjectMap [ rr:predicate ex:email ; rr:objectMap [ rr:column "email" ] ] .
-
-<#Student> a rr:TriplesMap ; rr:logicalTable [ rr:tableName "student" ] ;
-    rr:subjectMap [ rr:column "iri" ; rr:class ex:Student ] ;
-    rr:predicateObjectMap [ rr:predicate ex:name ; rr:objectMap [ rr:column "name" ] ] ;
-    rr:predicateObjectMap [ rr:predicate ex:age ; rr:objectMap [ rr:column "age" ] ] .
-
-<#Knows> a rr:TriplesMap ;
-    rr:logicalTable [ rr:sqlQuery """SELECT k.dst, n.iri AS src_iri FROM knows AS k JOIN node AS n ON k.src = n.id""" ] ;
-    rr:subjectMap [ rr:column "src_iri" ] ;
-    rr:predicateObjectMap [
-        rr:predicate ex:knows ;
-        rr:objectMap [ rr:parentTriplesMap <#Node> ; rr:joinCondition [ rr:child "dst" ; rr:parent "id" ] ]
-    ] .
-
-<#Hierarchy> a rr:TriplesMap ; rr:logicalTable [ rr:sqlQuery "SELECT 1 AS one" ] ;
-    rr:subject ex:Student ;
-    rr:predicateObjectMap [ rr:predicate rdfs:subClassOf ; rr:object ex:Person ] .
-"#;
+/// Those tables as the one relation the engine reads, the way a host states
+/// what its tables mean: a branch per class and per column, the edge table
+/// joined to its vertices, and the subclass triple as a constant row.
+fn view(schema: &str) -> String {
+    let rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+    let string = "http://www.w3.org/2001/XMLSchema#string";
+    let integer = "http://www.w3.org/2001/XMLSchema#integer";
+    let column = |table: &str, column: &str, predicate: &str, lexical: &str, datatype: &str| {
+        format!(
+            "SELECT 'I', iri, 'http://example.org/{predicate}', 'L', {lexical}, '{datatype}', '' \
+             FROM {schema}{table} WHERE {column} IS NOT NULL"
+        )
+    };
+    [
+        format!(
+            "SELECT 'I' AS s_k, iri AS s_v, '{rdf_type}' AS p, 'I' AS o_k, 'http://example.org/Person' AS o_v, \
+             '' AS o_d, '' AS o_l FROM {schema}person"
+        ),
+        column("person", "name", "name", "name", string),
+        column("person", "age", "age", "CAST(age AS VARCHAR)", integer),
+        column("person", "email", "email", "email", string),
+        format!("SELECT 'I', iri, '{rdf_type}', 'I', 'http://example.org/Student', '', '' FROM {schema}student"),
+        column("student", "name", "name", "name", string),
+        column("student", "age", "age", "CAST(age AS VARCHAR)", integer),
+        format!(
+            "SELECT 'I', s.iri, 'http://example.org/knows', 'I', d.iri, '', '' FROM {schema}knows AS k \
+             JOIN {schema}node AS s ON k.src = s.id JOIN {schema}node AS d ON k.dst = d.id"
+        ),
+        "SELECT 'I', 'http://example.org/Student', 'http://www.w3.org/2000/01/rdf-schema#subClassOf', 'I', \
+         'http://example.org/Person', '', ''"
+            .to_owned(),
+    ]
+    .join("\nUNION ALL ")
+}
 
 /// Shapes over classes, literal columns and edges: targets with subclasses,
 /// cardinality, ranges, patterns, a path over the edge table, a closure, a
@@ -124,35 +123,41 @@ fn in_memory(data: &OxigraphInMemory, schema: &IRSchema) -> ValidationReport {
     shacl::validator::validate(schema, data).expect("in memory validates")
 }
 
-/// Validates through the R2RML mapping, with the tables in `db_schema` (the
-/// mapping's table names unqualified) when one is given.
+/// Validates through a triples view over the tables, all of them in
+/// `db_schema` when one is given.
 fn through_tables(schema: &IRSchema, db_schema: Option<&str>) -> ValidationReport {
-    let executor = DuckDbExecutor::in_memory().expect("duckdb opens");
-    let ddl = match db_schema {
-        Some(name) => format!(
-            "CREATE SCHEMA {name};\n{}",
-            TABLES
-                .replace("TABLE ", &format!("TABLE {name}."))
-                .replace("INTO ", &format!("INTO {name}."))
+    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
+    let (ddl, prefix) = match db_schema {
+        Some(name) => (
+            format!(
+                "CREATE SCHEMA {name};\n{}",
+                TABLES
+                    .replace("TABLE ", &format!("TABLE {name}."))
+                    .replace("INTO ", &format!("INTO {name}."))
+            ),
+            format!("{name}."),
         ),
-        None => TABLES.to_owned(),
+        None => (TABLES.to_owned(), String::new()),
     };
-    executor.connection().execute_batch(&ddl).expect("tables load");
-    let mapping = r2rml(db_schema);
-    let plan = compile(schema, &mapping, SqlDialect::DuckDb).expect("shapes compile");
-    plan.validate(&executor).expect("plan runs")
+    engine.connection().execute_batch(&ddl).expect("tables load");
+    engine
+        .connection()
+        .execute_batch(&format!("CREATE VIEW {prefix}triples AS {}", view(&prefix)))
+        .expect("the view is created");
+    block_on(validate(schema, &format!("{prefix}triples"), &engine)).expect("validates")
 }
 
-fn r2rml(db_schema: Option<&str>) -> SqlMapping {
-    SqlMapping::R2rml {
-        mapping: MAPPING.to_owned(),
-        schema: db_schema.map(str::to_owned),
-        base_iri: None,
+/// Validation that stops at compilation, before any statement runs.
+fn refused(schema: &IRSchema) -> SqlCompileError {
+    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
+    match block_on(validate(schema, "triples", &engine)) {
+        Err(SqlError::Compile(e)) => e,
+        other => panic!("expected a refusal, got {other:?}"),
     }
 }
 
 #[test]
-fn tables_and_triple_table_yield_the_evaluators_report() {
+fn a_triples_table_and_a_view_over_tables_yield_the_evaluators_report() {
     let data = graph(&format!(
         "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n{DATA}"
     ));
@@ -211,7 +216,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:property [ sh:path ex:knows ; sh:node ex:S ] .
 "#,
     );
-    let refused = compile(&schema, &r2rml(None), SqlDialect::DuckDb).expect_err("recursion is refused");
+    let refused = refused(&schema);
     assert!(matches!(refused, SqlCompileError::RecursiveShapes(_)), "{refused}");
 }
 
@@ -223,7 +228,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:sparql [ sh:select "SELECT $this WHERE { $this ?p ?o }" ] .
 "#,
     );
-    let refused = compile(&schema, &r2rml(None), SqlDialect::DuckDb).expect_err("sh:sparql is refused");
+    let refused = refused(&schema);
     assert!(matches!(refused, SqlCompileError::Unsupported(_)), "{refused}");
 }
 

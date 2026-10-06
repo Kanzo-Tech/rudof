@@ -42,17 +42,6 @@ pub fn parse_object_name(text: &str) -> Result<ObjectName, String> {
     Ok(name)
 }
 
-/// Reads one SQL identifier, delimited (`"birth_year"`) or not (`birth_year`).
-pub fn parse_identifier(text: &str) -> Result<Ident, String> {
-    let dialect = GenericDialect {};
-    let mut parser = Parser::new(&dialect).try_with_sql(text).map_err(|e| e.to_string())?;
-    let ident = parser.parse_identifier().map_err(|e| e.to_string())?;
-    parser
-        .expect_token(&Token::EOF)
-        .map_err(|_| format!("'{text}' is not a SQL identifier"))?;
-    Ok(ident)
-}
-
 /// `name` with every part delimited, as the engine renders names: a part's
 /// value is kept verbatim (case and all), whatever its quoting in the source.
 pub fn delimited(name: &ObjectName) -> ObjectName {
@@ -338,13 +327,6 @@ impl SelectBuilder {
             group_by: Vec::new(),
             having: None,
         }
-    }
-
-    /// Replaces the projection.
-    #[must_use]
-    pub fn with_projection(mut self, projection: Vec<SelectItem>) -> Self {
-        self.projection = projection;
-        self
     }
 
     #[must_use]

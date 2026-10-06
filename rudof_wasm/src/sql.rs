@@ -1,119 +1,171 @@
-//! The SQL engine across the ABI: the plan of the loaded shapes as a SQL
-//! script plus the metadata of each check, and the report read back from the rows
-//! the host's engine returned. Compilation and the report are the façade's
-//! (`FormEngine::compile_sql` / `report_from_rows`); here they are only
-//! marshalled.
+//! The SQL engine across the ABI: the page's engine, `{ query(sql, { signal })
+//! => Promise<Table> }` (`@kanzo-tech/mosaic`'s `engine()` as it is), driven
+//! from Rust. Validation is the façade's (`FormEngine::validate_sql`); here
+//! the engine's Arrow answers are only read back as rows.
 
-use rudof_lib::form::{SqlDialect, SqlPlan, RESULT_COLUMNS};
+use js_sys::{Array, Function, Object, Promise, Reflect};
+use rudof_lib::form::{SqlEngine, SqlRow, RESULT_COLUMNS};
+use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen_futures::JsFuture;
 
-use crate::dto::{SqlCheckDto, SqlPlanDto};
-use crate::shapes::path_key;
-use crate::validate::{object_to_term, path_to_term, severity_iri};
+/// The page's engine, and the signal every statement of one validation
+/// carries.
+pub struct JsEngine {
+    engine: JsValue,
+    query: Function,
+    signal: JsValue,
+}
 
-/// The plan as the ABI DTO.
-pub fn plan_dto(plan: &SqlPlan, dialect: SqlDialect) -> SqlPlanDto {
-    SqlPlanDto {
-        dialect: dialect.to_string(),
-        setup: plan.setup().to_vec(),
-        query: plan.query().to_owned(),
-        teardown: plan.teardown().to_vec(),
-        columns: RESULT_COLUMNS.iter().map(|c| (*c).to_string()).collect(),
-        checks: plan
-            .checks
+fn message(e: JsValue) -> String {
+    match e.dyn_ref::<js_sys::Error>() {
+        Some(error) => String::from(error.message()),
+        None => e.as_string().unwrap_or_else(|| format!("{e:?}")),
+    }
+}
+
+/// A cell of an answer as text: SQL `NULL` is `None`, and a number (an
+/// `INTEGER` column) or a `BigInt` (a `BIGINT` one) is written in decimal.
+fn text(cell: JsValue) -> Option<String> {
+    if cell.is_null() || cell.is_undefined() {
+        None
+    } else if let Some(s) = cell.as_string() {
+        Some(s)
+    } else if let Some(n) = cell.dyn_ref::<js_sys::BigInt>() {
+        n.to_string(10).ok().map(String::from)
+    } else {
+        cell.as_f64().map(|n| n.to_string())
+    }
+}
+
+impl JsEngine {
+    /// `engine` must have a `query` method; `signal`, when not `undefined`,
+    /// is an `AbortSignal` that stops the running statement.
+    pub fn new(engine: JsValue, signal: JsValue) -> Result<Self, String> {
+        let query = Reflect::get(&engine, &"query".into())
+            .ok()
+            .and_then(|q| q.dyn_into::<Function>().ok())
+            .ok_or("engine: expected an object with a query(sql, { signal }) method")?;
+        Ok(Self { engine, query, signal })
+    }
+
+    async fn answer(&self, sql: &str) -> Result<JsValue, String> {
+        let options = Object::new();
+        if !self.signal.is_undefined() {
+            Reflect::set(&options, &"signal".into(), &self.signal).map_err(message)?;
+        }
+        let pending = self.query.call2(&self.engine, &sql.into(), &options).map_err(message)?;
+        JsFuture::from(Promise::resolve(&pending)).await.map_err(message)
+    }
+}
+
+impl SqlEngine for JsEngine {
+    type Error = String;
+
+    async fn execute(&self, sql: &str) -> Result<(), String> {
+        self.answer(sql).await.map(drop)
+    }
+
+    /// The rows of the answer, an Arrow `Table`, by column name.
+    async fn rows(&self, sql: &str) -> Result<Vec<SqlRow>, String> {
+        let table = self.answer(sql).await?;
+        let rows = Reflect::get(&table, &"toArray".into())
+            .ok()
+            .and_then(|f| f.dyn_into::<Function>().ok())
+            .ok_or("the engine's answer is not a table: it has no toArray()")?
+            .call0(&table)
+            .map_err(message)?;
+        Array::from(&rows)
             .iter()
-            .map(|check| SqlCheckDto {
-                source_shape: plan
-                    .schema()
-                    .get_shape_from_idx(&check.shape)
-                    .map(|shape| object_to_term(shape.id())),
-                source_constraint_component: check.component.as_str().to_string(),
-                severity: severity_iri(&check.severity),
-                path: check.path.as_ref().and_then(path_to_term),
-                path_key: check.path.as_ref().map(path_key),
+            .map(|row| {
+                RESULT_COLUMNS
+                    .iter()
+                    .map(|column| Reflect::get(&row, &(*column).into()).map(text).map_err(message))
+                    .collect()
             })
-            .collect(),
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use rudof_lib::form::{FormEngine, RDFFormat, SqlDialect, SqlMapping, SqlRow};
+    use js_sys::{Function, Reflect};
+    use wasm_bindgen::JsValue;
+    use wasm_bindgen_futures::JsFuture;
     use wasm_bindgen_test::wasm_bindgen_test;
 
-    use super::plan_dto;
+    use crate::Session;
 
     const SHAPES: &str = r#"@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix : <http://example.org/> .
 :S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; sh:minCount 1 ] ."#;
 
-    const TABLES: &str = r#"
-        @prefix rr: <http://www.w3.org/ns/r2rml#> . @prefix : <http://example.org/> .
-        <#C> rr:logicalTable [ rr:tableName "c" ] ;
-            rr:subjectMap [ rr:column "id" ; rr:class :C ] ;
-            rr:predicateObjectMap [ rr:predicate :p ; rr:objectMap [ rr:column "p" ] ] ."#;
-
-    fn tables(schema: Option<&str>) -> SqlMapping {
-        SqlMapping::R2rml {
-            mapping: TABLES.to_owned(),
-            schema: schema.map(str::to_owned),
-            base_iri: None,
-        }
+    /// An engine that answers the script's query with `rows` (a JS array
+    /// literal) and every other statement with nothing, and keeps each
+    /// statement in `engine.seen`.
+    fn engine(rows: &str) -> JsValue {
+        Function::new_no_args(&format!(
+            "const seen = []; return {{ seen, query: async (sql, options) => {{ \
+               seen.push(sql); \
+               const rows = /^\\s*(CREATE|DROP)/i.test(sql) ? [] : {rows}; \
+               return {{ toArray: () => rows }}; }} }};"
+        ))
+        .call0(&JsValue::NULL)
+        .unwrap()
     }
 
-    fn row(check: &str, focus: &str) -> SqlRow {
-        let mut row: SqlRow = vec![
-            Some(check.into()),
-            Some("I".into()),
-            Some(focus.into()),
-            Some(String::new()),
-            Some(String::new()),
-        ];
-        row.extend([None, None, None, None, None]);
-        row
+    async fn validate(session: &Session, engine: &JsValue) -> Result<JsValue, JsValue> {
+        let options = js_sys::Object::new();
+        Reflect::set(&options, &"table".into(), &"\"job\".triples".into()).unwrap();
+        Reflect::set(&options, &"engine".into(), engine).unwrap();
+        let promise = session.validate_table(options.into()).map_err(JsValue::from)?;
+        JsFuture::from(promise).await
     }
 
-    #[wasm_bindgen_test]
-    fn the_plan_is_sql_text_with_the_metadata_of_each_check() {
-        let mut engine = FormEngine::new();
-        engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
-        let plan = engine
-            .compile_sql(&tables(Some("warehouse")), SqlDialect::DuckDb)
+    fn session() -> Session {
+        let mut session = Session::new();
+        session
+            .load_shapes(SHAPES.to_owned(), "text/turtle".to_owned(), None)
             .unwrap();
-        let dto = plan_dto(plan, SqlDialect::DuckDb);
-        assert_eq!(dto.dialect, "duckdb");
-        assert_eq!(dto.columns.len(), 10);
-        assert!(dto.query.contains("\"warehouse\".\"c\""), "{}", dto.query);
-        assert_eq!(dto.setup.len(), dto.teardown.len());
-        assert_eq!(dto.checks.len(), 1);
-        let check = &dto.checks[0];
-        assert_eq!(
-            check.source_constraint_component,
-            "http://www.w3.org/ns/shacl#MinCountConstraintComponent"
+        session
+    }
+
+    #[wasm_bindgen_test]
+    async fn the_engine_runs_the_script_over_the_table_and_its_rows_are_the_report() {
+        let engine = engine(
+            "[{ check: 0, focus_kind: 'I', focus_value: 'http://example.org/n', focus_datatype: '', \
+               focus_lang: '', value_kind: null, value_value: null, value_datatype: null, value_lang: null, \
+               path: null }]",
         );
-        assert_eq!(
-            check.path.as_ref().map(|p| p.value.as_str()),
-            Some("http://example.org/p")
+        let report = validate(&session(), &engine).await.expect("validates");
+        assert_eq!(Reflect::get(&report, &"conforms".into()).unwrap(), JsValue::FALSE);
+        let results = js_sys::Array::from(&Reflect::get(&report, &"results".into()).unwrap());
+        assert_eq!(results.length(), 1);
+        let seen = js_sys::Array::from(&Reflect::get(&engine, &"seen".into()).unwrap());
+        assert!(
+            seen.iter()
+                .any(|sql| sql.as_string().unwrap().contains("\"job\".\"triples\"")),
+            "the script reads the table it was given"
         );
     }
 
     #[wasm_bindgen_test]
-    fn rows_come_back_as_the_in_memory_report() {
-        let mut engine = FormEngine::new();
-        engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
-        engine
-            .compile_sql(&tables(Some("warehouse")), SqlDialect::DuckDb)
-            .unwrap();
-        let outcome = engine.report_from_rows(&[row("0", "http://example.org/n")]).unwrap();
-        assert!(!outcome.conforms);
-        assert_eq!(outcome.results.len(), 1);
-        assert!(!outcome.results[0].message().messages().is_empty());
-        assert!(engine.report_from_rows(&[]).unwrap().conforms);
-        // A row naming no check of the plan cannot be attributed.
-        assert!(engine.report_from_rows(&[row("1", "http://example.org/n")]).is_err());
+    async fn no_rows_conform() {
+        let report = validate(&session(), &engine("[]")).await.expect("validates");
+        assert_eq!(Reflect::get(&report, &"conforms".into()).unwrap(), JsValue::TRUE);
     }
 
     #[wasm_bindgen_test]
-    fn an_unknown_dialect_is_refused() {
-        assert!("oracle".parse::<SqlDialect>().is_err());
-        assert_eq!("DuckDB".parse::<SqlDialect>().unwrap(), SqlDialect::DuckDb);
+    async fn a_row_naming_no_check_is_an_error() {
+        let engine = engine(
+            "[{ check: 7, focus_kind: 'I', focus_value: 'http://example.org/n', focus_datatype: '', \
+               focus_lang: '' }]",
+        );
+        assert!(validate(&session(), &engine).await.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    async fn an_object_without_query_is_not_an_engine() {
+        assert!(validate(&session(), &JsValue::from(js_sys::Object::new()))
+            .await
+            .is_err());
     }
 }

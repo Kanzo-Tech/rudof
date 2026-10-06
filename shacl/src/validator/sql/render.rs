@@ -28,8 +28,8 @@ use crate::validator::sql::ast::{
     union_all_of, with,
 };
 use crate::validator::sql::dialect::Dialect;
-use crate::validator::sql::mapping::{PREDICATE_COLUMN, RelationalMapping};
 use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, TRIPLE, TermExpr, compare_terms, well_formed_for};
+use crate::validator::sql::triples::{PREDICATE_COLUMN, Triples};
 use rudof_rdf::vocab::RdfVocab;
 use sqlparser::ast::{BinaryOperator, Expr, Query, SelectItem, SetExpr, TableFactor};
 use std::cell::Cell;
@@ -123,10 +123,10 @@ fn kind(k: Kind) -> &'static str {
     }
 }
 
-/// Renders the relations of one plan for one mapping and dialect.
-pub(crate) struct Renderer<'a, M: ?Sized, D: ?Sized> {
+/// Renders the relations of one plan over one triples relation, for one dialect.
+pub(crate) struct Renderer<'a, D: ?Sized> {
     plan: &'a Plan,
-    mapping: &'a M,
+    triples: &'a Triples,
     dialect: &'a D,
     /// Whether each relation is a table of the script, read by name.
     named: Vec<bool>,
@@ -134,15 +134,14 @@ pub(crate) struct Renderer<'a, M: ?Sized, D: ?Sized> {
     inline: Vec<Cell<Option<Query>>>,
 }
 
-impl<'a, M, D> Renderer<'a, M, D>
+impl<'a, D> Renderer<'a, D>
 where
-    M: RelationalMapping + ?Sized,
     D: Dialect + ?Sized,
 {
-    pub(crate) fn new(plan: &'a Plan, mapping: &'a M, dialect: &'a D) -> Self {
+    pub(crate) fn new(plan: &'a Plan, triples: &'a Triples, dialect: &'a D) -> Self {
         Self {
             plan,
-            mapping,
+            triples,
             dialect,
             named: vec![false; plan.len()],
             inline: (0..plan.len()).map(|_| Cell::new(None)).collect(),
@@ -248,32 +247,26 @@ where
                     None => empty(Sort::Nodes),
                 }
             },
-            Op::Predicate(iri) => match self.mapping.predicate(iri) {
-                Some(edges) => SelectBuilder::new(pair(&TermExpr::columns("m", "s"), &TermExpr::columns("m", "o")))
-                    .distinct()
-                    .from(derived(edges.0, "m"))
-                    .into_query(),
-                None => empty(Sort::Pairs),
-            },
-            Op::Class(iri) => match self.mapping.class_extent(iri) {
-                Some(extent) => SelectBuilder::new(TermExpr::columns("m", "n").items("f"))
-                    .distinct()
-                    .from(derived(extent.0, "m"))
-                    .into_query(),
-                None => empty(Sort::Nodes),
-            },
-            // An RDF graph is a set (RDF 1.1 Concepts §3) and a mapping may
-            // answer a bag (one row per source row, a triple in two rules).
+            Op::Predicate(iri) => SelectBuilder::new(pair(&TermExpr::columns("m", "s"), &TermExpr::columns("m", "o")))
+                .distinct()
+                .from(derived(self.triples.predicate(iri), "m"))
+                .into_query(),
+            Op::Class(iri) => SelectBuilder::new(TermExpr::columns("m", "n").items("f"))
+                .distinct()
+                .from(derived(self.triples.class_extent(iri), "m"))
+                .into_query(),
+            // An RDF graph is a set (RDF 1.1 Concepts §3) and the relation may
+            // be a bag (a view with a triple in two of its rows).
             Op::Triples => SelectBuilder::new(triple(
                 &TermExpr::columns("m", "s"),
                 col("m", PREDICATE_COLUMN),
                 &TermExpr::columns("m", "o"),
             ))
             .distinct()
-            .from(derived(self.mapping.triples(), "m"))
+            .from(derived(self.triples.all(), "m"))
             .into_query(),
             Op::AllNodes => {
-                let triples = derived(self.mapping.triples(), "t");
+                let triples = derived(self.triples.all(), "t");
                 let subjects = SelectBuilder::new(TermExpr::columns("t", "s").items("f")).from(triples.clone());
                 let objects = SelectBuilder::new(TermExpr::columns("t", "o").items("f")).from(triples);
                 query(union(subjects.into_set_expr(), objects.into_set_expr(), false))
@@ -401,8 +394,9 @@ where
                 let p = col("t", PREDICATE_COLUMN);
                 let mut permitted = in_list(p.clone(), allowed.iter().map(|a| string(a.as_str())).collect());
                 // A property a class of the value node permits: read from the
-                // mapping's `rdf:type`, so the triples are read once.
-                if let (false, Some(types)) = (by_type.is_empty(), self.mapping.predicate(&RdfVocab::rdf_type())) {
+                // data's `rdf:type`, so the triples are read once.
+                if !by_type.is_empty() {
+                    let types = self.triples.predicate(&RdfVocab::rdf_type());
                     let class = TermExpr::columns("ty", "o");
                     let by_class = or_all(by_type.iter().map(|(class_iri, properties)| {
                         and(
@@ -419,7 +413,7 @@ where
                         permitted,
                         exists(
                             SelectBuilder::new(one())
-                                .from(derived(types.0, "ty"))
+                                .from(derived(types, "ty"))
                                 .filter(and(TermExpr::columns("ty", "s").same(&v("a")), by_class))
                                 .into_query(),
                         ),

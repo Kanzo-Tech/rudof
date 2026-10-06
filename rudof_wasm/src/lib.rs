@@ -7,9 +7,7 @@ use wasm_bindgen::prelude::*;
 // Every rudof-native type the binding marshals against comes from the façade
 // (`rudof_lib::form`), so this crate depends on `rudof_lib` alone — it never
 // reaches into `shacl`/`rudof_rdf`/`oxrdf` directly.
-use rudof_lib::form::{
-    BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, SqlDialect, SqlMapping, Term as OxTerm,
-};
+use rudof_lib::form::{BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm};
 
 mod dto;
 mod index;
@@ -262,47 +260,34 @@ impl Session {
 
 #[wasm_bindgen]
 impl Session {
-    /// Compile the loaded shapes to SQL over the tables the R2RML mapping
-    /// `r2rml` (Turtle, W3C R2RML) describes, in `dialect` (`"duckdb"`).
-    /// Unqualified table names resolve against `schema` (the catalog or
-    /// schema the tables are attached under) when it is given. R2RML terms
-    /// the engine refuses (graph maps, computed predicates) are an error
-    /// naming them.
+    /// Validate, through SQL, the data in a triples relation against the
+    /// loaded shapes, on the page's engine.
     ///
-    /// Returns a `SqlPlanDto`: the SQL script (`setup`, `query`, `teardown`)
-    /// and, per check, the result metadata (`sourceShape`,
-    /// `sourceConstraintComponent`, `severity`, `path`). Run the script on
-    /// one connection of the host's engine and pass the query's rows to
-    /// `reportFromRows`. Shapes the engine refuses (recursive
-    /// ones, `sh:sparql`) are an error here, never skipped.
-    #[wasm_bindgen(js_name = compileSql)]
-    pub fn compile_sql(&mut self, r2rml: String, schema: Option<String>, dialect: String) -> Result<JsValue, JsError> {
-        let dialect = dialect
-            .parse::<SqlDialect>()
-            .map_err(|e| JsError::new(&e.to_string()))?;
-        let mapping = SqlMapping::R2rml {
-            mapping: r2rml,
-            schema,
-            base_iri: None,
-        };
-        let plan = self
+    /// `options` is `{ table, engine, signal? }`: `table` names the relation
+    /// (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`, e.g. `"job".triples`, the
+    /// view `@fossil-lang/corpus`'s `open` creates); `engine` is
+    /// `{ query(sql, { signal }): Promise<Table> }`, which `@kanzo-tech/mosaic`'s
+    /// `engine()` is; `signal` stops the running statement. Every statement
+    /// runs through `engine.query`, on its one connection.
+    ///
+    /// Resolves to a `RudofReport`, worded as the in-memory `validate` words
+    /// it. Shapes the engine refuses (recursive ones, `sh:sparql`) reject it,
+    /// never skipped.
+    #[wasm_bindgen(js_name = validateTable)]
+    pub fn validate_table(&self, options: JsValue) -> Result<js_sys::Promise, JsError> {
+        let field = |name: &str| js_sys::Reflect::get(&options, &name.into()).unwrap_or(JsValue::UNDEFINED);
+        let table = field("table")
+            .as_string()
+            .ok_or_else(|| JsError::new("table: expected the name of a triples relation"))?;
+        let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
+        let validation = self
             .engine
-            .compile_sql(&mapping, dialect)
+            .validate_sql(table, engine)
             .map_err(|e| JsError::new(&e.to_string()))?;
-        to_js(&sql::plan_dto(plan, dialect))
-    }
-
-    /// The validation report of the rows of the last `compileSql` plan's
-    /// query, each row an array of the plan's `columns` (`string | null`).
-    /// Returns a `RudofReport`, worded as the in-memory evaluator words it.
-    #[wasm_bindgen(js_name = reportFromRows)]
-    pub fn report_from_rows(&self, rows: JsValue) -> Result<JsValue, JsError> {
-        let rows: Vec<Vec<Option<String>>> = from_js(rows)?;
-        let outcome = self
-            .engine
-            .report_from_rows(&rows)
-            .map_err(|e| JsError::new(&e.to_string()))?;
-        to_js(&validate::report_from_outcome(&outcome))
+        Ok(wasm_bindgen_futures::future_to_promise(async move {
+            let outcome = validation.await.map_err(|e| JsError::new(&e.to_string()))?;
+            Ok(to_js(&validate::report_from_outcome(&outcome))?)
+        }))
     }
 }
 

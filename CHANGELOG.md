@@ -6,7 +6,8 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 - SHACL SQL engine (`shacl::validator::sql`): `validate(&schema, triples, &engine).await` validates the data in one `(s, p, o)` relation (a table or a view, columns `s_k, s_v, p, o_k, o_v, o_d, o_l`) on the host's engine. The shapes graph becomes a SQL script, a `CREATE TEMPORARY TABLE` per relation several checks read, then one query (a `UNION ALL` of a branch per check), then the drops, which the host's `SqlEngine` (async, as DuckDB-WASM is) runs on one connection. All of SHACL Core compiles; recursive shapes and SHACL-SPARQL are refused. The W3C core suite runs through both the in-memory evaluator and the SQL engine
 - `shacl::validator::sql::DuckDbEngine` (feature `duckdb`, native only): an in-process DuckDB `SqlEngine`, which loads a graph into a triples table
 - `sh:targetWhere` (SHACL 1.2), in both interpretations
-- wasm: `Session.validateTable({ table, engine, signal? })` validates a triples relation on the page's engine (`{ query(sql, { signal }) }`, `@kanzo-tech/mosaic`'s `engine()`), resolving to the same `RudofReport` as `validate()`; validation results carry `sourceShape`
+- wasm: `Shapes.parse(text, { mediaType?, base? })` and `shapes.validate({ table, engine, signal? })`, which validates a triples relation on the page's engine (`{ query(sql, { signal }) }`, `@kanzo-tech/mosaic`'s `engine()`) and resolves to the same `RudofReport` as `FormSession.validate()`; validation results carry `sourceShape`
+- wasm: every argument and result is typed in the `.d.ts` (`TermValue`, `ShapeModelJson`, `ProjectedForm`, `RudofReport`, …), derived from the Rust DTOs, where they were `any`
 ### Fixed
 - SHACL `sh:minLength` / `sh:maxLength` count characters (SPARQL `STRLEN`), not UTF-8 bytes
 - SHACL value ranges compare numerics by value across every XSD numeric type (e.g. `xsd:long` against `xsd:integer`); `xsd:int` literals are checked for well-formedness; `xsd:short` values keep their datatype in reports
@@ -15,6 +16,7 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 - CI: clippy 1.99 findings; the wasm-bindgen CLI version is read from Cargo.lock
 ### Changed
 - SHACL validation is one denotation of the shapes graph into a relational algebra (`shacl::algebra`), with two interpretations: `shacl::validator::validate` evaluates it over any `NeighsRDF` (in memory or a SPARQL endpoint), and `shacl::validator::sql::validate` runs it as SQL
+- wasm: `Session` is two classes. `Shapes` is a parsed shapes graph (`model()`, `loadMessages()`, `validate()`); `new FormSession(shapes)` edits, projects and validates a data graph under it. `Session.loadShapes` is `Shapes.parse(...).model()`, and `loadMessages` moved to `Shapes`
 ### Removed
 - The native and SPARQL SHACL engines, and with them `ShaclValidationMode` (rudof_lib, CLI `--mode` / `--shacl-mode`, MCP `mode`, Python `ShaclValidationMode`): there is one validator
 - `shacl::subset`

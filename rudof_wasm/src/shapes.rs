@@ -771,21 +771,16 @@ fn concrete_f64(l: &ConcreteLiteral) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rudof_lib::form::{FormEngine, RDFFormat};
+    use rudof_lib::form::{FormEngine, RDFFormat, Shapes};
     use wasm_bindgen_test::wasm_bindgen_test;
 
     const RDF_TYPE_IRI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
-    /// Parse `shapes` (Turtle) through the same façade `Session::loadShapes` uses
-    /// and project it, so a test sees exactly what JavaScript receives.
+    /// Parse `shapes` (Turtle) through the same façade `Shapes.parse` uses and
+    /// project it, so a test sees exactly what JavaScript receives.
     fn model(shapes: &str) -> ShapeModelJson {
-        let mut engine = FormEngine::new();
-        engine
-            .load_shapes(shapes, &RDFFormat::Turtle, None)
-            .expect("shapes parse");
-        let ast = engine.shapes_ast().expect("shapes just loaded");
-        let graph = engine.shapes_graph().expect("shapes just loaded");
-        schema_to_json(ast, graph)
+        let shapes = Shapes::parse(shapes, &RDFFormat::Turtle, None).expect("shapes parse");
+        schema_to_json(shapes.ast(), shapes.graph())
     }
 
     fn shape<'a>(model: &'a ShapeModelJson, id: &str) -> &'a NodeShapeIR {
@@ -981,10 +976,7 @@ mod tests {
     }
 
     fn session(shapes: &str, data: &str) -> FormEngine {
-        let mut engine = FormEngine::new();
-        engine
-            .load_shapes(shapes, &RDFFormat::Turtle, None)
-            .expect("shapes parse");
+        let mut engine = FormEngine::new(Shapes::parse(shapes, &RDFFormat::Turtle, None).expect("shapes parse"));
         engine.load_data(data, &RDFFormat::Turtle, None).expect("data parses");
         engine
     }
@@ -996,7 +988,7 @@ mod tests {
     fn project(engine: &FormEngine) -> ProjectedForm {
         crate::project::project_form(
             engine,
-            engine.shapes_ast().expect("shapes loaded"),
+            engine.shapes().ast(),
             &TermValue::named("http://example.org/d"),
             "http://example.org/S",
         )
@@ -1071,8 +1063,8 @@ mod tests {
 "#
         );
         let engine = session(&shapes, &dataset("; :access :RESTRICTED"));
-        let ast = engine.shapes_ast().expect("shapes loaded");
-        let graph = engine.shapes_graph().expect("shapes loaded");
+        let ast = engine.shapes().ast();
+        let graph = engine.shapes().graph();
         let m = schema_to_json(ast, graph);
         let c = &shape(&m, "http://example.org/S").conditionals[0];
 
@@ -1193,7 +1185,7 @@ mod tests {
         );
         let form = crate::project::project_form(
             &engine,
-            engine.shapes_ast().expect("shapes loaded"),
+            engine.shapes().ast(),
             &TermValue::named("http://example.org/t"),
             "http://example.org/Other",
         );

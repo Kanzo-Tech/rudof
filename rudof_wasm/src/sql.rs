@@ -93,7 +93,7 @@ mod tests {
     use wasm_bindgen_futures::JsFuture;
     use wasm_bindgen_test::wasm_bindgen_test;
 
-    use crate::Session;
+    use crate::Shapes;
 
     const SHAPES: &str = r#"@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix : <http://example.org/> .
 :S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; sh:minCount 1 ] ."#;
@@ -112,20 +112,16 @@ mod tests {
         .unwrap()
     }
 
-    async fn validate(session: &Session, engine: &JsValue) -> Result<JsValue, JsValue> {
+    async fn validate(shapes: &Shapes, engine: &JsValue) -> Result<JsValue, JsValue> {
         let options = js_sys::Object::new();
         Reflect::set(&options, &"table".into(), &"\"job\".triples".into()).unwrap();
         Reflect::set(&options, &"engine".into(), engine).unwrap();
-        let promise = session.validate_table(options.into()).map_err(JsValue::from)?;
+        let promise = shapes.validate(options.into()).map_err(JsValue::from)?;
         JsFuture::from(promise).await
     }
 
-    fn session() -> Session {
-        let mut session = Session::new();
-        session
-            .load_shapes(SHAPES.to_owned(), "text/turtle".to_owned(), None)
-            .unwrap();
-        session
+    fn shapes() -> Shapes {
+        Shapes::parse(SHAPES.to_owned(), None).unwrap()
     }
 
     #[wasm_bindgen_test]
@@ -135,7 +131,7 @@ mod tests {
                focus_lang: '', value_kind: null, value_value: null, value_datatype: null, value_lang: null, \
                path: null }]",
         );
-        let report = validate(&session(), &engine).await.expect("validates");
+        let report = validate(&shapes(), &engine).await.expect("validates");
         assert_eq!(Reflect::get(&report, &"conforms".into()).unwrap(), JsValue::FALSE);
         let results = js_sys::Array::from(&Reflect::get(&report, &"results".into()).unwrap());
         assert_eq!(results.length(), 1);
@@ -149,7 +145,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn no_rows_conform() {
-        let report = validate(&session(), &engine("[]")).await.expect("validates");
+        let report = validate(&shapes(), &engine("[]")).await.expect("validates");
         assert_eq!(Reflect::get(&report, &"conforms".into()).unwrap(), JsValue::TRUE);
     }
 
@@ -159,12 +155,12 @@ mod tests {
             "[{ check: 7, focus_kind: 'I', focus_value: 'http://example.org/n', focus_datatype: '', \
                focus_lang: '' }]",
         );
-        assert!(validate(&session(), &engine).await.is_err());
+        assert!(validate(&shapes(), &engine).await.is_err());
     }
 
     #[wasm_bindgen_test]
     async fn an_object_without_query_is_not_an_engine() {
-        assert!(validate(&session(), &JsValue::from(js_sys::Object::new()))
+        assert!(validate(&shapes(), &JsValue::from(js_sys::Object::new()))
             .await
             .is_err());
     }

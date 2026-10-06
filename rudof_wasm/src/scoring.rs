@@ -394,7 +394,7 @@ impl SubjectIndex {
 mod tests {
     use super::*;
     use crate::dto::{EditorSource, PropertyShapeIR, ShapeModelJson};
-    use rudof_lib::form::RDFFormat;
+    use rudof_lib::form::{RDFFormat, Shapes};
     use wasm_bindgen_test::wasm_bindgen_test;
 
     const PREFIXES: &str = r#"
@@ -407,14 +407,8 @@ mod tests {
 "#;
 
     fn project(shapes: &str) -> ShapeModelJson {
-        let mut engine = FormEngine::new();
-        engine
-            .load_shapes(&format!("{PREFIXES}{shapes}"), &RDFFormat::Turtle, None)
-            .expect("shapes parse");
-        crate::shapes::schema_to_json(
-            engine.shapes_ast().expect("shapes loaded"),
-            engine.shapes_graph().expect("shapes loaded"),
-        )
+        let shapes = Shapes::parse(&format!("{PREFIXES}{shapes}"), &RDFFormat::Turtle, None).expect("shapes parse");
+        crate::shapes::schema_to_json(shapes.ast(), shapes.graph())
     }
 
     /// The property shapes `:P0`, `:P1`, … of one node shape, one for each body:
@@ -749,16 +743,16 @@ mod tests {
     /// focus node (SHACL UI, Property Labels, step 2).
     #[wasm_bindgen_test]
     fn the_data_graphs_labels_of_the_predicate_are_projected() {
-        let mut engine = FormEngine::new();
-        engine
-            .load_shapes(
+        let mut engine = FormEngine::new(
+            Shapes::parse(
                 &format!(
                     "{PREFIXES}:S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :title ], [ sh:path :other ] ."
                 ),
                 &RDFFormat::Turtle,
                 None,
             )
-            .expect("shapes parse");
+            .expect("shapes parse"),
+        );
         engine
             .load_data(
                 r#"@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix : <http://example.org/> .
@@ -769,7 +763,7 @@ mod tests {
             .expect("data parse");
         let form = crate::project::project_form(
             &engine,
-            engine.shapes_ast().expect("shapes loaded"),
+            engine.shapes().ast(),
             &crate::dto::TermValue::named("http://example.org/d"),
             "http://example.org/S",
         );

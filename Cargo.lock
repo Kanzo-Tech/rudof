@@ -4609,23 +4609,18 @@ name = "shacl"
 version = "0.3.4"
 dependencies = [
  "anyhow",
- "dashmap",
  "duckdb",
- "indoc",
  "itertools 0.14.0",
  "oxrdf",
  "petgraph 0.8.3",
  "prefixmap",
- "rayon",
  "rudof_iri",
  "rudof_rdf",
  "serde",
  "serde_json",
  "shacl",
- "sparql_service",
  "sqlparser",
  "thiserror 2.0.17",
- "toml",
  "tracing",
 ]
 

@@ -1,6 +1,5 @@
 use crate::{errors::ValidationError, formats::ShapeMapFormat};
 use rudof_rdf::RDFFormat;
-use shacl::validator::ShaclValidationMode as InnerShaclValidationMode;
 use shacl::validator::report::ValidationReportSorting;
 use shex_ast::shapemap::result_shape_map::SortMode;
 use std::{
@@ -17,20 +16,6 @@ pub enum ValidationMode {
     Shacl,
     /// Property Graph schema validation
     PGSchema,
-}
-
-/// Backends used for SHACL validation supported by Rudof.
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
-pub enum ShaclValidationMode {
-    /// Rust native engine using functions implemented with Rust native code (default)
-    #[default]
-    Native,
-    /// SPARQL-based engine using SPARQL queries to validate the data
-    Sparql,
-    /// SQL engine: the shapes compiled to SQL and run on an in-process DuckDB
-    /// holding the data as a triple table (needs the `duckdb` feature; hosts
-    /// with their own engine use `Rudof::compile_sql`)
-    Sql,
 }
 
 /// Sorting modes for validation results supported by Rudof.
@@ -205,45 +190,6 @@ impl FromStr for ValidationMode {
             other => Err(ValidationError::UnsupportedValidationMode {
                 mode: other.to_string(),
             }),
-        }
-    }
-}
-
-// ============================================================================
-// ShaclValidationMode
-// ============================================================================
-
-impl Display for ShaclValidationMode {
-    fn fmt(&self, dest: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        match self {
-            ShaclValidationMode::Native => write!(dest, "native"),
-            ShaclValidationMode::Sparql => write!(dest, "sparql"),
-            ShaclValidationMode::Sql => write!(dest, "sql"),
-        }
-    }
-}
-
-impl FromStr for ShaclValidationMode {
-    type Err = ValidationError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "native" => Ok(ShaclValidationMode::Native),
-            "sparql" => Ok(ShaclValidationMode::Sparql),
-            "sql" => Ok(ShaclValidationMode::Sql),
-            other => Err(ValidationError::UnsupportedSHACLValidationMode {
-                mode: other.to_string(),
-            }),
-        }
-    }
-}
-
-impl From<ShaclValidationMode> for InnerShaclValidationMode {
-    fn from(mode: ShaclValidationMode) -> Self {
-        match mode {
-            ShaclValidationMode::Native => InnerShaclValidationMode::Native,
-            ShaclValidationMode::Sparql => InnerShaclValidationMode::Sparql,
-            ShaclValidationMode::Sql => InnerShaclValidationMode::Sql,
         }
     }
 }

@@ -172,13 +172,6 @@ impl Pred {
         }
     }
 
-    pub fn not(p: Pred) -> Pred {
-        match p {
-            Pred::Not(inner) => *inner,
-            other => Pred::Not(Box::new(other)),
-        }
-    }
-
     pub fn and(ps: Vec<Pred>) -> Pred {
         let ps: Vec<Pred> = ps.into_iter().filter(|p| *p != Pred::True).collect();
         match ps.len() {
@@ -193,6 +186,17 @@ impl Pred {
             ps.into_iter().next().expect("one")
         } else {
             Pred::Or(ps)
+        }
+    }
+}
+
+impl std::ops::Not for Pred {
+    type Output = Pred;
+
+    fn not(self) -> Pred {
+        match self {
+            Pred::Not(inner) => *inner,
+            other => Pred::Not(Box::new(other)),
         }
     }
 }
@@ -462,9 +466,7 @@ impl PlanBuilder {
             Op::Predicate(_) => Pairs,
             Op::Triples => Triples,
             Op::Union(rels) => {
-                let first = rels
-                    .first()
-                    .ok_or_else(|| SortError("an empty union".to_owned()))?;
+                let first = rels.first().ok_or_else(|| SortError("an empty union".to_owned()))?;
                 let sort = self.sort(*first);
                 for r in rels {
                     self.expect(*r, &[sort], "union")?;

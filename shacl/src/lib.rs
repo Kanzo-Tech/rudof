@@ -7,8 +7,8 @@ pub mod ir;
 pub mod messages;
 pub mod rdf;
 pub mod types;
-pub mod vocab;
 pub mod validator;
+pub mod vocab;
 
 pub mod error {
     pub use crate::ast::error::*;

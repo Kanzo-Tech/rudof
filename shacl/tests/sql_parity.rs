@@ -3,8 +3,8 @@
 //! that report is the in-memory evaluator's.
 #![cfg(not(target_family = "wasm"))]
 
-use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use rudof_rdf::RDFFormat;
+use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
@@ -142,8 +142,7 @@ ex:AdultShape a sh:NodeShape ;
 "#;
 
 fn in_memory(data: &OxigraphInMemory, schema: &IRSchema) -> ValidationReport {
-    shacl::validator::validate(schema, data)
-        .expect("in memory validates")
+    shacl::validator::validate(schema, data).expect("in memory validates")
 }
 
 /// Validates through the RML mapping, with the tables in `db_schema` (the
@@ -179,10 +178,13 @@ fn tables_and_triple_table_yield_the_evaluators_report() {
 
     assert!(
         in_memory.results().len() > 15,
-        "the dataset violates many components: {in memory}"
+        "the dataset violates many components: {in_memory}"
     );
-    assert_eq!(triples, in_memory, "triple table vs in memory\n{triples}\n---\n{in memory}");
-    assert_eq!(tables, in_memory, "tables vs in memory\n{tables}\n---\n{in memory}");
+    assert_eq!(
+        triples, in_memory,
+        "triple table vs in memory\n{triples}\n---\n{in_memory}"
+    );
+    assert_eq!(tables, in_memory, "tables vs in memory\n{tables}\n---\n{in_memory}");
     assert_eq!(in_a_schema, in_memory, "tables in a schema vs in memory");
 }
 

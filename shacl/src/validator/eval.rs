@@ -11,15 +11,16 @@ use crate::algebra::{Check, CmpOp, Col, Expr, Kind, Op, Plan, Pred, RelId, denot
 use crate::error::ValidationError;
 use crate::ir::{IRSchema, ShapeLabelIdx};
 use crate::validator::report::{ValidationReport, ValidationResult};
-use rudof_iri::IriS;
 use oxrdf::{NamedNode, Term};
+use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
-use rudof_rdf::term::Triple as _;
 use rudof_rdf::term::Object;
+use rudof_rdf::term::Triple as _;
 use rudof_rdf::term::literal::ConcreteLiteral;
 use rudof_rdf::utils::RDFRegex;
 use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
 use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 /// A row of a check: its focus node, its value (when the result has one) and
@@ -358,10 +359,8 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
         let mut patterns = Vec::new();
         collect_patterns(pred, &mut patterns);
         for (pattern, flags) in patterns {
-            let key = (pattern.clone(), flags.clone());
-            if !self.regexes.contains_key(&key) {
-                let regex = RDFRegex::new(&pattern, flags.as_deref()).map_err(|e| e.to_string())?;
-                self.regexes.insert(key, regex);
+            if let Entry::Vacant(slot) = self.regexes.entry((pattern.clone(), flags.clone())) {
+                slot.insert(RDFRegex::new(&pattern, flags.as_deref()).map_err(|e| e.to_string())?);
             }
         }
         Ok(())
@@ -419,10 +418,7 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
             Pred::Same(a, b) => matches!((term(a), term(b)), (Some(a), Some(b)) if a == b),
             Pred::Member(e, rel) => term(e).is_some_and(|t| self.members.get(rel).is_some_and(|s| s.contains(t))),
             Pred::PairMember(a, b, rel) => match (term(a), term(b)) {
-                (Some(a), Some(b)) => self
-                    .pairs
-                    .get(rel)
-                    .is_some_and(|s| s.contains(&(a.clone(), b.clone()))),
+                (Some(a), Some(b)) => self.pairs.get(rel).is_some_and(|s| s.contains(&(a.clone(), b.clone()))),
                 _ => false,
             },
         }
@@ -447,10 +443,7 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
             Op::Triples => Rel::Triples(self.triples()?),
             Op::AllNodes => {
                 let triples = self.triples()?;
-                let nodes: Vec<Term> = triples
-                    .iter()
-                    .flat_map(|(s, _, o)| [s.clone(), o.clone()])
-                    .collect();
+                let nodes: Vec<Term> = triples.iter().flat_map(|(s, _, o)| [s.clone(), o.clone()]).collect();
                 Rel::Nodes(distinct(&nodes))
             },
             Op::Union(rels) => {
@@ -521,17 +514,7 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
                 ),
                 Rel::Pairs(ps) => Rel::Pairs(
                     ps.iter()
-                        .filter(|(f, v)| {
-                            self.test(
-                                pred,
-                                &Scope {
-                                    f,
-                                    v: Some(v),
-                                    o: None,
-                                },
-                                &constants,
-                            )
-                        })
+                        .filter(|(f, v)| self.test(pred, &Scope { f, v: Some(v), o: None }, &constants))
                         .cloned()
                         .collect(),
                 ),
@@ -602,11 +585,7 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
             } => {
                 let mut counts: HashMap<&Term, i64> = HashMap::new();
                 for (f, v) in self.pairs_of(*pairs)? {
-                    let scope = Scope {
-                        f,
-                        v: Some(v),
-                        o: None,
-                    };
+                    let scope = Scope { f, v: Some(v), o: None };
                     if self.test(counted, &scope, &constants) {
                         *counts.entry(f).or_default() += 1;
                     }

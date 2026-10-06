@@ -2,8 +2,8 @@
 //! `sh:targetWhere` are targets of the shape that has it.
 #![cfg(not(target_family = "wasm"))]
 
-use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use rudof_rdf::RDFFormat;
+use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 

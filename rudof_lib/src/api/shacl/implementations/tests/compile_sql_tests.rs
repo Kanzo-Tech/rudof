@@ -87,62 +87,7 @@ fn test_compile_sql_needs_shapes() {
 }
 
 #[test]
-fn test_sql_dialect_and_mode_parse() {
+fn test_sql_dialect_parse() {
     assert_eq!("duckdb".parse::<SqlDialectFormat>().unwrap(), SqlDialectFormat::DuckDb);
     assert!("postgres".parse::<SqlDialectFormat>().is_err());
-    assert_eq!(
-        "sql".parse::<crate::formats::ShaclValidationMode>().unwrap(),
-        crate::formats::ShaclValidationMode::Sql
-    );
-}
-
-#[test]
-fn test_validate_shacl_in_sql_mode() {
-    use crate::api::data::implementations::load_data;
-    use crate::api::shacl::implementations::validate_shacl::validate_shacl;
-    use crate::formats::{DataFormat, ShaclValidationMode};
-
-    let mut rudof = rudof_with(SHAPES);
-    let data = InputSpec::str(
-        r#"
-        @prefix ex: <http://example.org/> .
-        ex:alice a ex:Person ; ex:name "Alice" .
-        ex:bob a ex:Person .
-        "#,
-    );
-    load_data(
-        &mut rudof,
-        Some(&[data]),
-        Some(&DataFormat::Turtle),
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .unwrap();
-    // Whether a SQL engine is linked is a property of the build of `shacl`,
-    // not of this crate's features: `rudof_lib/duckdb` turns it on, and so
-    // does any other crate in the same build that enables `shacl/duckdb`
-    // (shacl's own tests do, under `cargo test --workspace`). So the test
-    // asks the outcome which build it is, and holds each answer to its spec.
-    match validate_shacl(&mut rudof, Some(&ShaclValidationMode::Sql)) {
-        Ok(()) => {
-            let report = rudof.shacl_validation_results.as_ref().unwrap();
-            // ex:bob has no ex:name.
-            assert_eq!(report.results().len(), 1);
-        },
-        // With `rudof_lib/duckdb` an engine is linked, so an error is a failure.
-        #[cfg(feature = "duckdb")]
-        Err(e) => panic!("the duckdb feature links an engine: {e}"),
-        // Without an engine the mode says so, and where to go instead.
-        #[cfg(not(feature = "duckdb"))]
-        Err(e) => {
-            let message = e.to_string();
-            assert!(
-                message.contains("duckdb") && message.contains("compile_sql"),
-                "{message}"
-            );
-        },
-    }
 }

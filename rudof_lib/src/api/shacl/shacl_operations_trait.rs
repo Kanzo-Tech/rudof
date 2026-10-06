@@ -5,8 +5,8 @@ use crate::{
         serialize_shacl_validation_results, validate_shacl,
     },
     formats::{
-        DataReaderMode, InputSpec, ResultShaclValidationFormat, ShaclFormat, ShaclValidationMode,
-        ShaclValidationSortByMode, SqlDialectFormat, SqlMapping,
+        DataReaderMode, InputSpec, ResultShaclValidationFormat, ShaclFormat, ShaclValidationSortByMode,
+        SqlDialectFormat, SqlMapping,
     },
 };
 use shacl::validator::sql::SqlPlan;
@@ -59,14 +59,10 @@ pub trait ShaclOperations {
     /// If no shapes are explicitly loaded, the validation assumes that the shapes
     /// are defined within the SHACL schema itself.
     ///
-    /// # Arguments
-    ///
-    /// * `mode` - Optional validation mode (uses default if None)
-    ///
     /// # Errors
     ///
     /// Returns an error if no SHACL schema or shapes is loaded.
-    fn validate_shacl(&mut self, mode: Option<&ShaclValidationMode>) -> Result<()>;
+    fn validate_shacl(&mut self) -> Result<()>;
 
     /// Serializes the SHACL validation results to a writer.
     ///
@@ -118,8 +114,8 @@ impl ShaclOperations for crate::Rudof {
         reset_shacl_schema(self)
     }
 
-    fn validate_shacl(&mut self, mode: Option<&ShaclValidationMode>) -> Result<()> {
-        validate_shacl(self, mode)
+    fn validate_shacl(&mut self) -> Result<()> {
+        validate_shacl(self)
     }
 
     fn serialize_shacl_validation_results<W: io::Write>(

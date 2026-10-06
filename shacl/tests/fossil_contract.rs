@@ -11,8 +11,8 @@
 //! `INF` doubles, `xsd:time` times.
 #![cfg(not(target_family = "wasm"))]
 
-use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use rudof_rdf::RDFFormat;
+use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
@@ -90,8 +90,7 @@ fn components(report: &ValidationReport) -> Vec<String> {
 #[test]
 fn the_fossil_mapping_validates_the_corpus_tables_as_the_evaluator_validates_its_rdf() {
     let schema = IRSchema::try_from(&ShaclParser::new(graph(SHAPES)).parse().expect("shapes parse")).expect("compile");
-    let in_memory = shacl::validator::validate(&schema, &graph(DATA))
-        .expect("in memory validates");
+    let in_memory = shacl::validator::validate(&schema, &graph(DATA)).expect("in memory validates");
 
     let executor = DuckDbExecutor::in_memory().expect("duckdb opens");
     executor.connection().execute_batch(TABLES).expect("tables load");
@@ -107,11 +106,11 @@ fn the_fossil_mapping_validates_the_corpus_tables_as_the_evaluator_validates_its
             "http://example.org/bob http://www.w3.org/ns/shacl#MinCountConstraintComponent",
             "http://example.org/bob http://www.w3.org/ns/shacl#MinInclusiveConstraintComponent",
         ],
-        "{in memory}"
+        "{in_memory}"
     );
     assert_eq!(
         sql, in_memory,
-        "SQL over the corpus tables vs in memory\n{sql}\n---\n{in memory}"
+        "SQL over the corpus tables vs in memory\n{sql}\n---\n{in_memory}"
     );
 }
 
@@ -163,8 +162,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Thing ; sh:closed true ; sh:ignoredPrope
 "#;
     let data = r#"@prefix ex: <http://example.org/> . ex:t a ex:Thing ; ex:extra "v" ."#;
     let schema = IRSchema::try_from(&ShaclParser::new(graph(shapes)).parse().expect("parses")).expect("compiles");
-    let in_memory = shacl::validator::validate(&schema, &graph(data))
-        .expect("in memory");
+    let in_memory = shacl::validator::validate(&schema, &graph(data)).expect("in memory");
     let executor = DuckDbExecutor::in_memory().expect("duckdb opens");
     executor
         .connection()
@@ -178,5 +176,5 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Thing ; sh:closed true ; sh:ignoredPrope
         .validate(&schema, &executor)
         .expect("runs");
     assert_eq!(in_memory.results().len(), 1);
-    assert_eq!(sql, in_memory, "{sql}\n---\n{in memory}");
+    assert_eq!(sql, in_memory, "{sql}\n---\n{in_memory}");
 }

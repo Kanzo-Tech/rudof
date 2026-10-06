@@ -499,7 +499,7 @@ Validate inline RDF data with inline SHACL shapes
 
 .. code-block:: python
 
-    from pyrudof import RDFFormat, ShaclFormat, ShaclValidationMode, Rudof, RudofConfig
+    from pyrudof import RDFFormat, ShaclFormat, Rudof, RudofConfig
     
     rudof = Rudof(RudofConfig())
     
@@ -526,7 +526,7 @@ Validate inline RDF data with inline SHACL shapes
     
     rudof.read_shacl(shapes, ShaclFormat.Turtle)
     rudof.read_data(data, RDFFormat.Turtle)
-    rudof.validate_shacl(ShaclValidationMode.Native)
+    rudof.validate_shacl()
 
 
 SHACL Validate Files
@@ -540,12 +540,12 @@ Validate RDF data from files against SHACL shapes
 
 .. code-block:: python
 
-    from pyrudof import RDFFormat, ShaclFormat, ShaclValidationMode, Rudof, RudofConfig
+    from pyrudof import RDFFormat, ShaclFormat, Rudof, RudofConfig
     
     rudof = Rudof(RudofConfig())
     rudof.read_shacl("timbl_shapes.ttl", ShaclFormat.Turtle)
     rudof.read_data("timbl.ttl", RDFFormat.Turtle)
-    rudof.validate_shacl(ShaclValidationMode.Native)
+    rudof.validate_shacl()
 
 **Referenced Files:**
 
@@ -564,7 +564,7 @@ Extract SHACL shapes from current RDF data and validate
 
 .. code-block:: python
 
-    from pyrudof import RDFFormat, ShaclValidationMode, Rudof, RudofConfig
+    from pyrudof import RDFFormat, Rudof, RudofConfig
     
     rudof = Rudof(RudofConfig())
     
@@ -587,7 +587,7 @@ Extract SHACL shapes from current RDF data and validate
     
     rudof.read_data(shapes_and_data, RDFFormat.Turtle)
     rudof.read_shacl()
-    rudof.validate_shacl(ShaclValidationMode.Native)
+    rudof.validate_shacl()
 
 
 SHACL Serialize

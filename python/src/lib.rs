@@ -24,8 +24,8 @@ pub mod pyrudof {
         PyEntityDistribution, PyGeneratorConfig, PyOutputFormat, PyQueryResultFormat, PyQueryType, PyRDFFormat,
         PyReaderMode, PyResultConversionFormat, PyResultConversionMode, PyResultDCTapFormat, PyResultDataFormat,
         PyResultShaclValidationFormat, PyResultShexValidationFormat, PyRudof, PyRudofConfig, PyRudofError,
-        PySchemaFormat, PyServiceDescriptionFormat, PyShExFormat, PyShaclFormat, PyShaclValidationMode,
-        PyShaclValidationSortMode, PyShapeMapFormat, PyShapesGraphSource, PyShexValidationSortMode,
+        PySchemaFormat, PyServiceDescriptionFormat, PyShExFormat, PyShaclFormat, PyShaclValidationSortMode,
+        PyShapeMapFormat, PyShapesGraphSource, PyShexValidationSortMode,
     };
 
     #[pymodule_init]

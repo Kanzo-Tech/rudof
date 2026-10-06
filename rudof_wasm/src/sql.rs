@@ -20,11 +20,11 @@ pub fn plan_dto(engine: &FormEngine, plan: &SqlPlan, dialect: &str) -> SqlPlanDt
             .iter()
             .map(|check| SqlCheckDto {
                 sql: check.sql().to_owned(),
-                source_shape: engine.sql_shape_id(&check.shape).map(object_to_term),
-                source_constraint_component: check.component.as_str().to_string(),
-                severity: severity_iri(&check.severity),
-                path: check.path.as_ref().and_then(path_to_term),
-                path_key: check.path.as_ref().map(path_key),
+                source_shape: engine.sql_shape_id(&check.check.shape).map(object_to_term),
+                source_constraint_component: check.check.component.as_str().to_string(),
+                severity: severity_iri(&check.check.severity),
+                path: check.check.path.as_ref().and_then(path_to_term),
+                path_key: check.check.path.as_ref().map(path_key),
             })
             .collect(),
     }
@@ -80,7 +80,7 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    fn rows_come_back_as_the_native_report() {
+    fn rows_come_back_as_the_in_memory_report() {
         let mut engine = FormEngine::new();
         engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
         engine.compile_sql(TABLES, Some("warehouse"), "duckdb").unwrap();

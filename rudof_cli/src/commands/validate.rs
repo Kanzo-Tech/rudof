@@ -65,7 +65,6 @@ impl ValidateCommand {
             shapes: self.args.schema.clone(),
             shapes_format: self.args.schema_format.try_into()?,
             base_shapes: self.args.base_schema.clone(),
-            mode: self.args.shacl_validation_mode,
             result_format: self.args.result_format.into(),
             sort_by: self.args.sort_by.into(),
             common: self.args.common.clone(),

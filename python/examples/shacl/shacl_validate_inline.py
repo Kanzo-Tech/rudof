@@ -1,4 +1,4 @@
-from pyrudof import RDFFormat, ShaclFormat, ShaclValidationMode, Rudof, RudofConfig
+from pyrudof import RDFFormat, ShaclFormat, Rudof, RudofConfig
 
 rudof = Rudof(RudofConfig())
 
@@ -25,4 +25,4 @@ PREFIX : <http://example.org/>
 
 rudof.read_shacl(shapes, ShaclFormat.Turtle)
 rudof.read_data(data, RDFFormat.Turtle)
-rudof.validate_shacl(ShaclValidationMode.Native)
+rudof.validate_shacl()

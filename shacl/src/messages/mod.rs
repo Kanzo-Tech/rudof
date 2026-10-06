@@ -161,68 +161,6 @@ impl MessageCatalog {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn lang(tag: &str) -> Option<Lang> {
-        Some(Lang::new(tag).unwrap())
-    }
-
-    fn min_count() -> IriS {
-        ShaclVocab::sh_min_count_constraint_component()
-    }
-
-    #[test]
-    fn placeholders_take_both_sigils_and_keep_stray_braces() {
-        let t = Template::parse("a {$x} b {?y} {not} {$} {$z");
-        let out = t.render(&|n| (n != "z").then(|| n.to_uppercase()));
-        assert_eq!(out, "a X b Y {not} {$} {$z");
-    }
-
-    #[test]
-    fn unknown_variable_is_kept_as_written() {
-        assert_eq!(Template::parse("{$nope}").render(&|_| None), "{$nope}");
-    }
-
-    #[test]
-    fn builtin_covers_every_language_and_never_repeats_one() {
-        let map = MessageCatalog::builtin().render(&min_count(), |_| Some("2".into()));
-        assert_eq!(map.messages().len(), 3);
-        for tag in ["en", "es", "ca"] {
-            assert!(map.get(lang(tag).as_ref()).unwrap().contains('2'), "{tag}");
-        }
-    }
-
-    #[test]
-    fn later_document_wins_per_component_and_language() {
-        let mut c = MessageCatalog::builtin().clone();
-        let doc = r#"@prefix sh: <http://www.w3.org/ns/shacl#> .
-            sh:MinCountConstraintComponent sh:message "Need {$minCount}"@en , "Faut {$minCount}"@fr ."#;
-        c.load(doc, &RDFFormat::Turtle).unwrap();
-        let map = c.render(&min_count(), |_| Some("2".into()));
-        assert_eq!(map.get(lang("en").as_ref()).unwrap(), "Need 2");
-        assert_eq!(map.get(lang("fr").as_ref()).unwrap(), "Faut 2");
-        assert!(map.get(lang("es").as_ref()).unwrap().contains('2'));
-        assert_eq!(map.messages().len(), 4);
-    }
-
-    #[test]
-    fn a_broken_document_adds_nothing() {
-        let mut c = MessageCatalog::default();
-        assert!(c.load("this is not turtle", &RDFFormat::Turtle).is_err());
-        assert_eq!(c, MessageCatalog::default());
-    }
-
-    #[test]
-    fn unnamed_component_falls_back_to_the_generic_entry() {
-        let other = IriS::new_unchecked("http://example.org/OtherConstraintComponent");
-        let map = MessageCatalog::builtin().render(&other, |_| None);
-        assert_eq!(map.get(lang("en").as_ref()).unwrap(), "Invalid value");
-        assert!(MessageCatalog::default().render(&other, |_| None).messages().is_empty());
-    }
-}
-
 /// The values a message template can name: a component's parameters, by the local
 /// name of the SHACL parameter (`minCount`, `datatype`, ...), already rendered as
 /// text. `{$value}` is not among them; it belongs to each result.
@@ -309,5 +247,67 @@ pub fn result_message(
             "value" => value.map(|v| display(schema, v)),
             _ => parameters.iter().find(|(n, _)| *n == name).map(|(_, v)| v.clone()),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lang(tag: &str) -> Option<Lang> {
+        Some(Lang::new(tag).unwrap())
+    }
+
+    fn min_count() -> IriS {
+        ShaclVocab::sh_min_count_constraint_component()
+    }
+
+    #[test]
+    fn placeholders_take_both_sigils_and_keep_stray_braces() {
+        let t = Template::parse("a {$x} b {?y} {not} {$} {$z");
+        let out = t.render(&|n| (n != "z").then(|| n.to_uppercase()));
+        assert_eq!(out, "a X b Y {not} {$} {$z");
+    }
+
+    #[test]
+    fn unknown_variable_is_kept_as_written() {
+        assert_eq!(Template::parse("{$nope}").render(&|_| None), "{$nope}");
+    }
+
+    #[test]
+    fn builtin_covers_every_language_and_never_repeats_one() {
+        let map = MessageCatalog::builtin().render(&min_count(), |_| Some("2".into()));
+        assert_eq!(map.messages().len(), 3);
+        for tag in ["en", "es", "ca"] {
+            assert!(map.get(lang(tag).as_ref()).unwrap().contains('2'), "{tag}");
+        }
+    }
+
+    #[test]
+    fn later_document_wins_per_component_and_language() {
+        let mut c = MessageCatalog::builtin().clone();
+        let doc = r#"@prefix sh: <http://www.w3.org/ns/shacl#> .
+            sh:MinCountConstraintComponent sh:message "Need {$minCount}"@en , "Faut {$minCount}"@fr ."#;
+        c.load(doc, &RDFFormat::Turtle).unwrap();
+        let map = c.render(&min_count(), |_| Some("2".into()));
+        assert_eq!(map.get(lang("en").as_ref()).unwrap(), "Need 2");
+        assert_eq!(map.get(lang("fr").as_ref()).unwrap(), "Faut 2");
+        assert!(map.get(lang("es").as_ref()).unwrap().contains('2'));
+        assert_eq!(map.messages().len(), 4);
+    }
+
+    #[test]
+    fn a_broken_document_adds_nothing() {
+        let mut c = MessageCatalog::default();
+        assert!(c.load("this is not turtle", &RDFFormat::Turtle).is_err());
+        assert_eq!(c, MessageCatalog::default());
+    }
+
+    #[test]
+    fn unnamed_component_falls_back_to_the_generic_entry() {
+        let other = IriS::new_unchecked("http://example.org/OtherConstraintComponent");
+        let map = MessageCatalog::builtin().render(&other, |_| None);
+        assert_eq!(map.get(lang("en").as_ref()).unwrap(), "Invalid value");
+        assert!(MessageCatalog::default().render(&other, |_| None).messages().is_empty());
     }
 }

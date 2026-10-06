@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use crate::cli::parser::CommonArgsAll;
 use crate::cli::wrappers::{
-    DataFormatCli, DataReaderModeCli, ResultValidationFormatCli, ShExFormatCli, ShaclValidationModeCli,
-    ShapeMapFormatCli, ValidationModeCli, ValidationSortByModeCli,
+    DataFormatCli, DataReaderModeCli, ResultValidationFormatCli, ShExFormatCli, ShapeMapFormatCli, ValidationModeCli,
+    ValidationSortByModeCli,
 };
 use clap::Args;
 use rudof_lib::formats::InputSpec;
@@ -102,17 +102,6 @@ pub struct ValidateArgs {
         default_value_t = 100
     )]
     pub max_steps: usize,
-
-    #[arg(
-        short = 'S',
-        long = "shacl-mode",
-        value_name = "MODE",
-        ignore_case = true,
-        help = "SHACL validation mode (default = native)",
-        default_value_t = ShaclValidationModeCli::Native,
-        value_enum
-    )]
-    pub shacl_validation_mode: ShaclValidationModeCli,
 
     #[arg(
         long = "reader-mode",

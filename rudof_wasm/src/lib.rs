@@ -225,7 +225,7 @@ impl Session {
         }
     }
 
-    /// Validate the current data graph against the loaded shapes (native engine).
+    /// Validate the current data graph against the loaded shapes (in memory).
     ///
     /// * `shape_id == None`     → validate the whole graph against every shape.
     /// * `shape_id == Some(id)` → validate only that shape (and its nested
@@ -284,7 +284,7 @@ impl Session {
     /// The validation report of the rows of the last `compileSql` plan: one
     /// array of rows per check, in plan order, each row an array of the plan's
     /// `columns` (`string | null`). Returns a `RudofReport`, worded as the
-    /// native engine words it.
+    /// in-memory evaluator words it.
     #[wasm_bindgen(js_name = reportFromRows)]
     pub fn report_from_rows(&self, rows: JsValue) -> Result<JsValue, JsError> {
         let rows: Vec<Vec<Vec<Option<String>>>> = from_js(rows)?;

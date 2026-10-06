@@ -139,9 +139,7 @@ where
             }
             ctes.push(self.ctes[id.index()].clone().expect("rendered"));
         }
-        let recursive = reached
-            .iter()
-            .any(|id| matches!(self.plan.op(*id), Op::Closure { .. }));
+        let recursive = reached.iter().any(|id| matches!(self.plan.op(*id), Op::Closure { .. }));
         let f = TermExpr::columns("r", "f");
         let v = TermExpr::columns("r", "v");
         let projection = vec![
@@ -219,8 +217,12 @@ where
                 .into_query(),
             Op::Focus(r) => SelectBuilder::new(x("a").items("f")).from(from(*r, "a")).into_query(),
             Op::Values(r) => SelectBuilder::new(v("a").items("f")).from(from(*r, "a")).into_query(),
-            Op::Identity(r) => SelectBuilder::new(pair(&x("a"), &x("a"))).from(from(*r, "a")).into_query(),
-            Op::Inverse(r) => SelectBuilder::new(pair(&v("a"), &x("a"))).from(from(*r, "a")).into_query(),
+            Op::Identity(r) => SelectBuilder::new(pair(&x("a"), &x("a")))
+                .from(from(*r, "a"))
+                .into_query(),
+            Op::Inverse(r) => SelectBuilder::new(pair(&v("a"), &x("a")))
+                .from(from(*r, "a"))
+                .into_query(),
             Op::Restrict { pairs, nodes } => SelectBuilder::new(items(Sort::Pairs, "a"))
                 .from(from(*pairs, "a"))
                 .filter(exists(
@@ -295,7 +297,13 @@ where
                 SelectBuilder::new(row(&f, &TermExpr::null(), null()))
                     .from(from(*pairs, "a"))
                     .filter(and(v("a").is_kind(LITERAL), not_eq(v("a").lang, string(""))))
-                    .group_by(vec![f.kind.clone(), f.lex.clone(), f.datatype.clone(), f.lang.clone(), lang])
+                    .group_by(vec![
+                        f.kind.clone(),
+                        f.lex.clone(),
+                        f.datatype.clone(),
+                        f.lang.clone(),
+                        lang,
+                    ])
                     .having(compare(count_star(), BinaryOperator::Gt, number(1)))
                     .into_query()
             },
@@ -330,7 +338,9 @@ where
             AExpr::Col(Col::F) => TermExpr::columns(scope.row, "f"),
             AExpr::Col(Col::V) => TermExpr::columns(scope.row, "v"),
             AExpr::Col(Col::O) => TermExpr::columns(
-                scope.other.ok_or_else(|| internal("the column O outside a pair join"))?,
+                scope
+                    .other
+                    .ok_or_else(|| internal("the column O outside a pair join"))?,
                 "v",
             ),
             AExpr::Const(object) => TermExpr::object(object)?,

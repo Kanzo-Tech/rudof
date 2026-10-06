@@ -1,11 +1,11 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::common::{Manifest, TestSuiteError};
 #[cfg(not(target_family = "wasm"))]
+use rudof_rdf::backend::OxigraphInMemory;
+#[cfg(not(target_family = "wasm"))]
 use shacl::error::IRError;
 #[cfg(not(target_family = "wasm"))]
 use shacl::validator::report::ValidationReport;
-#[cfg(not(target_family = "wasm"))]
-use rudof_rdf::backend::OxigraphInMemory;
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 

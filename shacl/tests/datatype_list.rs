@@ -2,8 +2,8 @@
 //! IRIs, and a value node conforms when its datatype is one of them.
 #![cfg(not(target_family = "wasm"))]
 
-use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use rudof_rdf::RDFFormat;
+use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 

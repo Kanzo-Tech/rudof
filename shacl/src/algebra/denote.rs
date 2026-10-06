@@ -254,7 +254,7 @@ impl<'a> Denoter<'a> {
                 let candidates = self.op(Op::Distinct(all))?;
                 match self.fails(idx, candidates)? {
                     None => Ok(candidates),
-                    Some(fails) => self.op(Op::Filter(candidates, Pred::not(Pred::Member(Expr::f(), fails)))),
+                    Some(fails) => self.op(Op::Filter(candidates, !Pred::Member(Expr::f(), fails))),
                 }
             },
             Target::WrongNode(_)
@@ -345,7 +345,12 @@ impl<'a> Denoter<'a> {
 
     // --- shapes --------------------------------------------------------------
 
-    fn component_rows(&mut self, shape: &'a IRShape, focus: RelId, values: RelId) -> Result<Vec<(usize, Rows)>, DenoteError> {
+    fn component_rows(
+        &mut self,
+        shape: &'a IRShape,
+        focus: RelId,
+        values: RelId,
+    ) -> Result<Vec<(usize, Rows)>, DenoteError> {
         let mut out = Vec::new();
         for (index, component) in shape.components().iter().enumerate() {
             let mut c = Components {
@@ -440,7 +445,10 @@ impl<'a> Denoter<'a> {
             let (nested_focus, nested_bag) = match shape {
                 IRShape::NodeShape(_) => (focus, bag),
                 IRShape::PropertyShape(_) => {
-                    let reached = self.op(Op::Repeat { rel: values, bag: focus })?;
+                    let reached = self.op(Op::Repeat {
+                        rel: values,
+                        bag: focus,
+                    })?;
                     (self.op(Op::Values(reached))?, true)
                 },
             };
@@ -511,12 +519,12 @@ impl Components<'_, '_> {
             Pred::KindIn(Expr::v(), vec![Kind::Literal]),
             Pred::Compare(Expr::v(), op, Expr::Const(Object::Literal(bound.clone()))),
         ]);
-        self.value_rows(Pred::not(holds))
+        self.value_rows(!holds)
     }
 
     fn length(&mut self, len: isize, op: CmpOp) -> Result<Vec<Rows>, DenoteError> {
         let bound = i64::try_from(len).unwrap_or(i64::MAX);
-        self.value_rows(Pred::not(Pred::StrLen(Expr::v(), op, bound)))
+        self.value_rows(!Pred::StrLen(Expr::v(), op, bound))
     }
 
     /// The other predicate's `(f, v)` pairs.
@@ -528,10 +536,10 @@ impl Components<'_, '_> {
     fn against_other(&mut self, predicate: &IriS, present: bool) -> Result<RelId, DenoteError> {
         let other = self.other(predicate)?;
         let member = Pred::PairMember(Expr::f(), Expr::v(), other);
-        let test = if present { member } else { Pred::not(member) };
+        let test = if present { member } else { !member };
         let hit = self.d.op(Op::Filter(
             self.values,
-            Pred::and(vec![Pred::not(Pred::KindIn(Expr::f(), vec![Kind::Literal])), test]),
+            Pred::and(vec![!Pred::KindIn(Expr::f(), vec![Kind::Literal]), test]),
         ))?;
         self.d.op(Op::PairRows {
             pairs: hit,
@@ -544,7 +552,7 @@ impl Components<'_, '_> {
         let rows = self.d.op(Op::PairJoin {
             left: self.values,
             right: other,
-            pred: Pred::not(Pred::Compare(Expr::v(), op, Expr::o())),
+            pred: !Pred::Compare(Expr::v(), op, Expr::o()),
         })?;
         Ok(self.one(rows))
     }
@@ -567,11 +575,11 @@ impl IRComponentVisitor for Components<'_, '_> {
             Object::Iri(iri) => Some(self.d.op(Op::Class(iri.clone()))?),
             _ => None,
         };
-        self.value_rows(Pred::not(Pred::member(Expr::v(), extent)))
+        self.value_rows(!Pred::member(Expr::v(), extent))
     }
 
     fn visit_datatype(&mut self, datatypes: &[IriS]) -> Result<Self::Output, Self::Error> {
-        self.value_rows(Pred::not(Pred::Datatype(Expr::v(), datatypes.to_vec())))
+        self.value_rows(!Pred::Datatype(Expr::v(), datatypes.to_vec()))
     }
 
     fn visit_node_kind(&mut self, node_kind: &NodeKind) -> Result<Self::Output, Self::Error> {
@@ -583,7 +591,7 @@ impl IRComponentVisitor for Components<'_, '_> {
             NodeKind::BNodeOrLit => vec![Kind::Blank, Kind::Literal],
             NodeKind::IriOrLit => vec![Kind::Iri, Kind::Literal],
         };
-        self.value_rows(Pred::not(Pred::KindIn(Expr::v(), kinds)))
+        self.value_rows(!Pred::KindIn(Expr::v(), kinds))
     }
 
     // --- cardinality --------------------------------------------------------
@@ -630,11 +638,11 @@ impl IRComponentVisitor for Components<'_, '_> {
     }
 
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<Self::Output, Self::Error> {
-        self.value_rows(Pred::not(Pred::Regex(
+        self.value_rows(!Pred::Regex(
             Expr::v(),
             pattern.pattern().clone(),
             pattern.flags().cloned(),
-        )))
+        ))
     }
 
     fn visit_unique_lang(&mut self, unique: bool) -> Result<Self::Output, Self::Error> {
@@ -646,7 +654,7 @@ impl IRComponentVisitor for Components<'_, '_> {
     }
 
     fn visit_language_in(&mut self, langs: &[Lang]) -> Result<Self::Output, Self::Error> {
-        self.value_rows(Pred::not(Pred::LangIn(Expr::v(), langs.to_vec())))
+        self.value_rows(!Pred::LangIn(Expr::v(), langs.to_vec()))
     }
 
     // --- property pair ------------------------------------------------------
@@ -662,8 +670,8 @@ impl IRComponentVisitor for Components<'_, '_> {
         let extra = self.d.op(Op::Filter(
             others_here,
             Pred::and(vec![
-                Pred::not(Pred::KindIn(Expr::f(), vec![Kind::Literal])),
-                Pred::not(Pred::PairMember(Expr::f(), Expr::v(), self.values)),
+                !Pred::KindIn(Expr::f(), vec![Kind::Literal]),
+                !Pred::PairMember(Expr::f(), Expr::v(), self.values),
             ]),
         ))?;
         let extra = self.d.op(Op::PairRows {
@@ -709,21 +717,21 @@ impl IRComponentVisitor for Components<'_, '_> {
 
     fn visit_not(&mut self, shape: ShapeLabelIdx) -> Result<Self::Output, Self::Error> {
         let fails = self.fails(shape)?;
-        self.value_rows(Pred::not(Pred::member(Expr::v(), fails)))
+        self.value_rows(!Pred::member(Expr::v(), fails))
     }
 
     fn visit_xone(&mut self, shapes: &[ShapeLabelIdx]) -> Result<Self::Output, Self::Error> {
         let mut conforming = Vec::new();
         for shape in shapes {
             let fails = self.fails(*shape)?;
-            conforming.push(Pred::not(Pred::member(Expr::v(), fails)));
+            conforming.push(!Pred::member(Expr::v(), fails));
         }
-        self.value_rows(Pred::not(Pred::ExactlyOne(conforming)))
+        self.value_rows(!Pred::ExactlyOne(conforming))
     }
 
     fn visit_if(&mut self, if_: &If) -> Result<Self::Output, Self::Error> {
         let cond = self.fails(*if_.cond())?;
-        let conforms_cond = Pred::not(Pred::member(Expr::v(), cond));
+        let conforms_cond = !Pred::member(Expr::v(), cond);
         let mut violations = Vec::new();
         if let Some(then) = if_.then() {
             let then = self.fails(*then)?;
@@ -731,10 +739,7 @@ impl IRComponentVisitor for Components<'_, '_> {
         }
         if let Some(els) = if_.els() {
             let els = self.fails(*els)?;
-            violations.push(Pred::and(vec![
-                Pred::not(conforms_cond),
-                Pred::member(Expr::v(), els),
-            ]));
+            violations.push(Pred::and(vec![!conforms_cond, Pred::member(Expr::v(), els)]));
         }
         if violations.is_empty() {
             return Ok(Vec::new());
@@ -755,7 +760,7 @@ impl IRComponentVisitor for Components<'_, '_> {
         // A value counts when it conforms to the shape and, for
         // sh:qualifiedValueShapesDisjoint, to none of the sibling shapes.
         let fails = self.fails(*qvs.shape())?;
-        let mut counted = vec![Pred::not(Pred::member(Expr::v(), fails))];
+        let mut counted = vec![!Pred::member(Expr::v(), fails)];
         for sibling in qvs.siblings() {
             let sibling_fails = self.fails(*sibling)?;
             counted.push(Pred::member(Expr::v(), sibling_fails));
@@ -802,7 +807,7 @@ impl IRComponentVisitor for Components<'_, '_> {
     fn visit_has_value(&mut self, value: &Object) -> Result<Self::Output, Self::Error> {
         let missing = self.d.op(Op::Filter(
             self.focus,
-            Pred::not(Pred::PairMember(Expr::f(), Expr::Const(value.clone()), self.values)),
+            !Pred::PairMember(Expr::f(), Expr::Const(value.clone()), self.values),
         ))?;
         let rows = self.d.op(Op::NodeRows(missing))?;
         Ok(self.one(rows))
@@ -815,7 +820,7 @@ impl IRComponentVisitor for Components<'_, '_> {
                 .map(|v| Pred::Same(Expr::v(), Expr::Const(v.clone())))
                 .collect(),
         );
-        self.value_rows(Pred::not(any))
+        self.value_rows(!any)
     }
 
     // --- status / SPARQL ----------------------------------------------------

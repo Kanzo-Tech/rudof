@@ -56,10 +56,7 @@ fn both(shapes: &str, data: &str) -> Vec<(String, String, String, String)> {
     let ast = ShaclParser::new(graph(shapes)).parse().expect("shapes parse");
     let schema = IRSchema::try_from(&ast).expect("schema compiles");
     let data = graph(data);
-    let in_memory = summary(
-        &shacl::validator::validate(&schema, &data)
-            .expect("in memory"),
-    );
+    let in_memory = summary(&shacl::validator::validate(&schema, &data).expect("in memory"));
     let sql = summary(&validate_with_duckdb(&data, &schema).expect("sql"));
     assert_eq!(sql, in_memory, "the SQL engine and the in-memory evaluator disagree");
     in_memory

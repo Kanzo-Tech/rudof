@@ -17,12 +17,6 @@ include = [
     "LICENSE-APACHE",
 ]
 
-[features]
-default = []
-# `ShaclValidationMode::Sql` on an in-process DuckDB (native only). Without it
-# the mode is an error and hosts run `compile_sql`'s plan on their own engine.
-duckdb = ["shacl/duckdb"]
-
 [dependencies]
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
@@ -38,7 +32,7 @@ rdf_config.workspace = true
 reqwest.workspace = true
 regex.workspace = true
 rudof_generate.workspace = true
-rudof_rdf.workspace = true
+rudof_rdf = { workspace = true, features = ["sparql"] }
 rudof_rdf_viz.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -47,7 +41,7 @@ shapes_comparator.workspace = true
 shapes_converter.workspace = true
 shex_ast.workspace = true
 shex_validation.workspace = true
-sparql_service.workspace = true
+sparql_service = { workspace = true, features = ["sparql"] }
 tabled.workspace = true
 tracing.workspace = true
 termtree.workspace = true
@@ -55,13 +49,12 @@ thiserror.workspace = true
 toml.workspace = true
 url.workspace = true
 
-# wasm: the curated `form` session façade builds on the same wasm-clean crates
-# the binding used to depend on directly (shacl without the `sparql` feature,
-# which runs the native engine and is wasm-buildable). No sparql_service/reqwest.
+# wasm: the curated `form` session façade builds on the wasm-clean crates only:
+# rudof_rdf without `sparql`, and no sparql_service/reqwest.
 [target.'cfg(target_family = "wasm")'.dependencies]
 oxrdf = { workspace = true }
 prefixmap = { workspace = true }
 rudof_iri = { workspace = true }
 rudof_rdf = { workspace = true }
-shacl = { path = "../shacl", default-features = false, features = ["sql"] }
+shacl = { workspace = true, features = ["sql"] }
 thiserror = { workspace = true }

@@ -41,9 +41,7 @@ pub use crate::base::STRING_BASE;
 use shacl::ir::{IRSchema, ShapeLabelIdx};
 use shacl::messages::MessageCatalog;
 use shacl::rdf::ShaclParser;
-use shacl::validator::ShaclValidationMode;
-use shacl::validator::processor::{GraphValidation, ShaclProcessor};
-use shacl::validator::store::Graph;
+use shacl::validator::report::ValidationReport;
 use std::collections::HashSet;
 
 /// Errors surfaced by the form façade. Flat, `thiserror`-derived (no `Box<dyn>`):
@@ -257,19 +255,12 @@ impl FormEngine {
 
     // ---- validation ----------------------------------------------------------
 
-    /// Validate the whole live data graph against every loaded shape (native
-    /// engine). The graph is cloned into a fresh validation store, leaving the
-    /// session's live graph untouched.
+    /// Validate the whole live data graph against every loaded shape.
     pub fn validate(&self) -> Result<ValidationOutcome, FormError> {
         let ir = self.compile()?;
-        let mut gv = GraphValidation::new(Graph::from(self.data.clone()));
-        let report = gv
-            .validate(&ir, &ShaclValidationMode::Native)
-            .map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(ValidationOutcome {
-            conforms: report.conforms(),
-            results: report.results().clone(),
-        })
+        shacl::validator::validate(&ir, &self.data)
+            .map(outcome)
+            .map_err(|e| FormError::Validation(e.to_string()))
     }
 
     /// Validate only the shape identified by `shape_id` (and its nested property
@@ -278,10 +269,9 @@ impl FormEngine {
     pub fn validate_shape(&self, shape_id: &str) -> Result<ValidationOutcome, FormError> {
         let ir = self.compile()?;
         let idx = resolve_idx(&ir, shape_id)?;
-        let results = GraphValidation::new(Graph::from(self.data.clone()))
-            .validate_scoped(&ir, idx, None)
-            .map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(outcome(results))
+        shacl::validator::validate_shape(&ir, &self.data, idx, None)
+            .map(outcome)
+            .map_err(|e| FormError::Validation(e.to_string()))
     }
 
     /// Validate a single `focus` node against the shape identified by `shape_id`
@@ -289,10 +279,9 @@ impl FormEngine {
     pub fn validate_focus(&self, shape_id: &str, focus: &Object) -> Result<ValidationOutcome, FormError> {
         let ir = self.compile()?;
         let idx = resolve_idx(&ir, shape_id)?;
-        let results = GraphValidation::new(Graph::from(self.data.clone()))
-            .validate_scoped(&ir, idx, Some(focus))
-            .map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(outcome(results))
+        shacl::validator::validate_shape(&ir, &self.data, idx, Some(focus))
+            .map(outcome)
+            .map_err(|e| FormError::Validation(e.to_string()))
     }
 
     /// Does `focus` conform to `shape`? Resolves the shape by `Object` (IRI OR
@@ -310,10 +299,9 @@ impl FormEngine {
             .get_idx(shape)
             .copied()
             .ok_or_else(|| FormError::ShapeNotFound(format!("{shape}")))?;
-        let results = GraphValidation::new(Graph::from(self.data.clone()))
-            .validate_scoped(&ir, idx, Some(focus))
-            .map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(results.is_empty())
+        shacl::validator::validate_shape(&ir, &self.data, idx, Some(focus))
+            .map(|report| report.conforms())
+            .map_err(|e| FormError::Validation(e.to_string()))
     }
 
     /// Compile the loaded shapes into SQL checks over the tables the RML
@@ -337,7 +325,7 @@ impl FormEngine {
 
     /// The report of the rows of the last [`FormEngine::compile_sql`] plan:
     /// `rows[i]` are the rows of check `i`, each in [`RESULT_COLUMNS`] order.
-    /// Messages are worded as the native engine words them.
+    /// Messages are worded as [`FormEngine::validate`] words them.
     pub fn report_from_rows(&self, rows: &[Vec<SqlRow>]) -> Result<ValidationOutcome, FormError> {
         let (ir, plan) = self
             .sql
@@ -350,13 +338,9 @@ impl FormEngine {
                 plan.checks.len()
             )));
         }
-        let report = plan
-            .report(ir, rows)
-            .map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(ValidationOutcome {
-            conforms: report.conforms(),
-            results: report.results().clone(),
-        })
+        plan.report(ir, rows)
+            .map(outcome)
+            .map_err(|e| FormError::Validation(e.to_string()))
     }
 
     /// The shapes graph, compiled; the id of the shape `idx` in it.
@@ -382,12 +366,11 @@ impl FormEngine {
 /// [`FormEngine`] cannot say this: it validates its own data graph against its own
 /// shapes. SHACL UI needs the split — its matcher shapes live in a *scoring
 /// graph* and are run against nodes of the application's *shapes graph* — so the
-/// two graphs are parameters here. The shapes are compiled, and the data graph
-/// loaded into the validator's store, once; each [`NodeChecker::conforms`] is then
-/// one scoped validation.
+/// two graphs are parameters here. The shapes are compiled once; each
+/// [`NodeChecker::conforms`] is then one scoped validation.
 pub struct NodeChecker {
     shapes: IRSchema,
-    data: GraphValidation,
+    data: OxigraphInMemory,
     subjects: HashSet<NamedOrBlankNode>,
 }
 
@@ -401,7 +384,7 @@ impl NodeChecker {
         Ok(Self {
             shapes,
             subjects: data.quads().map(|q| q.subject).collect(),
-            data: GraphValidation::new(Graph::from(data.clone())),
+            data: data.clone(),
         })
     }
 
@@ -425,11 +408,9 @@ impl NodeChecker {
             .get_idx(shape)
             .copied()
             .ok_or_else(|| FormError::ShapeNotFound(format!("{shape}")))?;
-        let results = self
-            .data
-            .validate_scoped(&self.shapes, idx, Some(focus))
-            .map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(results.is_empty())
+        shacl::validator::validate_shape(&self.shapes, &self.data, idx, Some(focus))
+            .map(|report| report.conforms())
+            .map_err(|e| FormError::Validation(e.to_string()))
     }
 }
 
@@ -447,10 +428,10 @@ fn resolve_idx(ir: &IRSchema, shape_id: &str) -> Result<ShapeLabelIdx, FormError
 
 /// A scoped result list conforms exactly when it is empty (matching the report's
 /// own `conforms()`).
-fn outcome(results: Vec<ValidationResult>) -> ValidationOutcome {
+fn outcome(report: ValidationReport) -> ValidationOutcome {
     ValidationOutcome {
-        conforms: results.is_empty(),
-        results,
+        conforms: report.conforms(),
+        results: report.results().clone(),
     }
 }
 

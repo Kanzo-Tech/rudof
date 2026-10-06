@@ -1,7 +1,6 @@
 use crate::cli::parser::CommonArgsAll;
 use crate::cli::wrappers::{
-    DataFormatCli, DataReaderModeCli, ResultShaclValidationFormatCli, ShaclFormatCli, ShaclValidationModeCli,
-    ShaclValidationSortByModeCli,
+    DataFormatCli, DataReaderModeCli, ResultShaclValidationFormatCli, ShaclFormatCli, ShaclValidationSortByModeCli,
 };
 use clap::Args;
 use rudof_lib::formats::InputSpec;
@@ -64,18 +63,6 @@ pub struct ShaclValidateArgs {
         help = "Base IRI (used to resolve relative IRIs in Shapes)"
     )]
     pub base_shapes: Option<String>,
-
-    /// Execution mode
-    #[arg(
-        short = 'm',
-        long = "mode",
-        value_name = "MODE",
-        ignore_case = true,
-        help = "Execution mode",
-        default_value_t = ShaclValidationModeCli::Native,
-        value_enum
-    )]
-    pub mode: ShaclValidationModeCli,
 
     #[arg(
         short = 'r',

@@ -37,7 +37,7 @@ fn test_compile_sql_over_a_triple_table() {
     let plan = compile_sql(&rudof, &mapping, Some(&SqlDialectFormat::DuckDb)).unwrap();
     // sh:datatype and sh:minCount of the one property shape.
     assert_eq!(plan.checks.len(), 2);
-    assert!(plan.checks.iter().all(|c| c.sql().contains("\"triples\"")));
+    assert!(plan.sql().contains("\"triples\""));
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn test_compile_sql_over_an_rml_mapping() {
     let plan = rudof.compile_sql(&mapping).execute().unwrap();
     assert_eq!(plan.checks.len(), 2);
     // The unqualified table name resolves against the schema.
-    assert!(plan.checks.iter().all(|c| c.sql().contains("\"warehouse\".\"person\"")));
+    assert!(plan.sql().contains("\"warehouse\".\"person\""));
 }
 
 #[test]

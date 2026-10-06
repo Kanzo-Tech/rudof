@@ -127,20 +127,43 @@ fn every_table_name_reaches_duckdb_delimited_once() {
     )
     .expect("compiles");
     let plan = compile_sql(&schema, &mapping, &DuckDb).expect("compiles");
-    let sql = plan.checks[0].sql();
+    let sql = plan.sql();
     assert!(sql.contains(r#""Fossil Corpus"."acme.Org""#), "{sql}");
     assert!(sql.contains(r#""Fossil Corpus"."Person_worksFor_acme.Org""#), "{sql}");
     assert!(!sql.contains(r#""""#), "an identifier was quoted twice: {sql}");
 }
 
 #[test]
-fn rows_for_fewer_checks_than_the_plan_has_are_an_error_not_conformance() {
+fn a_row_naming_no_check_of_the_plan_is_an_error_not_a_result() {
     let schema = IRSchema::try_from(&ShaclParser::new(graph(SHAPES)).parse().expect("shapes parse")).expect("compile");
     let mapping = Tables::from_rml(MAPPING, None, DuckDb).expect("reads");
     let plan = compile_sql(&schema, &mapping, &DuckDb).expect("compiles");
+    let row = |check: &str| {
+        let mut row = vec![
+            Some(check.to_owned()),
+            Some("I".to_owned()),
+            Some("http://example.org/bob".to_owned()),
+        ];
+        row.extend([Some(String::new()), Some(String::new()), None, None, None, None, None]);
+        row
+    };
+    assert!(plan.report(&schema, &[row("0")]).is_ok());
+    assert!(plan.report(&schema, &[row(&plan.checks.len().to_string())]).is_err());
+    assert!(plan.report(&schema, &[row("one")]).is_err());
+}
+
+/// The plan is one statement, and a relation several checks read is one CTE,
+/// materialized: the `Person` table is scanned for `sh:targetClass` once,
+/// whatever the number of property shapes reached from it (rudof#6).
+#[test]
+fn checks_share_the_relations_they_read() {
+    let schema = IRSchema::try_from(&ShaclParser::new(graph(SHAPES)).parse().expect("shapes parse")).expect("compile");
+    let mapping = Tables::from_rml(MAPPING, Some(r#""Fossil Corpus""#), DuckDb).expect("reads");
+    let plan = compile_sql(&schema, &mapping, &DuckDb).expect("compiles");
+    let sql = plan.sql();
     assert!(plan.checks.len() > 1);
-    assert!(plan.report(&schema, &[]).is_err());
-    assert!(plan.report(&schema, &[Vec::new()]).is_err());
+    assert_eq!(sql.matches(r#" AS "check""#).count(), plan.checks.len(), "{sql}");
+    assert!(sql.contains(" AS MATERIALIZED ("), "{sql}");
 }
 
 /// An RDF graph is a set: a triple the mapping yields twice (two rules, here)

@@ -9,15 +9,17 @@ use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 use std::fmt::Display;
 
-/// One row of a check, in [`RESULT_COLUMNS`] order: the focus term, the value
-/// term (all `NULL` when the result has none) and the path override.
+/// One row of the plan's statement, in [`RESULT_COLUMNS`] order: the index of
+/// its check, the focus term, the value term (all `NULL` when the result has
+/// none) and the path override.
 pub type Row = Vec<Option<String>>;
 
-/// Runs a check's query. Hosts implement it over their engine; rudof links none.
+/// Runs the plan's statement. Hosts implement it over their engine; rudof
+/// links none.
 ///
-/// The query arrives as text, rendered for the plan's dialect: a host needs no
-/// SQL AST, and the plan's public surface does not tie rudof's semver to the
-/// AST crate's.
+/// The statement arrives as text, rendered for the plan's dialect: a host
+/// needs no SQL AST, and the plan's public surface does not tie rudof's semver
+/// to the AST crate's.
 pub trait SqlExecutor {
     type Error: Display;
 
@@ -25,29 +27,10 @@ pub trait SqlExecutor {
     fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error>;
 }
 
-/// One `SELECT` of a plan: the failing rows of one constraint component of
-/// one shape, in one context (a targeted shape, or a property shape reached
-/// from one).
-#[derive(Debug, Clone)]
-pub struct SqlCheck {
-    /// What every row of the query reports: shape, component, severity, path.
-    pub check: Check,
-    /// The query as its dialect renders it; its columns are [`RESULT_COLUMNS`].
-    pub(crate) sql: String,
-}
-
-impl SqlCheck {
-    /// The query, as the plan's dialect renders it.
-    pub fn sql(&self) -> &str {
-        &self.sql
-    }
-}
-
 /// A row that cannot be read back as a result.
 #[derive(Debug, thiserror::Error)]
-#[error("row {row} of check {check}: {message}")]
+#[error("row {row}: {message}")]
 pub struct SqlRowError {
-    pub check: usize,
     pub row: usize,
     pub message: String,
 }
@@ -55,17 +38,22 @@ pub struct SqlRowError {
 /// Running a plan: the executor failed, or a row was malformed.
 #[derive(Debug, thiserror::Error)]
 pub enum SqlRunError<E: Display> {
-    #[error("executing check {check}: {error}")]
-    Executor { check: usize, error: E },
+    #[error("executing the plan: {0}")]
+    Executor(E),
     #[error(transparent)]
     Row(#[from] SqlRowError),
 }
 
-/// What [`compile_sql`](crate::validator::sql::compile_sql) produces: a
-/// `SELECT` per shape, component and context, whose rows are the results.
-#[derive(Debug, Clone, Default)]
+/// What [`compile_sql`](crate::validator::sql::compile_sql) produces: one
+/// statement whose rows are the results, and the checks they belong to (a
+/// shape's constraint component in one context), by index.
+#[derive(Debug, Clone)]
 pub struct SqlPlan {
-    pub checks: Vec<SqlCheck>,
+    /// What every row of a check reports: shape, component, severity, path.
+    pub checks: Vec<Check>,
+    /// The statement as its dialect renders it; its columns are
+    /// [`RESULT_COLUMNS`].
+    pub(crate) sql: String,
 }
 
 fn cell(row: &Row, i: usize) -> Option<&str> {
@@ -86,54 +74,36 @@ fn term(row: &Row, offset: usize) -> Result<Option<Object>, String> {
 }
 
 impl SqlPlan {
-    /// Runs every check through `executor`.
-    pub fn execute<X: SqlExecutor>(&self, executor: &X) -> Result<Vec<Vec<Row>>, SqlRunError<X::Error>> {
-        self.checks
-            .iter()
-            .enumerate()
-            .map(|(check, c)| {
-                executor
-                    .rows(&c.sql)
-                    .map_err(|error| SqlRunError::Executor { check, error })
-            })
-            .collect()
+    /// The statement, as the plan's dialect renders it.
+    pub fn sql(&self) -> &str {
+        &self.sql
     }
 
-    /// The validation report of the rows of every check (`rows_by_check[i]`
-    /// are the rows of `checks[i]`), built by [`ValidationResult::of`] as the
-    /// in-memory evaluator builds its own, so both reports read alike.
-    pub fn report(&self, schema: &IRSchema, rows_by_check: &[Vec<Row>]) -> Result<ValidationReport, SqlRowError> {
-        // One row set per check: a missing set is not an empty one, and
-        // reading it as such would report conformance for checks never run.
-        if rows_by_check.len() != self.checks.len() {
-            return Err(SqlRowError {
-                check: rows_by_check.len().min(self.checks.len()),
-                row: 0,
-                message: format!(
-                    "{} row sets for {} checks: every check needs its rows, empty or not",
-                    rows_by_check.len(),
-                    self.checks.len()
-                ),
-            });
-        }
-        let mut results = Vec::new();
-        for (index, (check, rows)) in self.checks.iter().zip(rows_by_check).enumerate() {
-            let err = |row: usize, message: String| SqlRowError {
-                check: index,
-                row,
-                message,
-            };
-            for (r, row) in rows.iter().enumerate() {
-                if row.len() != RESULT_COLUMNS.len() {
-                    return Err(err(r, format!("{} columns, not {}", row.len(), RESULT_COLUMNS.len())));
-                }
-                let focus = term(row, 0)
-                    .map_err(|m| err(r, m))?
-                    .ok_or_else(|| err(r, "no focus node".to_owned()))?;
-                let value = term(row, 4).map_err(|m| err(r, m))?;
-                let path = cell(row, 8).map(IriS::new_unchecked);
-                results.push(ValidationResult::of(schema, &check.check, focus, value, path).map_err(|m| err(r, m))?);
+    /// Runs the statement through `executor`.
+    pub fn execute<X: SqlExecutor>(&self, executor: &X) -> Result<Vec<Row>, SqlRunError<X::Error>> {
+        executor.rows(&self.sql).map_err(SqlRunError::Executor)
+    }
+
+    /// The validation report of the statement's rows, each built by
+    /// [`ValidationResult::of`] for the check it names, as the in-memory
+    /// evaluator builds its own, so both reports read alike.
+    pub fn report(&self, schema: &IRSchema, rows: &[Row]) -> Result<ValidationReport, SqlRowError> {
+        let mut results = Vec::with_capacity(rows.len());
+        for (r, row) in rows.iter().enumerate() {
+            let err = |message: String| SqlRowError { row: r, message };
+            if row.len() != RESULT_COLUMNS.len() {
+                return Err(err(format!("{} columns, not {}", row.len(), RESULT_COLUMNS.len())));
             }
+            let check = cell(row, 0)
+                .and_then(|c| c.parse::<usize>().ok())
+                .and_then(|c| self.checks.get(c))
+                .ok_or_else(|| err(format!("no check of the plan is {:?}", cell(row, 0))))?;
+            let focus = term(row, 1)
+                .map_err(err)?
+                .ok_or_else(|| err("no focus node".to_owned()))?;
+            let value = term(row, 5).map_err(err)?;
+            let path = cell(row, 9).map(IriS::new_unchecked);
+            results.push(ValidationResult::of(schema, check, focus, value, path).map_err(err)?);
         }
         Ok(ValidationReport::new()
             .with_results(results)

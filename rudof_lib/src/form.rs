@@ -33,7 +33,7 @@ pub use rudof_rdf::{BuildRDF, RDFFormat, SHACLPath};
 pub use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 pub use shacl::types::{NodeKind, Severity, Target, Value};
 pub use shacl::validator::report::ValidationResult;
-pub use shacl::validator::sql::{RESULT_COLUMNS, Row as SqlRow, SqlCheck, SqlMapping, SqlPlan};
+pub use shacl::validator::sql::{RESULT_COLUMNS, Row as SqlRow, SqlMapping, SqlPlan};
 pub use shacl::vocab::shui;
 
 pub use crate::base::STRING_BASE;
@@ -304,10 +304,10 @@ impl FormEngine {
             .map_err(|e| FormError::Validation(e.to_string()))
     }
 
-    /// Compile the loaded shapes into SQL checks over the tables the RML
-    /// mapping `rml` (Turtle) describes, in `dialect` (`duckdb`), its
+    /// Compile the loaded shapes into one SQL statement over the tables the
+    /// RML mapping `rml` (Turtle) describes, in `dialect` (`duckdb`), its
     /// unqualified table names resolved against `schema` when given. The host
-    /// runs each check's query on its own engine and hands the rows to
+    /// runs the statement on its own engine and hands the rows to
     /// [`FormEngine::report_from_rows`]; the plan is kept for that until the
     /// next compilation.
     pub fn compile_sql(&mut self, rml: &str, schema: Option<&str>, dialect: &str) -> Result<&SqlPlan, FormError> {
@@ -323,21 +323,14 @@ impl FormEngine {
         Ok(&self.sql.insert((ir, plan)).1)
     }
 
-    /// The report of the rows of the last [`FormEngine::compile_sql`] plan:
-    /// `rows[i]` are the rows of check `i`, each in [`RESULT_COLUMNS`] order.
-    /// Messages are worded as [`FormEngine::validate`] words them.
-    pub fn report_from_rows(&self, rows: &[Vec<SqlRow>]) -> Result<ValidationOutcome, FormError> {
+    /// The report of the rows of the last [`FormEngine::compile_sql`] plan's
+    /// statement, each in [`RESULT_COLUMNS`] order. Messages are worded as
+    /// [`FormEngine::validate`] words them.
+    pub fn report_from_rows(&self, rows: &[SqlRow]) -> Result<ValidationOutcome, FormError> {
         let (ir, plan) = self
             .sql
             .as_ref()
             .ok_or_else(|| FormError::Validation("no SQL plan; call compileSql first".to_owned()))?;
-        if rows.len() != plan.checks.len() {
-            return Err(FormError::Validation(format!(
-                "{} row sets for {} checks",
-                rows.len(),
-                plan.checks.len()
-            )));
-        }
         plan.report(ir, rows)
             .map(outcome)
             .map_err(|e| FormError::Validation(e.to_string()))

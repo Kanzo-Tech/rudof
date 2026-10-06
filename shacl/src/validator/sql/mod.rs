@@ -1,12 +1,12 @@
 //! The SQL interpretation of the [algebra](crate::algebra): the plan of a
-//! shapes graph rendered as relational queries, one `SELECT` per shape,
-//! constraint component and context, that a host runs on its own engine over
-//! its own tables. The in-memory evaluator ([`crate::validator::eval`]) reads
+//! shapes graph rendered as one relational statement, a `UNION ALL` of a
+//! `SELECT` per shape, constraint component and context over CTEs they share,
+//! that a host runs on its own engine over its own tables. The in-memory evaluator ([`crate::validator::eval`]) reads
 //! the same plan, and the W3C suite holds the two reports equal.
 //!
 //! ```text
 //! compile_sql(&IRSchema, &impl RelationalMapping, &impl SqlDialect) -> SqlPlan
-//! SqlPlan::execute(&impl SqlExecutor) -> rows       (the host's engine)
+//! SqlPlan::execute(&impl SqlExecutor) -> rows       (the host's engine, one statement)
 //! SqlPlan::report(&IRSchema, rows) -> ValidationReport
 //! ```
 //!
@@ -44,7 +44,7 @@ pub use dialect::{CastTarget, DuckDb, SqlDialect, SqlDialectName};
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 pub use duckdb_host::{DuckDbExecutor, validate_with_duckdb};
 pub use mapping::{PREDICATE_COLUMN, PredicateRel, Relation, RelationalMapping, SqlMapping};
-pub use plan::{Row, SqlCheck, SqlExecutor, SqlPlan, SqlRowError, SqlRunError};
+pub use plan::{Row, SqlExecutor, SqlPlan, SqlRowError, SqlRunError};
 pub use render::RESULT_COLUMNS;
 /// The SQL AST crate the extension traits ([`RelationalMapping`],
 /// [`SqlDialect`]) speak: implementing either means building its AST, so
@@ -92,7 +92,7 @@ impl From<DenoteError> for SqlCompileError {
     }
 }
 
-/// Compiles `schema` into the SQL checks that find its validation results in
+/// Compiles `schema` into the SQL statement that finds its validation results in
 /// the tables `mapping` describes, written for `dialect`.
 ///
 /// Shapes are compiled in the order of the dependency graph's levels, a shape
@@ -106,13 +106,9 @@ where
     D: SqlDialect + ?Sized,
 {
     let plan = denote(schema)?;
-    let mut renderer = Renderer::new(&plan, mapping, dialect);
-    let mut out = SqlPlan::default();
-    for check in &plan.checks {
-        out.checks.push(SqlCheck {
-            sql: dialect.render(&renderer.check(check.rows)?),
-            check: check.clone(),
-        });
-    }
-    Ok(out)
+    let statement = Renderer::new(&plan, mapping, dialect).statement(&plan.checks)?;
+    Ok(SqlPlan {
+        sql: dialect.render(&statement),
+        checks: plan.checks,
+    })
 }

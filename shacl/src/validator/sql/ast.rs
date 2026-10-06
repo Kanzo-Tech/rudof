@@ -176,13 +176,6 @@ pub fn exists(query: Query) -> Expr {
     }
 }
 
-pub fn not_exists(query: Query) -> Expr {
-    Expr::Exists {
-        subquery: Box::new(query),
-        negated: true,
-    }
-}
-
 /// `CASE WHEN c1 THEN r1 ... ELSE e END`; just `e` without branches.
 pub fn case(branches: Vec<(Expr, Expr)>, otherwise: Expr) -> Expr {
     if branches.is_empty() {

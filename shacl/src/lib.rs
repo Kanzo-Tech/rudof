@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(rust_2018_idioms)]
 
+pub mod algebra;
 pub mod ast;
 pub mod ir;
 pub mod messages;

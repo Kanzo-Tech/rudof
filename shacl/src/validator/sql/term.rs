@@ -10,7 +10,7 @@
 
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
-    and, and_all, boolean, case, col, compare, eq, in_list, item, not_eq, null, number, or_all, string,
+    and, and_all, boolean, case, col, compare, eq, in_list, item, not_eq, null, number, string,
 };
 use crate::validator::sql::dialect::{CastTarget, SqlDialect};
 use oxrdf::{BlankNode, Literal, NamedNode, Term};
@@ -137,11 +137,6 @@ impl TermExpr {
 
     pub fn is_not_kind(&self, kind: &str) -> Expr {
         not_eq(self.kind.clone(), string(kind))
-    }
-
-    /// Membership in a list of constant terms.
-    pub fn in_terms(&self, terms: &[EncodedTerm]) -> Expr {
-        or_all(terms.iter().map(|t| self.same(&TermExpr::constant(t))))
     }
 }
 

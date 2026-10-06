@@ -30,29 +30,25 @@
 //! The module builds for wasm: it depends on no engine, thread or I/O.
 
 mod ast;
-mod component;
-mod context;
 mod coverage;
 mod dialect;
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 mod duckdb_host;
 mod mapping;
-mod path;
 mod plan;
+mod render;
 mod rml;
-mod shape;
 mod tables;
-mod target;
 mod term;
 mod triple_table;
 
-pub use context::RESULT_COLUMNS;
 pub use coverage::{COVERAGE, Coverage};
 pub use dialect::{CastTarget, DuckDb, SqlDialect, SqlDialectName};
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 pub use duckdb_host::{DuckDbExecutor, validate_with_duckdb};
 pub use mapping::{PREDICATE_COLUMN, PredicateRel, Relation, RelationalMapping, SqlMapping};
 pub use plan::{Row, SqlCheck, SqlExecutor, SqlPlan, SqlRowError, SqlRunError};
+pub use render::RESULT_COLUMNS;
 /// The SQL AST crate the extension traits ([`RelationalMapping`],
 /// [`SqlDialect`]) speak: implementing either means building its AST, so
 /// their signatures follow its versions. The host-facing surface ([`SqlPlan`],
@@ -62,12 +58,9 @@ pub use tables::Tables;
 pub use term::{EncodedTerm, decode, encode};
 pub use triple_table::{TRIPLE_TABLE_COLUMNS, TripleTable};
 
-use crate::ir::{IRComponent, IRSchema, IRShape};
-use crate::types::Target;
-use context::Ctx;
-use plan::Parameters;
-use shape::ShapeCompiler;
-use target::TargetCompiler;
+use crate::algebra::{DenoteError, denote};
+use crate::ir::IRSchema;
+use render::Renderer;
 
 /// Why a shapes graph does not compile to SQL.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -91,31 +84,15 @@ pub enum SqlCompileError {
     Internal(String),
 }
 
-/// The SHACL 1.2 and SHACL-SPARQL features of `shape` the engine refuses.
-fn refuse(shape: &IRShape) -> Result<(), SqlCompileError> {
-    if shape.targets().iter().any(|t| matches!(t, Target::Where(_))) {
-        return Err(SqlCompileError::Unsupported(format!(
-            "sh:targetWhere (SHACL 1.2) on {}",
-            shape.id()
-        )));
+impl From<DenoteError> for SqlCompileError {
+    fn from(e: DenoteError) -> Self {
+        match e {
+            DenoteError::Unsupported(m) => SqlCompileError::Unsupported(m),
+            DenoteError::RecursiveShapes(m) => SqlCompileError::RecursiveShapes(m),
+            DenoteError::MalformedTarget(m) => SqlCompileError::MalformedTarget(m),
+            DenoteError::Internal(m) => SqlCompileError::Internal(m),
+        }
     }
-    if shape.reifier_info().is_some() {
-        return Err(SqlCompileError::Unsupported(format!(
-            "sh:reifierShape (SHACL 1.2) on {}",
-            shape.id()
-        )));
-    }
-    if shape
-        .components()
-        .iter()
-        .any(|c| matches!(c, IRComponent::BasicSparql(_)))
-    {
-        return Err(SqlCompileError::Unsupported(format!(
-            "sh:sparql (SHACL-SPARQL is outside SHACL Core) on {}",
-            shape.id()
-        )));
-    }
-    Ok(())
 }
 
 /// Compiles `schema` into the SQL checks that find its validation results in
@@ -131,44 +108,18 @@ where
     M: RelationalMapping + ?Sized,
     D: SqlDialect + ?Sized,
 {
-    let graph = schema.dependency_graph();
-    if graph.has_cycles() {
-        return Err(SqlCompileError::RecursiveShapes(format!("{graph}")));
+    let plan = denote(schema)?;
+    let mut renderer = Renderer::new(&plan, mapping, dialect);
+    let mut out = SqlPlan::default();
+    for check in &plan.checks {
+        out.checks.push(SqlCheck {
+            shape: check.shape,
+            component: check.component.clone(),
+            severity: check.severity.clone(),
+            path: check.path.clone(),
+            sql: dialect.render(&renderer.check(check.rows)?),
+            parameters: check.parameters.clone(),
+        });
     }
-    for (_, shape) in schema.iter() {
-        refuse(shape)?;
-    }
-
-    let mut plan = SqlPlan::default();
-    for level in schema.shapes_with_targets_by_level() {
-        for idx in level {
-            let shape = schema
-                .get_shape_from_idx(&idx)
-                .ok_or_else(|| SqlCompileError::Internal(format!("shape {idx} is not in the schema")))?;
-            if shape.deactivated() {
-                continue;
-            }
-            let mut ctx = Ctx::new(schema, mapping, dialect);
-            let focus = TargetCompiler::focus(&mut ctx, shape)?;
-            let mut pending = Vec::new();
-            ShapeCompiler::emit(&mut ctx, idx, &focus, false, &mut pending)?;
-            for p in pending {
-                let owner = schema
-                    .get_shape_from_idx(&p.shape)
-                    .ok_or_else(|| SqlCompileError::Internal(format!("shape {} is not in the schema", p.shape)))?;
-                plan.checks.push(SqlCheck {
-                    shape: p.shape,
-                    component: p.rows.component.clone(),
-                    severity: owner.severity().clone(),
-                    path: owner.path().cloned(),
-                    sql: dialect.render(&ctx.finish(&p.rows.rows)?),
-                    parameters: match p.rows.parameters {
-                        Some(own) => Parameters::Own(own),
-                        None => Parameters::Component(p.component),
-                    },
-                });
-            }
-        }
-    }
-    Ok(plan)
+    Ok(out)
 }

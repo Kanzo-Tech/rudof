@@ -1,10 +1,11 @@
 //! The compiled plan, the host's executor, and the report built from rows.
 
+use crate::algebra::Parameters;
 use crate::ir::{IRSchema, ShapeLabelIdx};
 use crate::types::Severity;
 use crate::validator::constraints::{component_parameters, result_message};
 use crate::validator::report::{ValidationReport, ValidationResult};
-use crate::validator::sql::context::RESULT_COLUMNS;
+use crate::validator::sql::render::RESULT_COLUMNS;
 use crate::validator::sql::term::decode;
 use rudof_iri::IriS;
 use rudof_rdf::SHACLPath;
@@ -45,12 +46,6 @@ pub struct SqlCheck {
     /// The index of the component in the shape (for its message parameters),
     /// or the parameters it names itself.
     pub(crate) parameters: Parameters,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum Parameters {
-    Component(usize),
-    Own(Vec<(&'static str, String)>),
 }
 
 impl SqlCheck {

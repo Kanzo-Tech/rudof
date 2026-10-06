@@ -113,12 +113,8 @@ where
     let mut out = SqlPlan::default();
     for check in &plan.checks {
         out.checks.push(SqlCheck {
-            shape: check.shape,
-            component: check.component.clone(),
-            severity: check.severity.clone(),
-            path: check.path.clone(),
             sql: dialect.render(&renderer.check(check.rows)?),
-            parameters: check.parameters.clone(),
+            check: check.clone(),
         });
     }
     Ok(out)

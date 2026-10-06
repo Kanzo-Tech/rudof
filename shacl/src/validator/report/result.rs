@@ -24,6 +24,38 @@ pub struct ValidationResult {
 }
 
 impl ValidationResult {
+    /// The result a row of `check` stands for: its focus node, its value (when
+    /// it has one) and the predicate that overrides the check's path
+    /// (`sh:closed`). Both interpretations of a plan report through it, so
+    /// their results read alike.
+    pub(crate) fn of(
+        schema: &crate::ir::IRSchema,
+        check: &crate::algebra::Check,
+        focus: Object,
+        value: Option<Object>,
+        path: Option<IriS>,
+    ) -> Result<Self, String> {
+        let shape = schema
+            .get_shape_from_idx(&check.shape)
+            .ok_or_else(|| format!("shape {} is not in the schema", check.shape))?;
+        let parameters = match &check.parameters {
+            crate::algebra::Parameters::Component(i) => shape
+                .components()
+                .get(*i)
+                .map(|c| crate::messages::parameters(c, schema))
+                .unwrap_or_default(),
+            crate::algebra::Parameters::Own(own) => own.clone(),
+        };
+        let message = crate::messages::result_message(schema, shape, &check.component, &parameters, value.as_ref());
+        Ok(
+            ValidationResult::new(focus, Object::Iri(check.component.clone()), check.severity.clone())
+                .with_source(Some(shape.id().clone()))
+                .with_message(message)
+                .with_path(path.map(SHACLPath::iri).or_else(|| check.path.clone()))
+                .with_value(value),
+        )
+    }
+
     /// Creates a new validation result
     pub fn new(focus_node: Object, constraint_component: Object, severity: Severity) -> Self {
         Self {

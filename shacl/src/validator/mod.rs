@@ -5,6 +5,7 @@ mod cache;
 mod config;
 pub mod constraints;
 pub mod engine;
+pub mod eval;
 pub(crate) mod error;
 mod index;
 mod iteration;

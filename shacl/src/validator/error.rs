@@ -26,6 +26,12 @@ pub enum ValidationError {
     SqlEngine(String),
 
     #[error(transparent)]
+    Denote(#[from] crate::algebra::DenoteError),
+
+    #[error(transparent)]
+    Eval(#[from] crate::validator::eval::EvalError),
+
+    #[error(transparent)]
     IRError(#[from] Box<IRError>),
 
     #[error("Graph error: {0}")]

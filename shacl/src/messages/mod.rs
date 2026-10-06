@@ -222,3 +222,92 @@ mod tests {
         assert!(MessageCatalog::default().render(&other, |_| None).messages().is_empty());
     }
 }
+
+/// The values a message template can name: a component's parameters, by the local
+/// name of the SHACL parameter (`minCount`, `datatype`, ...), already rendered as
+/// text. `{$value}` is not among them; it belongs to each result.
+pub type Parameters = Vec<(&'static str, String)>;
+
+/// A term as the text of a message: an IRI in its prefixed form when the shapes
+/// graph declares a prefix for it, a literal by its lexical form.
+pub fn display(schema: &crate::ir::IRSchema, term: &Object) -> String {
+    match term {
+        Object::Iri(iri) => schema.prefix_map().qualify(iri),
+        Object::Literal(lit) => lit.lexical_form(),
+        other => other.to_string(),
+    }
+}
+
+/// The message parameters of `component`, named after its SHACL parameters.
+/// The logical, shape-based and status components name none; the two of
+/// `sh:qualifiedValueShape` are named by the check that reports them.
+pub fn parameters(component: &crate::ir::IRComponent, schema: &crate::ir::IRSchema) -> Parameters {
+    use crate::ir::IRComponent as C;
+    let iri = |i: &IriS| display(schema, &Object::Iri(i.clone()));
+    let list = |items: Vec<String>| items.join(", ");
+    match component {
+        C::Class(c) => vec![("class", display(schema, c))],
+        C::Datatype(ds) => vec![(
+            "datatype",
+            list(ds.iter().map(|d| schema.prefix_map().qualify(d)).collect()),
+        )],
+        C::NodeKind(k) => vec![("nodeKind", k.to_string())],
+        C::MinCount(n) => vec![("minCount", n.to_string())],
+        C::MaxCount(n) => vec![("maxCount", n.to_string())],
+        C::MinExclusive(l) => vec![("minExclusive", l.lexical_form())],
+        C::MaxExclusive(l) => vec![("maxExclusive", l.lexical_form())],
+        C::MinInclusive(l) => vec![("minInclusive", l.lexical_form())],
+        C::MaxInclusive(l) => vec![("maxInclusive", l.lexical_form())],
+        C::MinLength(n) => vec![("minLength", n.to_string())],
+        C::MaxLength(n) => vec![("maxLength", n.to_string())],
+        C::Pattern(p) => vec![("pattern", p.pattern().to_string())],
+        C::LanguageIn(ls) => vec![("languageIn", list(ls.iter().map(ToString::to_string).collect()))],
+        C::Equals(p) => vec![("equals", iri(p))],
+        C::Disjoint(p) => vec![("disjoint", iri(p))],
+        C::LessThan(p) => vec![("lessThan", iri(p))],
+        C::LessThanOrEquals(p) => vec![("lessThanOrEquals", iri(p))],
+        C::HasValue(v) => vec![("hasValue", display(schema, v))],
+        C::In(vs) => vec![("in", list(vs.iter().map(|v| display(schema, v)).collect()))],
+        C::UniqueLang(_)
+        | C::Or(_)
+        | C::And(_)
+        | C::Not(_)
+        | C::Xone(_)
+        | C::If(_)
+        | C::Node(_)
+        | C::QualifiedValueShape(_)
+        | C::Closed(_)
+        | C::Deactivated(_)
+        | C::BasicSparql(_) => Vec::new(),
+    }
+}
+
+/// The `sh:resultMessage` set of a result of `component`.
+///
+/// `sh:message` is declared on the *shape*, so every result of the shape owes
+/// the author their text, language tags included: "If a shape has at least one
+/// value for `sh:message` in the shapes graph, then all validation results
+/// produced as a result of the shape will have **exactly these messages** as
+/// their value of `sh:resultMessage`" (SHACL §2.1.5). So the author's set is
+/// copied and nothing is added to it.
+///
+/// Only "in cases where a constraint does not have any values for `sh:message`"
+/// may the processor "automatically generate other values" (§3.6.2.7): those come
+/// from the schema's [`MessageCatalog`], one per language it holds for the
+/// component, with `{$name}` replaced from `parameters` and `{$value}` from the
+/// value node.
+pub fn result_message(
+    schema: &crate::ir::IRSchema,
+    shape: &crate::ir::IRShape,
+    component: &IriS,
+    parameters: &[(&str, String)],
+    value: Option<&Object>,
+) -> MessageMap {
+    match shape.message() {
+        Some(author) if !author.messages().is_empty() => author.clone(),
+        _ => schema.messages().render(component, |name| match name {
+            "value" => value.map(|v| display(schema, v)),
+            _ => parameters.iter().find(|(n, _)| *n == name).map(|(_, v)| v.clone()),
+        }),
+    }
+}

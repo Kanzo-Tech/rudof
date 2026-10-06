@@ -26,6 +26,15 @@ macro_rules! w3c_tests {
             )*
         }
 
+        mod eval {
+            $(
+                #[test]
+                fn $name() -> Result<(), crate::common::TestSuiteError> {
+                    crate::test_eval(format!("{}{}.ttl", $dir, $file))
+                }
+            )*
+        }
+
         mod sql {
             $(
                 #[test]
@@ -70,5 +79,24 @@ fn test(path: String, mode: ShaclValidationMode) -> Result<(), TestSuiteError> {
         }
     }
 
+    Ok(())
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn test_eval(path: String) -> Result<(), TestSuiteError> {
+    let mut manifest = Manifest::new(Path::new(&path))?;
+    for test in manifest.collect_tests()? {
+        let shapes = test
+            .shapes
+            .try_into()
+            .map_err(|e: IRError| TestSuiteError::TestShapesCompilation(e.to_string()))?;
+        let report = shacl::validator::eval::validate(&shapes, &test.data)
+            .map_err(|e| TestSuiteError::Validation(e.to_string()))?;
+        if report != test.report {
+            println!("Expected report:\n{:#?}", test.report.results());
+            println!("Actual report:\n{:#?}", report.results());
+            return Err(TestSuiteError::NotEquals);
+        }
+    }
     Ok(())
 }

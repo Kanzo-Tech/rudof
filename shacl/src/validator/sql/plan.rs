@@ -1,14 +1,11 @@
 //! The compiled plan, the host's executor, and the report built from rows.
 
-use crate::algebra::Parameters;
-use crate::ir::{IRSchema, ShapeLabelIdx};
-use crate::types::Severity;
-use crate::validator::constraints::{component_parameters, result_message};
+use crate::algebra::Check;
+use crate::ir::IRSchema;
 use crate::validator::report::{ValidationReport, ValidationResult};
 use crate::validator::sql::render::RESULT_COLUMNS;
 use crate::validator::sql::term::decode;
 use rudof_iri::IriS;
-use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
 use std::fmt::Display;
 
@@ -33,19 +30,10 @@ pub trait SqlExecutor {
 /// from one).
 #[derive(Debug, Clone)]
 pub struct SqlCheck {
-    /// The shape that declares the component: the results' `sh:sourceShape`.
-    pub shape: ShapeLabelIdx,
-    /// The results' `sh:sourceConstraintComponent`.
-    pub component: IriS,
-    /// The results' `sh:resultSeverity`.
-    pub severity: Severity,
-    /// The results' `sh:resultPath`, unless a row overrides it (`sh:closed`).
-    pub path: Option<SHACLPath>,
+    /// What every row of the query reports: shape, component, severity, path.
+    pub check: Check,
     /// The query as its dialect renders it; its columns are [`RESULT_COLUMNS`].
     pub(crate) sql: String,
-    /// The index of the component in the shape (for its message parameters),
-    /// or the parameters it names itself.
-    pub(crate) parameters: Parameters,
 }
 
 impl SqlCheck {
@@ -113,7 +101,8 @@ impl SqlPlan {
 
     /// The validation report of the rows of every check (`rows_by_check[i]`
     /// are the rows of `checks[i]`). Messages come from the native engine's
-    /// own wording ([`result_message`]), so both engines' reports read alike.
+    /// own wording ([`ValidationResult::of`]), so every interpretation's report
+    /// reads alike.
     pub fn report(&self, schema: &IRSchema, rows_by_check: &[Vec<Row>]) -> Result<ValidationReport, SqlRowError> {
         // One row set per check: a missing set is not an empty one, and
         // reading it as such would report conformance for checks never run.
@@ -135,17 +124,6 @@ impl SqlPlan {
                 row,
                 message,
             };
-            let shape = schema
-                .get_shape_from_idx(&check.shape)
-                .ok_or_else(|| err(0, format!("shape {} is not in the schema", check.shape)))?;
-            let parameters = match &check.parameters {
-                Parameters::Component(i) => shape
-                    .components()
-                    .get(*i)
-                    .map(|c| component_parameters(c, schema))
-                    .unwrap_or_default(),
-                Parameters::Own(own) => own.clone(),
-            };
             for (r, row) in rows.iter().enumerate() {
                 if row.len() != RESULT_COLUMNS.len() {
                     return Err(err(r, format!("{} columns, not {}", row.len(), RESULT_COLUMNS.len())));
@@ -154,18 +132,8 @@ impl SqlPlan {
                     .map_err(|m| err(r, m))?
                     .ok_or_else(|| err(r, "no focus node".to_owned()))?;
                 let value = term(row, 4).map_err(|m| err(r, m))?;
-                let path = match cell(row, 8) {
-                    Some(p) => Some(SHACLPath::iri(IriS::new_unchecked(p))),
-                    None => check.path.clone(),
-                };
-                let message = result_message(schema, shape, &check.component, &parameters, value.as_ref());
-                results.push(
-                    ValidationResult::new(focus, Object::Iri(check.component.clone()), check.severity.clone())
-                        .with_source(Some(shape.id().clone()))
-                        .with_message(message)
-                        .with_path(path)
-                        .with_value(value),
-                );
+                let path = cell(row, 8).map(IriS::new_unchecked);
+                results.push(ValidationResult::of(schema, &check.check, focus, value, path).map_err(|m| err(r, m))?);
             }
         }
         Ok(ValidationReport::new()

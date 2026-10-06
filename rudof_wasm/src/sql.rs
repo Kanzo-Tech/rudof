@@ -150,6 +150,25 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
+    async fn a_shape_outside_the_profile_is_listed_and_the_rest_validated() {
+        let shapes = Shapes::parse(
+            format!(
+                "{SHAPES}\n:Q a sh:NodeShape ; sh:targetClass :C ; sh:sparql [ sh:select \"SELECT $this {{}}\" ] ."
+            ),
+            None,
+        )
+        .unwrap();
+        let report = validate(&shapes, &engine("[]")).await.expect("validates");
+        let unchecked = js_sys::Array::from(&Reflect::get(&report, &"unchecked".into()).unwrap());
+        assert_eq!(unchecked.length(), 1);
+        let reason = Reflect::get(&unchecked.get(0), &"reason".into()).unwrap();
+        assert!(
+            reason.as_string().unwrap().contains("SPARQLConstraintComponent"),
+            "{reason:?}"
+        );
+    }
+
+    #[wasm_bindgen_test]
     async fn a_row_naming_no_check_is_an_error() {
         let engine = engine(
             "[{ check: 7, focus_kind: 'I', focus_value: 'http://example.org/n', focus_datatype: '', \

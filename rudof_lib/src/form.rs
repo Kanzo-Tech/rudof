@@ -30,6 +30,7 @@ pub use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 pub use rudof_rdf::term::Object;
 pub use rudof_rdf::term::literal::ConcreteLiteral;
 pub use rudof_rdf::{BuildRDF, RDFFormat, SHACLPath};
+pub use shacl::algebra::Unchecked;
 pub use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 pub use shacl::types::{NodeKind, Severity, Target, Value};
 pub use shacl::validator::report::ValidationResult;
@@ -67,6 +68,8 @@ pub enum FormError {
 pub struct ValidationOutcome {
     pub conforms: bool,
     pub results: Vec<ValidationResult>,
+    /// The shapes the engine did not check.
+    pub unchecked: Vec<Unchecked>,
 }
 
 /// A parsed SHACL shapes graph: the graph itself, kept for annotation reads, its
@@ -336,9 +339,12 @@ impl FormEngine {
             .get_idx(shape)
             .copied()
             .ok_or_else(|| FormError::ShapeNotFound(format!("{shape}")))?;
-        shacl::validator::validate_shape(&ir, &self.data, idx, Some(focus))
-            .map(|report| report.conforms())
-            .map_err(|e| FormError::Validation(e.to_string()))
+        let report = shacl::validator::validate_shape(&ir, &self.data, idx, Some(focus))
+            .map_err(|e| FormError::Validation(e.to_string()))?;
+        match report.unchecked().iter().find(|u| &u.shape == shape) {
+            Some(u) => Err(FormError::Validation(format!("{shape} is not checked: {}", u.reason))),
+            None => Ok(report.conforms()),
+        }
     }
 
     /// Compile the shapes into the validator's internal representation.
@@ -419,6 +425,7 @@ fn outcome(report: ValidationReport) -> ValidationOutcome {
     ValidationOutcome {
         conforms: report.conforms(),
         results: report.results().clone(),
+        unchecked: report.unchecked().to_vec(),
     }
 }
 

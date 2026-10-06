@@ -154,7 +154,10 @@ where
     if let Some(data) = store.prefixmap() {
         prefixes.merge(data);
     }
-    Ok(ValidationReport::new().with_results(results).with_prefixmap(prefixes))
+    Ok(ValidationReport::new()
+        .with_results(results)
+        .with_unchecked(plan.unchecked.clone())
+        .with_prefixmap(prefixes))
 }
 
 /// Evaluates every relation the checks of `plan` reach over `store`; the rows

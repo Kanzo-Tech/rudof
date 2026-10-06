@@ -9,7 +9,7 @@ use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
-use shacl::validator::sql::{DuckDbEngine, SqlCompileError, SqlError, validate};
+use shacl::validator::sql::{DuckDbEngine, validate};
 
 mod common;
 use common::validate_with_duckdb;
@@ -147,15 +147,6 @@ fn through_tables(schema: &IRSchema, db_schema: Option<&str>) -> ValidationRepor
     block_on(validate(schema, &format!("{prefix}triples"), &engine)).expect("validates")
 }
 
-/// Validation that stops at compilation, before any statement runs.
-fn refused(schema: &IRSchema) -> SqlCompileError {
-    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
-    match block_on(validate(schema, "triples", &engine)) {
-        Err(SqlError::Compile(e)) => e,
-        other => panic!("expected a refusal, got {other:?}"),
-    }
-}
-
 #[test]
 fn a_triples_table_and_a_view_over_tables_yield_the_evaluators_report() {
     let data = graph(&format!(
@@ -208,28 +199,59 @@ fn messages_are_the_evaluators() {
     }
 }
 
-#[test]
-fn recursive_shapes_are_refused() {
-    let schema = schema(
-        r#"
-ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
-    sh:property [ sh:path ex:knows ; sh:node ex:S ] .
-"#,
+/// The shapes `report` did not check, by node, with the reason.
+fn unchecked(report: &ValidationReport) -> Vec<String> {
+    report
+        .unchecked()
+        .iter()
+        .map(|u| format!("{} {}", u.shape, u.reason))
+        .collect()
+}
+
+/// A shape outside the engine's profile, or one that cannot be decided, is
+/// not checked, and says so; the other shapes are, through both
+/// interpretations alike.
+fn holds_the_rest(shapes: &str, expected: &[&str]) {
+    let data = graph(DATA);
+    let schema = schema(&format!(
+        "{shapes}\nex:Adult a sh:NodeShape ; sh:targetClass ex:Person ;\n    sh:property [ sh:path ex:age ; sh:minInclusive 18 ] ."
+    ));
+    let in_memory = in_memory(&data, &schema);
+    let sql = validate_with_duckdb(&data, &schema).expect("validates");
+    assert_eq!(sql, in_memory, "{sql}\n---\n{in_memory}");
+    assert_eq!(unchecked(&in_memory), expected);
+    assert!(
+        in_memory
+            .results()
+            .iter()
+            .any(|r| r.focus_node().to_string().contains("bob")),
+        "the other shapes are checked: {in_memory}"
     );
-    let refused = refused(&schema);
-    assert!(matches!(refused, SqlCompileError::RecursiveShapes(_)), "{refused}");
 }
 
 #[test]
-fn shacl_sparql_is_refused_not_skipped() {
-    let schema = schema(
+fn shacl_sparql_is_not_checked_and_the_rest_is() {
+    holds_the_rest(
         r#"
 ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:sparql [ sh:select "SELECT $this WHERE { $this ?p ?o }" ] .
+ex:T a sh:NodeShape ; sh:targetClass ex:Person ; sh:node ex:S .
 "#,
+        &[
+            "http://example.org/S http://www.w3.org/ns/shacl#SPARQLConstraintComponent is outside the engine's profile",
+            "http://example.org/T it depends on http://example.org/S, which is not checked",
+        ],
     );
-    let refused = refused(&schema);
-    assert!(matches!(refused, SqlCompileError::Unsupported(_)), "{refused}");
+}
+
+#[test]
+fn recursive_shapes_are_not_checked_and_the_rest_is() {
+    holds_the_rest(
+        r#"
+ex:S a sh:NodeShape ; sh:targetClass ex:Person ; sh:node ex:S .
+"#,
+        &["http://example.org/S recursive shapes have no SHACL semantics"],
+    );
 }
 
 #[test]

@@ -1,3 +1,4 @@
+use crate::algebra::Unchecked;
 use crate::types::Severity;
 use prefixmap::PrefixMap;
 use rudof_rdf::vocab::ShaclVocab;
@@ -15,6 +16,7 @@ pub use sorting::ValidationReportSorting;
 #[derive(Debug, Clone)]
 pub struct ValidationReport {
     results: Vec<ValidationResult>,
+    unchecked: Vec<Unchecked>,
     nodes_pm: PrefixMap,
     shapes_pm: PrefixMap,
 }
@@ -23,6 +25,7 @@ impl ValidationReport {
     pub fn new() -> Self {
         Self {
             results: Vec::new(),
+            unchecked: Vec::new(),
             nodes_pm: PrefixMap::new(),
             shapes_pm: PrefixMap::new(),
         }
@@ -30,6 +33,11 @@ impl ValidationReport {
 
     pub fn with_results(mut self, results: Vec<ValidationResult>) -> Self {
         self.results = results;
+        self
+    }
+
+    pub fn with_unchecked(mut self, unchecked: Vec<Unchecked>) -> Self {
+        self.unchecked = unchecked;
         self
     }
 
@@ -54,6 +62,11 @@ impl ValidationReport {
 
     pub fn results(&self) -> &Vec<ValidationResult> {
         &self.results
+    }
+
+    /// The shapes the engine did not check: a result can be missing for them.
+    pub fn unchecked(&self) -> &[Unchecked] {
+        &self.unchecked
     }
 
     pub fn nodes_prefixmap(&self) -> &PrefixMap {
@@ -144,12 +157,17 @@ impl Default for ValidationReport {
 
 impl PartialEq for ValidationReport {
     fn eq(&self, other: &Self) -> bool {
-        self.results.len() == other.results.len() && self.results.iter().all(|r| other.results.contains(r))
+        self.results.len() == other.results.len()
+            && self.results.iter().all(|r| other.results.contains(r))
+            && self.unchecked == other.unchecked
     }
 }
 
 impl Display for ValidationReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for u in &self.unchecked {
+            writeln!(f, "not checked: {} ({})", self.shapes_pm.show(&u.shape), u.reason)?;
+        }
         if self.results.is_empty() {
             write!(f, "No Errors found")
         } else {

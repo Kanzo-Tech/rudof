@@ -3,9 +3,10 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 
 ## [Unreleased]
 ### Added
-- SHACL SQL engine (`shacl::validator::sql`): `validate(&schema, triples, &engine).await` validates the data in one `(s, p, o)` relation (a table or a view, columns `s_k, s_v, p, o_k, o_v, o_d, o_l`) on the host's engine. The shapes graph becomes a SQL script, a `CREATE TEMPORARY TABLE` per relation several checks read, then one query (a `UNION ALL` of a branch per check), then the drops, which the host's `SqlEngine` (async, as DuckDB-WASM is) runs on one connection. All of SHACL Core compiles; recursive shapes and SHACL-SPARQL are refused. The W3C core suite runs through both the in-memory evaluator and the SQL engine
+- SHACL SQL engine (`shacl::validator::sql`): `validate(&schema, triples, &engine).await` validates the data in one `(s, p, o)` relation (a table or a view, columns `s_k, s_v, p, o_k, o_v, o_d, o_l`) on the host's engine. The shapes graph becomes a SQL script, a `CREATE TEMPORARY TABLE` per relation several checks read, then one query (a `UNION ALL` of a branch per check), then the drops, which the host's `SqlEngine` (async, as DuckDB-WASM is) runs on one connection. All of SHACL Core compiles. The W3C core suite runs through both the in-memory evaluator and the SQL engine
 - `shacl::validator::sql::DuckDbEngine` (feature `duckdb`, native only): an in-process DuckDB `SqlEngine`, which loads a graph into a triples table
 - `sh:targetWhere` (SHACL 1.2), in both interpretations
+- SHACL: what the engine checks is stated as a SHACL 1.2 Profiling profile (`shacl/src/algebra/profile.ttl`, a `prof:Profile` listing its vocabulary as `rdfs:member`s). A shape outside it, a recursive shape, or one that depends on either is not checked and is listed in the report's `unchecked` (wasm: `RudofReport.unchecked`, `{ shape, reason }`); every other shape is validated, where the whole shapes graph used to be refused
 - wasm: `Shapes.parse(text, { mediaType?, base? })` and `shapes.validate({ table, engine, signal? })`, which validates a triples relation on the page's engine (`{ query(sql, { signal }) }`, `@kanzo-tech/mosaic`'s `engine()`) and resolves to the same `RudofReport` as `FormSession.validate()`; validation results carry `sourceShape`
 - wasm: every argument and result is typed in the `.d.ts` (`TermValue`, `ShapeModelJson`, `ProjectedForm`, `RudofReport`, …), derived from the Rust DTOs, where they were `any`
 ### Fixed
@@ -20,7 +21,7 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 ### Removed
 - The native and SPARQL SHACL engines, and with them `ShaclValidationMode` (rudof_lib, CLI `--mode` / `--shacl-mode`, MCP `mode`, Python `ShaclValidationMode`): there is one validator
 - `shacl::subset`
-- SHACL-SPARQL validation, which the native engine ran: shapes using `sh:sparql` are refused
+- SHACL-SPARQL validation, which the native engine ran: shapes using `sh:sparql` are not checked
 
 ## v0.3.4
 ### Added

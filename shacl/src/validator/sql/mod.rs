@@ -17,16 +17,13 @@
 //!   DuckDB one, [`DuckDbEngine`], exists behind the native-only `duckdb`
 //!   feature, for the tests.
 //!
-//! Everything SHACL Core defines compiles (`coverage.rs` holds the list
-//! against the Recommendation), and `sh:targetWhere`.
-//! What the algebra does not denote is **refused**, never skipped: recursive
-//! shapes (their semantics is undefined) and SHACL-SPARQL.
+//! What compiles is what the algebra denotes: the engine's profile
+//! ([`crate::algebra::profile`]). A shape outside it is not checked, and the
+//! report lists it; every other shape is.
 //!
 //! The module builds for wasm: it depends on no engine, thread or I/O.
 
 mod ast;
-#[cfg(test)]
-mod coverage;
 mod dialect;
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 mod duckdb_host;
@@ -53,12 +50,9 @@ use triples::Triples;
 /// Why a shapes graph does not compile to SQL.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SqlCompileError {
-    /// A feature the engine refuses rather than skip.
+    /// What the SQL dialect cannot spell.
     #[error("the SQL engine does not compile {0}")]
     Unsupported(String),
-    /// The shapes refer to themselves; SHACL leaves their semantics undefined.
-    #[error("recursive shapes are refused (their SHACL semantics is undefined): {0}")]
-    RecursiveShapes(String),
     #[error("malformed target: {0}")]
     MalformedTarget(String),
     /// The triples relation's name is not a SQL object name.
@@ -73,8 +67,6 @@ pub enum SqlCompileError {
 impl From<DenoteError> for SqlCompileError {
     fn from(e: DenoteError) -> Self {
         match e {
-            DenoteError::Unsupported(m) => SqlCompileError::Unsupported(m),
-            DenoteError::RecursiveShapes(m) => SqlCompileError::RecursiveShapes(m),
             DenoteError::MalformedTarget(m) => SqlCompileError::MalformedTarget(m),
             DenoteError::Internal(m) => SqlCompileError::Internal(m),
         }
@@ -98,7 +90,7 @@ pub async fn validate<E: SqlEngine>(
 }
 
 fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Result<SqlPlan, SqlCompileError> {
-    let plan = denote(schema)?;
+    let mut plan = denote(schema)?;
     let (tables, query) = Renderer::new(&plan, triples, dialect).script(&plan.checks)?;
     let table = |name: &str| ObjectName::from(vec![Ident::with_quote('"', name)]);
     Ok(SqlPlan {
@@ -130,6 +122,7 @@ fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Res
             })
             .collect(),
         checks: plan.checks,
+        unchecked: std::mem::take(&mut plan.unchecked),
         schema: schema.clone(),
     })
 }

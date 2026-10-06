@@ -412,6 +412,15 @@ pub struct RudofResult {
 pub struct RudofReport {
     pub conforms: bool,
     pub results: Vec<RudofResult>,
+    /// The shapes the engine did not check, so a result can be missing for
+    /// them: outside its profile, recursive, or depending on such a shape.
+    pub unchecked: Vec<RudofUnchecked>,
+}
+
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
+pub struct RudofUnchecked {
+    pub shape: TermValue,
+    pub reason: String,
 }
 
 /// How `Shapes.parse` reads its text: the media type (Turtle when omitted) and

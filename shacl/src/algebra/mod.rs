@@ -40,6 +40,7 @@
 //! interpretation renders it as one CTE; the evaluator computes it once.
 
 pub mod denote;
+pub mod profile;
 
 use crate::ir::ShapeLabelIdx;
 use crate::types::{MessageMap, Severity};
@@ -51,6 +52,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 pub use denote::{DenoteError, denote, denote_shape};
+pub use profile::{Reason, Unchecked};
 
 /// A relation of a [`Plan`]: an index into its arena.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -381,6 +383,8 @@ pub struct Plan {
     ops: Vec<Op>,
     sorts: Vec<Sort>,
     pub checks: Vec<Check>,
+    /// The shapes that yield no checks, because the engine does not check them.
+    pub unchecked: Vec<Unchecked>,
 }
 
 impl Plan {

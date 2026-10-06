@@ -1,6 +1,6 @@
 //! The compiled script, the host's engine, and the report built from rows.
 
-use crate::algebra::Check;
+use crate::algebra::{Check, Unchecked};
 use crate::ir::IRSchema;
 use crate::validator::report::{ValidationReport, ValidationResult};
 use crate::validator::sql::SqlCompileError;
@@ -51,6 +51,7 @@ pub enum SqlError<E: Display> {
 #[derive(Debug, Clone)]
 pub(crate) struct SqlPlan {
     pub(crate) checks: Vec<Check>,
+    pub(crate) unchecked: Vec<Unchecked>,
     pub(crate) schema: IRSchema,
     pub(crate) setup: Vec<String>,
     pub(crate) query: String,
@@ -99,6 +100,7 @@ impl SqlPlan {
         }
         Ok(ValidationReport::new()
             .with_results(results)
+            .with_unchecked(self.unchecked.clone())
             .with_prefixmap(schema.prefix_map().clone()))
     }
 

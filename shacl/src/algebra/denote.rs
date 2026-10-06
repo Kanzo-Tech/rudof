@@ -18,10 +18,12 @@
 //!   `sh:not`, `sh:if` and the qualified value shapes test it. A deactivated
 //!   shape fails nothing.
 //!
-//! The dependency graph of the shapes is acyclic (recursive shapes graphs are
-//! refused: SHACL leaves their semantics undefined), so `fails` recurses into
-//! strictly lower strata and terminates.
+//! A shape the engine does not check ([`profile`](super::profile)) yields no
+//! checks, and nothing checked depends on its conformance; the rest of the
+//! dependency graph is acyclic, so `fails` recurses into strictly lower strata
+//! and terminates.
 
+use crate::algebra::profile::{self, Unchecked};
 use crate::algebra::{Check, CmpOp, Expr, Key, Kind, Op, Parameters, Plan, PlanBuilder, Pred, RelId, Sort, SortError};
 use crate::ir::components::{Closed, QualifiedValueShape};
 use crate::ir::{IRComponent, IRSchema, IRShape, ReifierInfo, ShapeLabelIdx};
@@ -36,12 +38,6 @@ use std::collections::HashMap;
 /// Why a shapes graph has no denotation here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DenoteError {
-    /// A feature outside the algebra, named.
-    #[error("not supported: {0}")]
-    Unsupported(String),
-    /// The shapes refer to themselves; SHACL leaves their semantics undefined.
-    #[error("recursive shapes are refused (their SHACL semantics is undefined): {0}")]
-    RecursiveShapes(String),
     #[error("malformed target: {0}")]
     MalformedTarget(String),
     #[error("internal error of the denotation: {0}")]
@@ -52,21 +48,6 @@ impl From<SortError> for DenoteError {
     fn from(e: SortError) -> Self {
         DenoteError::Internal(e.to_string())
     }
-}
-
-/// The SHACL-SPARQL features of `shape`, outside the algebra.
-fn refuse(shape: &IRShape) -> Result<(), DenoteError> {
-    if shape
-        .components()
-        .iter()
-        .any(|c| matches!(c, IRComponent::BasicSparql(_)))
-    {
-        return Err(DenoteError::Unsupported(format!(
-            "sh:sparql (SHACL-SPARQL is outside SHACL Core) on {}",
-            shape.id()
-        )));
-    }
-    Ok(())
 }
 
 /// The plan of `schema`: one check per constraint component of each shape in
@@ -91,7 +72,7 @@ pub fn denote(schema: &IRSchema) -> Result<Plan, DenoteError> {
             d.emit(idx, focus, false)?;
         }
     }
-    Ok(d.b.finish())
+    Ok(d.finish())
 }
 
 /// The plan of one shape and its property shapes: for `focus` when given,
@@ -108,13 +89,14 @@ pub fn denote_shape(schema: &IRSchema, idx: ShapeLabelIdx, focus: Option<&Object
         },
     };
     d.emit(idx, focus, false)?;
-    Ok(d.b.finish())
+    Ok(d.finish())
 }
 
 struct Denoter<'a> {
     schema: &'a IRSchema,
     b: PlanBuilder,
     fails: HashMap<(ShapeLabelIdx, RelId), Option<RelId>>,
+    unchecked: HashMap<ShapeLabelIdx, Unchecked>,
 }
 
 /// Where a path starts.
@@ -168,20 +150,21 @@ struct Rows {
 }
 
 impl<'a> Denoter<'a> {
-    /// A denoter for `schema`, once it is known to have a denotation.
     fn new(schema: &'a IRSchema) -> Result<Self, DenoteError> {
-        let graph = schema.dependency_graph();
-        if graph.has_cycles() {
-            return Err(DenoteError::RecursiveShapes(format!("{graph}")));
-        }
-        for (_, shape) in schema.iter() {
-            refuse(shape)?;
-        }
         Ok(Self {
             schema,
             b: PlanBuilder::new(),
             fails: HashMap::new(),
+            unchecked: profile::unchecked(schema)?,
         })
+    }
+
+    /// The plan, with the unchecked shapes in the order of their nodes.
+    fn finish(self) -> Plan {
+        let mut plan = self.b.finish();
+        plan.unchecked = self.unchecked.into_values().collect();
+        plan.unchecked.sort_by_key(|u| u.shape.to_string());
+        plan
     }
 
     fn op(&mut self, op: Op) -> Result<RelId, DenoteError> {
@@ -383,6 +366,12 @@ impl<'a> Denoter<'a> {
         if let Some(memo) = self.fails.get(&(idx, candidates)) {
             return Ok(*memo);
         }
+        if let Some(u) = self.unchecked.get(&idx) {
+            return Err(DenoteError::Internal(format!(
+                "the conformance of {}, an unchecked shape",
+                u.shape
+            )));
+        }
         let shape = self.shape(idx)?;
         if shape.deactivated() {
             self.fails.insert((idx, candidates), None);
@@ -426,7 +415,7 @@ impl<'a> Denoter<'a> {
     /// The checks of `shape` for the focus relation `focus` (a bag when `bag`).
     fn emit(&mut self, idx: ShapeLabelIdx, focus: RelId, bag: bool) -> Result<(), DenoteError> {
         let shape = self.shape(idx)?;
-        if shape.deactivated() {
+        if shape.deactivated() || self.unchecked.contains_key(&idx) {
             return Ok(());
         }
         let distinct = if bag { self.op(Op::Distinct(focus))? } else { focus };
@@ -907,9 +896,11 @@ impl Components<'_, '_> {
             // A deactivated shape is never denoted; on an active one the
             // component itself raises nothing.
             IRComponent::Deactivated(_) => Ok(Vec::new()),
-            IRComponent::BasicSparql(_) => Err(DenoteError::Unsupported(
-                "sh:sparql (SHACL-SPARQL is outside SHACL Core)".to_owned(),
-            )),
+            // Outside the profile: its shape is unchecked, and never denoted.
+            IRComponent::BasicSparql(_) => Err(DenoteError::Internal(format!(
+                "sh:sparql on {}, an unchecked shape",
+                self.shape.id()
+            ))),
         }
     }
 

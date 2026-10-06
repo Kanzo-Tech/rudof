@@ -55,6 +55,16 @@ impl DependencyGraph {
         is_cyclic_directed(&self.graph)
     }
 
+    /// The shapes on a cycle: a strongly connected component of more than one
+    /// shape, or a shape that refers to itself.
+    pub fn recursive(&self) -> Vec<ShapeLabelIdx> {
+        tarjan_scc(&self.graph)
+            .into_iter()
+            .filter(|scc| scc.len() > 1 || self.graph.contains_edge(scc[0], scc[0]))
+            .flatten()
+            .collect()
+    }
+
     pub fn has_neg_cycle(&self) -> bool {
         let neg_cycles = self.neg_cycles();
         !neg_cycles.is_empty()

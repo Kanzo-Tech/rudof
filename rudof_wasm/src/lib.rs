@@ -175,8 +175,9 @@ impl Shapes {
     /// connection.
     ///
     /// Resolves to a `RudofReport`, worded as `FormSession.validate` words it.
-    /// Shapes the engine refuses (recursive ones, `sh:sparql`) reject it, never
-    /// skipped.
+    /// A shape the engine does not check (outside its profile, recursive, or
+    /// depending on such a shape) is listed in `unchecked`; the rest are
+    /// checked.
     #[wasm_bindgen(unchecked_return_type = "Promise<RudofReport>")]
     pub fn validate(
         &self,

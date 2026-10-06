@@ -9,5 +9,6 @@ impl RdfVocabulary for RdfsVocab {
 }
 
 vocab_term!(RdfsVocab, RDFS_LABEL, "label");
+vocab_term!(RdfsVocab, RDFS_MEMBER, "member");
 vocab_term!(RdfsVocab, RDFS_CLASS, "Class");
 vocab_term!(RdfsVocab, RDFS_SUBCLASS_OF_STR, "subClassOf");

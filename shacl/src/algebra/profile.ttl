@@ -1,0 +1,47 @@
+PREFIX prof: <http://www.w3.org/ns/dx/prof/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX sh:   <http://www.w3.org/ns/shacl#>
+
+# What `denote` gives a meaning to, as a SHACL 1.2 Profiling profile in the form
+# of the Working Group's own example (`profiles/cd1.ttl`): the constraint
+# components and target declarations a shape may use for this engine to check
+# it. A shape that uses one not listed here is not checked, and says so; every
+# other shape is.
+<https://github.com/Kanzo-Tech/rudof/blob/master/shacl/src/algebra/profile.ttl>
+  a prof:Profile ;
+  prof:isProfileOf sh: ;
+  rdfs:label "The rudof profile of SHACL"@en ;
+  rdfs:member
+    # Targets
+    sh:targetNode , sh:targetClass , sh:targetSubjectsOf , sh:targetObjectsOf ,
+    sh:targetWhere ,
+    # Value type
+    sh:ClassConstraintComponent , sh:DatatypeConstraintComponent ,
+    sh:NodeKindConstraintComponent ,
+    # Cardinality
+    sh:MinCountConstraintComponent , sh:MaxCountConstraintComponent ,
+    # Value range
+    sh:MinExclusiveConstraintComponent , sh:MinInclusiveConstraintComponent ,
+    sh:MaxExclusiveConstraintComponent , sh:MaxInclusiveConstraintComponent ,
+    # String-based
+    sh:MinLengthConstraintComponent , sh:MaxLengthConstraintComponent ,
+    sh:PatternConstraintComponent , sh:SingleLineConstraintComponent ,
+    sh:LanguageInConstraintComponent , sh:UniqueLangConstraintComponent ,
+    # Lists
+    sh:MemberShapeConstraintComponent , sh:MinListLengthConstraintComponent ,
+    sh:MaxListLengthConstraintComponent , sh:UniqueMembersConstraintComponent ,
+    # Property pairs
+    sh:EqualsConstraintComponent , sh:DisjointConstraintComponent ,
+    sh:LessThanConstraintComponent , sh:LessThanOrEqualsConstraintComponent ,
+    sh:SubsetOfConstraintComponent ,
+    # Logical. `sh:if` is the fork's: the 1.2 vocabulary names no component for it.
+    sh:NotConstraintComponent , sh:AndConstraintComponent , sh:OrConstraintComponent ,
+    sh:XoneConstraintComponent , sh:IfConstraintComponent ,
+    # Shape-based
+    sh:NodeConstraintComponent , sh:NodeByExpressionConstraintComponent ,
+    sh:SomeValueConstraintComponent , sh:QualifiedMinCountConstraintComponent ,
+    sh:QualifiedMaxCountConstraintComponent , sh:ReifierShapeConstraintComponent ,
+    # Other
+    sh:ClosedConstraintComponent , sh:HasValueConstraintComponent ,
+    sh:InConstraintComponent , sh:RootClassConstraintComponent ,
+    sh:UniqueValuesForConstraintComponent .

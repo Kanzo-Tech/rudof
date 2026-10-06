@@ -5,7 +5,7 @@
 
 use rudof_lib::form::{IriS, Object, SHACLPath, Severity, ValidationOutcome, ValidationResult};
 
-use crate::dto::{LangString, RudofReport, RudofResult, TermValue};
+use crate::dto::{LangString, RudofReport, RudofResult, RudofUnchecked, TermValue};
 use crate::object_to_value;
 use crate::shapes::path_key;
 
@@ -14,6 +14,14 @@ pub fn report_from_outcome(outcome: &ValidationOutcome) -> RudofReport {
     RudofReport {
         conforms: outcome.conforms,
         results: outcome.results.iter().map(result_to_dto).collect(),
+        unchecked: outcome
+            .unchecked
+            .iter()
+            .map(|u| RudofUnchecked {
+                shape: object_to_term(&u.shape),
+                reason: u.reason.to_string(),
+            })
+            .collect(),
     }
 }
 

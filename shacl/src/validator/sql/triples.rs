@@ -21,15 +21,25 @@
 
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
-    SelectBuilder, col, cte, cte_ref, derived, eq, item, join, parse_object_name, query, string, table, union, with,
+    SelectBuilder, and_all, col, cte, cte_ref, derived, eq, exists, item, join, number, parse_object_name, query,
+    string, table, union, with,
 };
 use crate::validator::sql::term::{IRI, TermExpr};
 use rudof_iri::IriS;
 use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
-use sqlparser::ast::{ObjectName, Query};
+use sqlparser::ast::{ObjectName, Query, SelectItem, TableFactor};
 
 /// The predicate column.
 pub(crate) const PREDICATE_COLUMN: &str = "p";
+
+/// The columns of the relation, in order.
+pub(crate) const COLUMNS: [&str; 7] = ["s_k", "s_v", "p", "o_k", "o_v", "o_d", "o_l"];
+
+/// The relation a SQL object name names (`triples`, `"job".triples`,
+/// `"My Triples"`).
+pub(crate) fn relation(name: &str) -> Result<ObjectName, SqlCompileError> {
+    parse_object_name(name).map_err(|e| SqlCompileError::Relation(format!("{name}: {e}")))
+}
 
 /// The `(s, p, o)` relation the data is read from, and the relation of the
 /// focus nodes validation is restricted to, if any.
@@ -44,10 +54,9 @@ impl Triples {
     /// `"job".triples`, `"My Triples"`), and `focus`, the name of a relation
     /// whose `s_k, s_v` are nodes, spelled as the triples' subjects.
     pub(crate) fn new(table: &str, focus: Option<&str>) -> Result<Self, SqlCompileError> {
-        let name = |n: &str| parse_object_name(n).map_err(|e| SqlCompileError::Table(format!("{n}: {e}")));
         Ok(Self {
-            table: name(table)?,
-            focus: focus.map(name).transpose()?,
+            table: relation(table)?,
+            focus: focus.map(relation).transpose()?,
         })
     }
 
@@ -85,6 +94,26 @@ impl Triples {
         items.push(item(col("t", PREDICATE_COLUMN), PREDICATE_COLUMN));
         items.extend(TermExpr::columns("t", "o").items("o"));
         SelectBuilder::new(items).from(table(&self.table, "t")).into_query()
+    }
+
+    /// The rows of the relation, in its seven columns, whose triple is one of
+    /// the triples relation `among`.
+    pub(crate) fn among(&self, among: TableFactor) -> Query {
+        let items = COLUMNS.iter().map(|c| item(col("t", c), c)).collect();
+        let same = and_all([
+            Self::subject("t").same(&TermExpr::columns("m", "f")),
+            eq(col("t", PREDICATE_COLUMN), col("m", PREDICATE_COLUMN)),
+            TermExpr::columns("t", "o").same(&TermExpr::columns("m", "v")),
+        ]);
+        SelectBuilder::new(items)
+            .from(table(&self.table, "t"))
+            .filter(exists(
+                SelectBuilder::new(vec![SelectItem::UnnamedExpr(number(1))])
+                    .from(among)
+                    .filter(same)
+                    .into_query(),
+            ))
+            .into_query()
     }
 
     /// The SHACL instances of `class` (SHACL §1.1): the subjects of

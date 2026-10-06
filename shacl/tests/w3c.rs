@@ -13,7 +13,8 @@
 //! The suites are also the corpus of a differential test: each case's shapes
 //! validate graphs drawn at random from the terms of its data, and the two
 //! interpretations must give the same report, messages included. A difference
-//! is shrunk to the smallest graph that shows it.
+//! is shrunk to the smallest graph that shows it. On the same graphs, each
+//! case's Shape Fragment must be sufficient, and the same in both.
 
 use include_dir::{Dir, include_dir};
 use oxrdf::{NamedNode, Term};
@@ -323,6 +324,10 @@ mod differential {
     /// Graphs drawn per case.
     const GRAPHS: u32 = 16;
 
+    /// Graphs drawn per case for a fragment, which validates the graph and
+    /// its fragment once per node.
+    const FRAGMENT_GRAPHS: u32 = 4;
+
     /// At most this many triples added to a draw from the case's own.
     const ADDED: usize = 6;
 
@@ -407,8 +412,13 @@ mod differential {
         Ok(results)
     }
 
-    /// The smallest graph drawn for `id` on which the interpretations differ.
-    fn agree(id: &str, data: &OxigraphInMemory, schema: &IRSchema) -> Result<(), String> {
+    /// The smallest graph drawn for `id` on which `holds` fails, if any.
+    fn drawn(
+        id: &str,
+        data: &OxigraphInMemory,
+        graphs: u32,
+        holds: impl Fn(&OxigraphInMemory) -> Result<(), String>,
+    ) -> Result<(), String> {
         let terms = Terms::of(data);
         if terms.predicates.is_empty() {
             return Ok(());
@@ -424,7 +434,7 @@ mod differential {
         let strategy = (subsequence(terms.triples.clone(), 0..=terms.triples.len()), added);
         let mut runner = TestRunner::new_with_rng(
             Config {
-                cases: GRAPHS,
+                cases: graphs,
                 failure_persistence: None,
                 ..Config::default()
             },
@@ -433,13 +443,9 @@ mod differential {
         runner
             .run(&strategy, |(kept, added)| {
                 let graph = terms.graph(&kept, &added);
-                let eval = spelled(Interpretation::Eval.validate(schema, &graph));
-                let sql = spelled(Interpretation::Sql.validate(schema, &graph));
-                if eval == sql {
-                    Ok(())
-                } else {
-                    Err(TestCaseError::fail(format!(
-                        "eval {eval:#?}\nsql {sql:#?}\ngraph\n{}",
+                holds(&graph).map_err(|why| {
+                    TestCaseError::fail(format!(
+                        "{why}\ngraph\n{}",
                         kept.iter()
                             .map(|t| format!("{t} ."))
                             .chain(added.iter().map(|&(s, p, o)| format!(
@@ -448,39 +454,114 @@ mod differential {
                             )))
                             .collect::<Vec<_>>()
                             .join("\n")
-                    )))
-                }
+                    ))
+                })
             })
             .map_err(|e| match e {
-                TestError::Fail(why, _) => format!("DIFFERS {id}\n{why}"),
+                TestError::Fail(why, _) => format!("FAILS {id}\n{why}"),
                 TestError::Abort(why) => format!("ABORTED {id}\n{why}"),
             })
     }
 
-    fn check(suite: &Suite) {
-        let mut differences = Vec::new();
+    /// The interpretations give the same report.
+    fn agree(schema: &IRSchema, graph: &OxigraphInMemory) -> Result<(), String> {
+        let eval = spelled(Interpretation::Eval.validate(schema, graph));
+        let sql = spelled(Interpretation::Sql.validate(schema, graph));
+        if eval == sql {
+            Ok(())
+        } else {
+            Err(format!("eval {eval:#?}\nsql {sql:#?}"))
+        }
+    }
+
+    /// The fragment is sufficient (Delva et al., Theorem 3.4): every node that
+    /// conforms to the shapes that target it conforms in the fragment too; and
+    /// the interpretations compute the same fragment. A shapes graph outside
+    /// the fragments profile has none to check.
+    fn fragment_holds(schema: &IRSchema, graph: &OxigraphInMemory) -> Result<(), String> {
+        let fragment = shacl::validator::fragment(schema, graph, None).map_err(|e| e.to_string())?;
+        if !fragment.unchecked.is_empty() {
+            return Ok(());
+        }
+        let text: String = fragment.triples.iter().map(|t| format!("{t} .\n")).collect();
+        let sub = OxigraphInMemory::from_str(&text, &RDFFormat::NTriples, None, &ReaderMode::Strict)
+            .map_err(|e| format!("the fragment reads back: {e}"))?;
+        let terms = Terms::of(graph);
+        for node in &terms.objects {
+            let node = Object::try_from(node.clone()).map_err(|e| e.to_string())?;
+            let report = |g: &OxigraphInMemory| {
+                shacl::validator::validate_scoped(schema, g, std::slice::from_ref(&node)).map_err(|e| e.to_string())
+            };
+            let within = report(&sub)?;
+            if report(graph)?.conforms() && !within.conforms() {
+                return Err(format!(
+                    "{node} conforms in the graph and not in its fragment\nfragment\n{text}\nreport {:#?}",
+                    within.results()
+                ));
+            }
+        }
+        let engine = shacl::validator::sql::DuckDbEngine::in_memory().map_err(|e| e.to_string())?;
+        engine.load_triples("triples", graph).map_err(|e| e.to_string())?;
+        engine.load_triples("expected", &sub).map_err(|e| e.to_string())?;
+        futures::executor::block_on(shacl::validator::sql::fragment(
+            schema, "triples", None, "fragment", &engine,
+        ))
+        .map_err(|e| e.to_string())?;
+        let differ: i64 = engine
+            .connection()
+            .query_row(
+                "SELECT count(*) FROM ((SELECT * FROM fragment EXCEPT SELECT * FROM expected) \
+                 UNION ALL (SELECT * FROM expected EXCEPT SELECT * FROM fragment))",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if differ != 0 {
+            return Err(format!(
+                "sql and eval fragments differ in {differ} triples\neval\n{text}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Every case, and the graphs drawn from it, satisfy `holds`.
+    fn check(suite: &Suite, graphs: u32, holds: fn(&IRSchema, &OxigraphInMemory) -> Result<(), String>) {
+        let mut failures = Vec::new();
         suite.each_case(|id, manifest, entry| {
             let (data, schema) = suite.inputs(manifest, entry).unwrap_or_else(|e| panic!("{id}: {e}"));
-            if let Err(why) = agree(&id, &data, &schema) {
-                differences.push(why);
+            let outcome = holds(&schema, &data)
+                .map_err(|why| format!("FAILS {id}\n{why}"))
+                .and_then(|()| drawn(&id, &data, graphs, |g| holds(&schema, g)));
+            if let Err(why) = outcome {
+                failures.push(why);
             }
         });
         assert!(
-            differences.is_empty(),
-            "{}: {} cases differ\n\n{}",
+            failures.is_empty(),
+            "{}: {} cases fail\n\n{}",
             suite.name,
-            differences.len(),
-            differences.join("\n\n")
+            failures.len(),
+            failures.join("\n\n")
         );
     }
 
     #[test]
     fn shacl_1_0_core_in_memory_is_sql() {
-        check(&SHACL_1_0);
+        check(&SHACL_1_0, GRAPHS, agree);
     }
 
     #[test]
     fn shacl_1_2_core_in_memory_is_sql() {
-        check(&SHACL_1_2);
+        check(&SHACL_1_2, GRAPHS, agree);
+    }
+
+    #[test]
+    fn shacl_1_0_core_fragments_are_sufficient() {
+        check(&SHACL_1_0, FRAGMENT_GRAPHS, fragment_holds);
+    }
+
+    #[test]
+    fn shacl_1_2_core_fragments_are_sufficient() {
+        check(&SHACL_1_2, FRAGMENT_GRAPHS, fragment_holds);
     }
 }

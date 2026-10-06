@@ -17,6 +17,10 @@
 //!
 //! Every other shape is checked, and a report lists the unchecked ones beside
 //! its results.
+//!
+//! The shapes whose Shape Fragment the engine computes ([`fragment`](super::fragment))
+//! are stated the same way, in a second profile (`fragments.ttl`) that is a
+//! profile of the first: the SHACL Core the fragment papers define.
 
 use crate::algebra::DenoteError;
 use crate::ir::{IRComponent, IRSchema, IRShape, ShapeLabelIdx};
@@ -31,8 +35,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::sync::OnceLock;
 
-/// The profile, as written.
+/// The engine's profile, as written.
 pub const PROFILE: &str = include_str!("profile.ttl");
+
+/// The profile of the shapes the engine computes a fragment of, as written.
+pub const FRAGMENTS: &str = include_str!("fragments.ttl");
 
 /// A shape the engine does not check.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,25 +70,40 @@ impl Display for Reason {
     }
 }
 
-/// The profile's members.
+/// The members of the engine's profile.
 pub fn members() -> &'static HashSet<IriS> {
     static MEMBERS: OnceLock<HashSet<IriS>> = OnceLock::new();
-    MEMBERS.get_or_init(|| {
-        let graph = OxigraphInMemory::from_str(PROFILE, &RDFFormat::Turtle, None, &ReaderMode::Strict)
-            .expect("the profile parses");
-        graph
-            .triples_with_predicate(&RdfsVocab::rdfs_member().into())
-            .expect("the profile is read")
-            .filter_map(|t| match OxigraphInMemory::term_as_object(&t.into_components().2) {
-                Ok(Object::Iri(iri)) => Some(iri),
-                _ => None,
-            })
-            .collect()
-    })
+    MEMBERS.get_or_init(|| read(PROFILE))
 }
 
-/// The unchecked shapes of `schema`, by index.
-pub(crate) fn unchecked(schema: &IRSchema) -> Result<HashMap<ShapeLabelIdx, Unchecked>, DenoteError> {
+/// The members of the fragments profile.
+pub fn fragment_members() -> &'static HashSet<IriS> {
+    static MEMBERS: OnceLock<HashSet<IriS>> = OnceLock::new();
+    MEMBERS.get_or_init(|| read(FRAGMENTS))
+}
+
+fn read(profile: &str) -> HashSet<IriS> {
+    let graph =
+        OxigraphInMemory::from_str(profile, &RDFFormat::Turtle, None, &ReaderMode::Strict).expect("the profile parses");
+    graph
+        .triples_with_predicate(&RdfsVocab::rdfs_member().into())
+        .expect("the profile is read")
+        .filter_map(|t| match OxigraphInMemory::term_as_object(&t.into_components().2) {
+            Ok(Object::Iri(iri)) => Some(iri),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The shapes of `schema` outside the profile of `members`, by index.
+///
+/// When `whole`, a shape with an unchecked property shape is unchecked too: a
+/// fragment needs all of a shape, where validation checks the rest of it.
+pub(crate) fn unchecked(
+    schema: &IRSchema,
+    members: &HashSet<IriS>,
+    whole: bool,
+) -> Result<HashMap<ShapeLabelIdx, Unchecked>, DenoteError> {
     let mut out: HashMap<ShapeLabelIdx, Unchecked> = HashMap::new();
     let shapes: HashMap<ShapeLabelIdx, &IRShape> = schema
         .iter()
@@ -97,7 +119,7 @@ pub(crate) fn unchecked(schema: &IRSchema) -> Result<HashMap<ShapeLabelIdx, Unch
     };
 
     for (idx, shape) in &shapes {
-        if let Some(outside) = vocabulary(shape).into_iter().find(|e| !members().contains(e)) {
+        if let Some(outside) = vocabulary(shape).into_iter().find(|e| !members.contains(e)) {
             mark(&mut out, *idx, Reason::Outside(outside));
         }
     }
@@ -115,7 +137,11 @@ pub(crate) fn unchecked(schema: &IRSchema) -> Result<HashMap<ShapeLabelIdx, Unch
             if out.contains_key(idx) {
                 continue;
             }
-            if let Some(r) = references(schema, shape).into_iter().find(|r| undecided.contains(r)) {
+            let mut refs = references(schema, shape);
+            if whole {
+                refs.extend(shape.property_shapes().iter().copied());
+            }
+            if let Some(r) = refs.into_iter().find(|r| undecided.contains(r)) {
                 more.push((*idx, Reason::Depends(shapes[&r].id().clone())));
             }
         }
@@ -213,5 +239,11 @@ mod tests {
         assert!(members().len() > 40, "{} members", members().len());
         assert!(!members().contains(&ShaclVocab::sh_sparql_constraint_component()));
         assert!(members().contains(&ShaclVocab::sh_min_count_constraint_component()));
+    }
+
+    #[test]
+    fn the_fragments_profile_is_within_the_engines() {
+        assert!(fragment_members().len() > 30, "{} members", fragment_members().len());
+        assert!(fragment_members().is_subset(members()));
     }
 }

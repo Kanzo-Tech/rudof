@@ -5,6 +5,7 @@
 //! browser host implements [`SqlEngine`] over its own DuckDB.
 
 use crate::validator::sql::term::encode;
+use crate::validator::sql::triples::COLUMNS;
 use crate::validator::sql::{RESULT_COLUMNS, Row, SqlCompileError, SqlEngine};
 use duckdb::{Connection, appender_params_from_iter};
 use rudof_iri::IriS;
@@ -15,9 +16,6 @@ use rudof_rdf::term::Triple;
 pub struct DuckDbEngine {
     connection: Connection,
 }
-
-/// The columns of a triples relation, in order (see [`super::validate`]).
-const COLUMNS: [&str; 7] = ["s_k", "s_v", "p", "o_k", "o_v", "o_d", "o_l"];
 
 /// The rows of `store` in [`COLUMNS`] order.
 fn rows<S>(store: &S) -> Result<Vec<[String; 7]>, SqlCompileError>

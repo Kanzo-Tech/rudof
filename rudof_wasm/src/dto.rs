@@ -417,6 +417,13 @@ pub struct RudofReport {
     pub unchecked: Vec<RudofUnchecked>,
 }
 
+/// What `Shapes.fragment` resolves to: the shapes it wrote no fragment for,
+/// because the fragments profile leaves them out.
+#[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
+pub struct RudofFragment {
+    pub unchecked: Vec<RudofUnchecked>,
+}
+
 #[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 pub struct RudofUnchecked {
     pub shape: TermValue,

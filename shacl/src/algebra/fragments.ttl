@@ -1,0 +1,39 @@
+PREFIX prof: <http://www.w3.org/ns/dx/prof/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX sh:   <http://www.w3.org/ns/shacl#>
+
+# What `fragment` gives a Shape Fragment to (Delva, Dimou, Jakubowski and Van den
+# Bussche, "Shape Fragments"; "Data Provenance for SHACL", EDBT 2023): the SHACL
+# Core the papers define the neighbourhood of, a profile of the engine's own. A
+# shape that uses an element not listed here has no fragment, and says so.
+<https://github.com/Kanzo-Tech/rudof/blob/master/shacl/src/algebra/fragments.ttl>
+  a prof:Profile ;
+  prof:isProfileOf <https://github.com/Kanzo-Tech/rudof/blob/master/shacl/src/algebra/profile.ttl> ;
+  rdfs:label "The rudof profile of Shape Fragments"@en ;
+  rdfs:member
+    # Targets
+    sh:targetNode , sh:targetClass , sh:targetSubjectsOf , sh:targetObjectsOf ,
+    # Value type
+    sh:ClassConstraintComponent , sh:DatatypeConstraintComponent ,
+    sh:NodeKindConstraintComponent ,
+    # Cardinality
+    sh:MinCountConstraintComponent , sh:MaxCountConstraintComponent ,
+    # Value range
+    sh:MinExclusiveConstraintComponent , sh:MinInclusiveConstraintComponent ,
+    sh:MaxExclusiveConstraintComponent , sh:MaxInclusiveConstraintComponent ,
+    # String-based. `sh:singleLine` is a test of the value alone, as `sh:pattern` is.
+    sh:MinLengthConstraintComponent , sh:MaxLengthConstraintComponent ,
+    sh:PatternConstraintComponent , sh:SingleLineConstraintComponent ,
+    sh:LanguageInConstraintComponent , sh:UniqueLangConstraintComponent ,
+    # Property pairs
+    sh:EqualsConstraintComponent , sh:DisjointConstraintComponent ,
+    sh:LessThanConstraintComponent , sh:LessThanOrEqualsConstraintComponent ,
+    # Logical
+    sh:NotConstraintComponent , sh:AndConstraintComponent , sh:OrConstraintComponent ,
+    sh:XoneConstraintComponent ,
+    # Shape-based
+    sh:NodeConstraintComponent , sh:QualifiedMinCountConstraintComponent ,
+    sh:QualifiedMaxCountConstraintComponent ,
+    # Other
+    sh:ClosedConstraintComponent , sh:HasValueConstraintComponent ,
+    sh:InConstraintComponent .

@@ -3,7 +3,7 @@
 //! `rudof_lib::form::FormEngine`; here we only map rudof's `ValidationResult`
 //! into the vocabulary-agnostic report the JS side consumes.
 
-use rudof_lib::form::{IriS, Object, SHACLPath, Severity, ValidationOutcome, ValidationResult};
+use rudof_lib::form::{IriS, Object, SHACLPath, Severity, Unchecked, ValidationOutcome, ValidationResult};
 
 use crate::dto::{LangString, RudofReport, RudofResult, RudofUnchecked, TermValue};
 use crate::object_to_value;
@@ -14,15 +14,19 @@ pub fn report_from_outcome(outcome: &ValidationOutcome) -> RudofReport {
     RudofReport {
         conforms: outcome.conforms,
         results: outcome.results.iter().map(result_to_dto).collect(),
-        unchecked: outcome
-            .unchecked
-            .iter()
-            .map(|u| RudofUnchecked {
-                shape: object_to_term(&u.shape),
-                reason: u.reason.to_string(),
-            })
-            .collect(),
+        unchecked: unchecked_to_dto(&outcome.unchecked),
     }
+}
+
+/// The shapes a validation or a fragment left out, and why.
+pub fn unchecked_to_dto(unchecked: &[Unchecked]) -> Vec<RudofUnchecked> {
+    unchecked
+        .iter()
+        .map(|u| RudofUnchecked {
+            shape: object_to_term(&u.shape),
+            reason: u.reason.to_string(),
+        })
+        .collect()
 }
 
 /// Convert a focus `TermValue` into the rudof `Object` the focus-scoped validator

@@ -33,7 +33,7 @@ use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
 use rudof_rdf::term::literal::ConcreteLiteral;
 use rudof_rdf::vocab::{RdfVocab, RdfsVocab, ShaclVocab};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Why a shapes graph has no denotation here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -61,7 +61,7 @@ impl From<SortError> for DenoteError {
 /// [`Op::Scope`], the nodes the host restricts validation to; the data the
 /// paths read stays the whole graph.
 pub fn denote(schema: &IRSchema, scoped: bool) -> Result<Plan, DenoteError> {
-    let mut d = Denoter::new(schema)?;
+    let mut d = Denoter::new(schema, profile::members(), false)?;
     if scoped {
         d.scope = Some(d.op(Op::Scope)?);
     }
@@ -86,7 +86,7 @@ pub fn denote(schema: &IRSchema, scoped: bool) -> Result<Plan, DenoteError> {
 /// otherwise for the shape's own targets. The checks a form revalidates when
 /// one node or one shape changes.
 pub fn denote_shape(schema: &IRSchema, idx: ShapeLabelIdx, focus: Option<&Object>) -> Result<Plan, DenoteError> {
-    let mut d = Denoter::new(schema)?;
+    let mut d = Denoter::new(schema, profile::members(), false)?;
     let shape = d.shape(idx)?;
     let focus = match focus {
         Some(node) => d.op(Op::Constants(vec![node.clone()]))?,
@@ -99,18 +99,18 @@ pub fn denote_shape(schema: &IRSchema, idx: ShapeLabelIdx, focus: Option<&Object
     Ok(d.finish())
 }
 
-struct Denoter<'a> {
+pub(super) struct Denoter<'a> {
     schema: &'a IRSchema,
-    b: PlanBuilder,
+    pub(super) b: PlanBuilder,
     fails: HashMap<(ShapeLabelIdx, RelId), Option<RelId>>,
-    unchecked: HashMap<ShapeLabelIdx, Unchecked>,
+    pub(super) unchecked: HashMap<ShapeLabelIdx, Unchecked>,
     /// The scope every focus relation is restricted to, if any.
-    scope: Option<RelId>,
+    pub(super) scope: Option<RelId>,
 }
 
 /// Where a path starts.
 #[derive(Debug, Clone, Copy)]
-enum Start {
+pub(super) enum Start {
     /// The nodes of a node relation.
     Nodes(RelId),
     /// Every node of the data.
@@ -119,7 +119,7 @@ enum Start {
 
 /// A path with its inverses pushed down to the predicates.
 #[derive(Debug, Clone)]
-enum Normal {
+pub(super) enum Normal {
     Predicate { iri: IriS, inverse: bool },
     Sequence(Vec<Normal>),
     Alternative(Vec<Normal>),
@@ -130,7 +130,7 @@ enum Normal {
 
 /// `^(a/b) = ^b/^a`, `^(a|b) = ^a|^b`, `^(p*) = (^p)*`, …: only a predicate is
 /// ever inverted.
-fn normalise(path: &SHACLPath, inverse: bool) -> Normal {
+pub(super) fn normalise(path: &SHACLPath, inverse: bool) -> Normal {
     match path {
         SHACLPath::Predicate { pred } => Normal::Predicate {
             iri: pred.clone(),
@@ -152,42 +152,44 @@ fn normalise(path: &SHACLPath, inverse: bool) -> Normal {
 }
 
 /// The rows of one component of a shape, before they become a [`Check`].
-struct Rows {
-    component: IriS,
-    rows: RelId,
+pub(super) struct Rows {
+    pub(super) component: IriS,
+    pub(super) rows: RelId,
     parameters: Option<Vec<(&'static str, String)>>,
 }
 
 impl<'a> Denoter<'a> {
-    fn new(schema: &'a IRSchema) -> Result<Self, DenoteError> {
+    /// A denoter that leaves the shapes outside the profile of `members`
+    /// unchecked, and, when `whole`, the shapes with an unchecked part.
+    pub(super) fn new(schema: &'a IRSchema, members: &HashSet<IriS>, whole: bool) -> Result<Self, DenoteError> {
         Ok(Self {
             schema,
             b: PlanBuilder::new(),
             fails: HashMap::new(),
-            unchecked: profile::unchecked(schema)?,
+            unchecked: profile::unchecked(schema, members, whole)?,
             scope: None,
         })
     }
 
     /// The plan, with the unchecked shapes in the order of their nodes.
-    fn finish(self) -> Plan {
+    pub(super) fn finish(self) -> Plan {
         let mut plan = self.b.finish();
         plan.unchecked = self.unchecked.into_values().collect();
         plan.unchecked.sort_by_key(|u| u.shape.to_string());
         plan
     }
 
-    fn op(&mut self, op: Op) -> Result<RelId, DenoteError> {
+    pub(super) fn op(&mut self, op: Op) -> Result<RelId, DenoteError> {
         Ok(self.b.add(op)?)
     }
 
-    fn shape(&self, idx: ShapeLabelIdx) -> Result<&'a IRShape, DenoteError> {
+    pub(super) fn shape(&self, idx: ShapeLabelIdx) -> Result<&'a IRShape, DenoteError> {
         self.schema
             .get_shape_from_idx(&idx)
             .ok_or_else(|| DenoteError::Internal(format!("shape {idx} is not in the schema")))
     }
 
-    fn union(&mut self, rels: Vec<RelId>, sort: Sort) -> Result<RelId, DenoteError> {
+    pub(super) fn union(&mut self, rels: Vec<RelId>, sort: Sort) -> Result<RelId, DenoteError> {
         match rels.len() {
             0 => self.op(Op::Empty(sort)),
             1 => Ok(rels[0]),
@@ -195,7 +197,7 @@ impl<'a> Denoter<'a> {
         }
     }
 
-    fn distinct_union(&mut self, rels: Vec<RelId>, sort: Sort) -> Result<RelId, DenoteError> {
+    pub(super) fn distinct_union(&mut self, rels: Vec<RelId>, sort: Sort) -> Result<RelId, DenoteError> {
         let u = self.union(rels, sort)?;
         self.op(Op::Distinct(u))
     }
@@ -207,7 +209,7 @@ impl<'a> Denoter<'a> {
     ///
     /// TODO: `sh:shape` in the data graph (SHACL 1.2 §3.1.3.7), whose section
     /// is still a TODO in the draft. It is left out until the section settles.
-    fn focus(&mut self, shape: &IRShape) -> Result<Option<RelId>, DenoteError> {
+    pub(super) fn focus(&mut self, shape: &IRShape) -> Result<Option<RelId>, DenoteError> {
         let mut parts = Vec::new();
         for target in shape.targets() {
             parts.push(self.target(target)?);
@@ -276,7 +278,7 @@ impl<'a> Denoter<'a> {
     }
 
     /// The `(focus, value)` pairs of `path` from `start`, distinct.
-    fn path(&mut self, path: &Normal, start: Start) -> Result<RelId, DenoteError> {
+    pub(super) fn path(&mut self, path: &Normal, start: Start) -> Result<RelId, DenoteError> {
         match path {
             Normal::Predicate { iri, inverse } => {
                 let mut edges = self.op(Op::Predicate(iri.clone()))?;
@@ -333,7 +335,7 @@ impl<'a> Denoter<'a> {
     }
 
     /// The focus → value pairs of `shape` for the distinct focus nodes `focus`.
-    fn values(&mut self, shape: &IRShape, focus: RelId) -> Result<RelId, DenoteError> {
+    pub(super) fn values(&mut self, shape: &IRShape, focus: RelId) -> Result<RelId, DenoteError> {
         match shape.path() {
             None => self.identity(Start::Nodes(focus)),
             Some(path) => self.path(&normalise(path, false), Start::Nodes(focus)),
@@ -344,7 +346,7 @@ impl<'a> Denoter<'a> {
 
     /// The rows of each component of `shape`, by the component's index; those
     /// of `sh:reifierShape`, which the shape states apart, have none.
-    fn component_rows(
+    pub(super) fn component_rows(
         &mut self,
         shape: &'a IRShape,
         focus: RelId,
@@ -376,7 +378,7 @@ impl<'a> Denoter<'a> {
 
     /// The nodes of `candidates` (distinct) that do not conform to `idx`;
     /// `None` when none can fail.
-    fn fails(&mut self, idx: ShapeLabelIdx, candidates: RelId) -> Result<Option<RelId>, DenoteError> {
+    pub(super) fn fails(&mut self, idx: ShapeLabelIdx, candidates: RelId) -> Result<Option<RelId>, DenoteError> {
         if let Some(memo) = self.fails.get(&(idx, candidates)) {
             return Ok(*memo);
         }
@@ -486,12 +488,12 @@ impl<'a> Denoter<'a> {
 
 /// The components of one shape, against its focus relation `F` (distinct) and
 /// value relation `VP` (its focus → value pairs).
-struct Components<'d, 'a> {
-    d: &'d mut Denoter<'a>,
-    shape: &'a IRShape,
-    focus: RelId,
-    values: RelId,
-    component: IriS,
+pub(super) struct Components<'d, 'a> {
+    pub(super) d: &'d mut Denoter<'a>,
+    pub(super) shape: &'a IRShape,
+    pub(super) focus: RelId,
+    pub(super) values: RelId,
+    pub(super) component: IriS,
 }
 
 /// The SHACL lists among a value set (SHACL 1.2 Core §1.4).
@@ -517,13 +519,13 @@ impl Components<'_, '_> {
     }
 
     /// The distinct value nodes.
-    fn value_set(&mut self) -> Result<RelId, DenoteError> {
+    pub(super) fn value_set(&mut self) -> Result<RelId, DenoteError> {
         let v = self.d.op(Op::Values(self.values))?;
         self.d.op(Op::Distinct(v))
     }
 
     /// The nodes of the value set that fail `shape`.
-    fn fails(&mut self, shape: ShapeLabelIdx) -> Result<Option<RelId>, DenoteError> {
+    pub(super) fn fails(&mut self, shape: ShapeLabelIdx) -> Result<Option<RelId>, DenoteError> {
         let candidates = self.value_set()?;
         self.d.fails(shape, candidates)
     }
@@ -587,7 +589,7 @@ impl Components<'_, '_> {
 
     /// The `(f, o)` pairs of the other path of a property pair component, from
     /// the focus nodes.
-    fn other(&mut self, path: &SHACLPath) -> Result<RelId, DenoteError> {
+    pub(super) fn other(&mut self, path: &SHACLPath) -> Result<RelId, DenoteError> {
         self.d.path(&normalise(path, false), Start::Nodes(self.focus))
     }
 
@@ -918,16 +920,21 @@ impl Components<'_, '_> {
         }
     }
 
-    fn qualified_value_shape(&mut self, qvs: &QualifiedValueShape) -> Result<Vec<Rows>, DenoteError> {
-        // A value counts when it conforms to the shape and, for
-        // sh:qualifiedValueShapesDisjoint, to none of the sibling shapes.
+    /// The values a qualified value shape counts: those that conform to the
+    /// shape and, for `sh:qualifiedValueShapesDisjoint`, to none of the
+    /// sibling shapes.
+    pub(super) fn counted(&mut self, qvs: &QualifiedValueShape) -> Result<Pred, DenoteError> {
         let fails = self.fails(*qvs.shape())?;
         let mut counted = vec![!Pred::member(Expr::v(), fails)];
         for sibling in qvs.siblings() {
             let sibling_fails = self.fails(*sibling)?;
             counted.push(Pred::member(Expr::v(), sibling_fails));
         }
-        let counted = Pred::and(counted);
+        Ok(Pred::and(counted))
+    }
+
+    fn qualified_value_shape(&mut self, qvs: &QualifiedValueShape) -> Result<Vec<Rows>, DenoteError> {
+        let counted = self.counted(qvs)?;
         let mut out = Vec::new();
         if let Some(min) = qvs.qualified_min_count() {
             let rows = self.count_of(self.focus, self.values, counted.clone(), CmpOp::Lt, min)?;
@@ -952,8 +959,18 @@ impl Components<'_, '_> {
     /// permitted, with the predicate as the result path and the object as the
     /// value.
     fn closed(&mut self, closed: &Closed) -> Result<Vec<Rows>, DenoteError> {
+        match self.closed_rows(closed, self.values)? {
+            Some(rows) => Ok(self.one(rows)),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// For each pair `(f, v)` of `pairs`, each triple of `v` that `closed`
+    /// does not permit, as the row `(f, o, p)`; `None` when the shape is not
+    /// closed.
+    pub(super) fn closed_rows(&mut self, closed: &Closed, pairs: RelId) -> Result<Option<RelId>, DenoteError> {
         if !closed.is_closed() {
-            return Ok(Vec::new());
+            return Ok(None);
         }
         let (mut allowed, by_type) = match closed.by_types() {
             Some(by_type) => {
@@ -966,13 +983,12 @@ impl Components<'_, '_> {
         allowed.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         allowed.dedup();
         let triples = self.d.op(Op::Triples)?;
-        let rows = self.d.op(Op::Outgoing {
-            pairs: self.values,
+        Ok(Some(self.d.op(Op::Outgoing {
+            pairs,
             triples,
             allowed,
             by_type,
-        })?;
-        Ok(self.one(rows))
+        })?))
     }
 
     /// `sh:reifierShape` and `sh:reificationRequired` (SHACL 1.2 §8.3.3): the

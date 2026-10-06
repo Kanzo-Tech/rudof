@@ -307,3 +307,61 @@ ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
     assert_eq!(in_memory_scoped.results().len(), bobs.len(), "{in_memory_scoped}");
     assert!(bobs.iter().all(|r| in_memory_scoped.results().contains(r)));
 }
+
+#[test]
+fn a_fragment_keeps_what_makes_the_conforming_nodes_conform() {
+    let data = graph(
+        r#"
+ex:alice a ex:Person ; ex:name "Alice" ; ex:age 30 ; ex:knows ex:bob .
+ex:bob a ex:Person ; ex:name "Bob" ; ex:age 17 .
+"#,
+    );
+    let schema = schema(
+        r#"
+ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
+    sh:property [ sh:path ex:knows ; sh:class ex:Person ] ;
+    sh:property [ sh:path ex:age ; sh:minInclusive 18 ] .
+"#,
+    );
+    // Alice conforms, by her type, her age, and Bob's type; Bob is under age.
+    // Names are no reason, and neither is anything of Bob's but his type.
+    let ex = |local: &str| format!("<http://example.org/{local}>");
+    let rdf_type = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
+    let mut expected = vec![
+        format!("{} {rdf_type} {}", ex("alice"), ex("Person")),
+        format!("{} {} {}", ex("alice"), ex("knows"), ex("bob")),
+        format!(
+            "{} {} \"30\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            ex("alice"),
+            ex("age")
+        ),
+        format!("{} {rdf_type} {}", ex("bob"), ex("Person")),
+    ];
+    expected.sort();
+
+    let fragment = shacl::validator::fragment(&schema, &data, None).expect("a fragment");
+    assert!(fragment.unchecked.is_empty(), "{:?}", fragment.unchecked);
+    let mut in_memory: Vec<String> = fragment.triples.iter().map(ToString::to_string).collect();
+    in_memory.sort();
+    assert_eq!(in_memory, expected);
+
+    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
+    engine.load_triples("triples", &data).expect("triples load");
+    let unchecked = block_on(shacl::validator::sql::fragment(
+        &schema, "triples", None, "fragment", &engine,
+    ))
+    .expect("a fragment");
+    assert!(unchecked.is_empty());
+    let mut statement = engine
+        .connection()
+        .prepare("SELECT s_v, p, o_v FROM fragment ORDER BY ALL")
+        .expect("the fragment is a table");
+    let rows: Vec<(String, String, String)> = statement
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .expect("rows")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    let names: Vec<&str> = rows.iter().map(|(_, p, _)| p.as_str()).collect();
+    assert_eq!(rows.len(), expected.len(), "{rows:?}");
+    assert!(!names.contains(&"http://example.org/name"), "{rows:?}");
+}

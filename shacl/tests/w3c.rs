@@ -376,9 +376,32 @@ mod differential {
         }
     }
 
-    /// A report as the sorted spellings of its results, messages included.
+    /// A report as the sorted spellings of its results, messages included in
+    /// language order (a message map is a hash map, in no order of its own).
     fn spelled(report: Result<ValidationReport, String>) -> Result<Vec<String>, String> {
-        let mut results: Vec<String> = report?.results().iter().map(|r| format!("{r:?}")).collect();
+        let mut results: Vec<String> = report?
+            .results()
+            .iter()
+            .map(|r| {
+                let mut messages: Vec<String> = r
+                    .message()
+                    .messages()
+                    .iter()
+                    .map(|(lang, text)| format!("{text:?}@{lang:?}"))
+                    .collect();
+                messages.sort();
+                format!(
+                    "{} {} {:?} {:?} {:?} {:?} {:?} {messages:?}",
+                    r.focus_node(),
+                    r.constraint_component(),
+                    r.severity(),
+                    r.path(),
+                    r.value(),
+                    r.source(),
+                    r.details(),
+                )
+            })
+            .collect();
         results.sort();
         Ok(results)
     }

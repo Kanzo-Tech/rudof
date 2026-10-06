@@ -8,9 +8,10 @@ use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
-use shacl::validator::sql::{
-    DuckDb, DuckDbExecutor, SqlCompileError, SqlPlan, Tables, compile_sql, validate_with_duckdb,
-};
+use shacl::validator::sql::{DuckDbExecutor, SqlCompileError, SqlDialect, SqlMapping, compile};
+
+mod common;
+use common::validate_with_duckdb;
 
 const PREFIXES: &str = r#"
 @prefix sh:  <http://www.w3.org/ns/shacl#> .
@@ -159,9 +160,16 @@ fn through_tables(schema: &IRSchema, db_schema: Option<&str>) -> ValidationRepor
         None => TABLES.to_owned(),
     };
     executor.connection().execute_batch(&ddl).expect("tables load");
-    let mapping = Tables::from_rml(MAPPING, db_schema, DuckDb).expect("mapping reads");
-    let plan: SqlPlan = compile_sql(schema, &mapping, &DuckDb).expect("shapes compile");
-    plan.validate(schema, &executor).expect("plan runs")
+    let mapping = rml(db_schema);
+    let plan = compile(schema, &mapping, SqlDialect::DuckDb).expect("shapes compile");
+    plan.validate(&executor).expect("plan runs")
+}
+
+fn rml(db_schema: Option<&str>) -> SqlMapping {
+    SqlMapping::Rml {
+        mapping: MAPPING.to_owned(),
+        schema: db_schema.map(str::to_owned),
+    }
 }
 
 #[test]
@@ -224,8 +232,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:property [ sh:path ex:knows ; sh:node ex:S ] .
 "#,
     );
-    let mapping = Tables::from_rml(MAPPING, None, DuckDb).expect("mapping reads");
-    let refused = compile_sql(&schema, &mapping, &DuckDb).expect_err("recursion is refused");
+    let refused = compile(&schema, &rml(None), SqlDialect::DuckDb).expect_err("recursion is refused");
     assert!(matches!(refused, SqlCompileError::RecursiveShapes(_)), "{refused}");
 }
 
@@ -237,8 +244,7 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Person ;
     sh:sparql [ sh:select "SELECT $this WHERE { $this ?p ?o }" ] .
 "#,
     );
-    let mapping = Tables::from_rml(MAPPING, None, DuckDb).expect("mapping reads");
-    let refused = compile_sql(&schema, &mapping, &DuckDb).expect_err("sh:sparql is refused");
+    let refused = compile(&schema, &rml(None), SqlDialect::DuckDb).expect_err("sh:sparql is refused");
     assert!(matches!(refused, SqlCompileError::Unsupported(_)), "{refused}");
 }
 

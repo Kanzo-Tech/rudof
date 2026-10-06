@@ -17,32 +17,29 @@
 //! | [`PredicateRel`] (edges) | `s_k, s_v, s_d, s_l, o_k, o_v, o_d, o_l` |
 //! | triples | the edge columns plus `p`, the predicate IRI |
 
-use crate::ir::IRSchema;
 use crate::validator::sql::ast::{SelectBuilder, boolean, cte, cte_ref, derived, join, query, union, with};
-use crate::validator::sql::dialect::SqlDialect;
 use crate::validator::sql::term::{EncodedTerm, IRI, TermExpr};
-use crate::validator::sql::{SqlCompileError, SqlPlan, Tables, TripleTable, compile_sql};
 use rudof_iri::IriS;
 use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
 use sqlparser::ast::Query;
 
 /// A relation of nodes, columns `n_k, n_v, n_d, n_l`.
 #[derive(Debug, Clone)]
-pub struct Relation(pub Query);
+pub(crate) struct Relation(pub(crate) Query);
 
 /// The pairs a predicate relates: subject `s_*`, object `o_*`.
 #[derive(Debug, Clone)]
-pub struct PredicateRel(pub Query);
+pub(crate) struct PredicateRel(pub(crate) Query);
 
 /// The predicate column of a triples relation.
-pub const PREDICATE_COLUMN: &str = "p";
+pub(crate) const PREDICATE_COLUMN: &str = "p";
 
 /// Where the RDF terms live in tables.
 ///
 /// A mapping may answer *bags*: the same pair or triple in several rows (one
 /// per source row, or from two rules). The compiler reads them as the sets an
 /// RDF graph is, making them distinct where multiplicity would change a result.
-pub trait RelationalMapping {
+pub(crate) trait RelationalMapping {
     /// The subject and object of every triple with `predicate`. `None` when
     /// the mapping has none.
     fn predicate(&self, predicate: &IriS) -> Option<PredicateRel>;
@@ -84,17 +81,6 @@ pub trait RelationalMapping {
             .into_query();
         Some(Relation(with(vec![cte("sub", sub)], true, instances)))
     }
-
-    /// Every subject of a triple.
-    fn subjects(&self) -> Relation {
-        let t = TermExpr::columns("t", "s");
-        Relation(
-            SelectBuilder::new(t.items("n"))
-                .distinct()
-                .from(derived(self.triples(), "t"))
-                .into_query(),
-        )
-    }
 }
 
 /// An empty triples relation with the right columns.
@@ -109,30 +95,16 @@ pub(crate) fn no_triples() -> Query {
     SelectBuilder::new(items).filter(boolean(false)).into_query()
 }
 
-/// The mapping a host names: a triple table, or tables described by RML.
+/// Where the RDF terms live: a triple table, or tables described by RML.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SqlMapping {
-    /// A [`TripleTable`] named `table`.
+    /// One `(s, p, o)` table named `table` (a SQL object name: `triples`,
+    /// `main.triples`, `"My Triples"`), every term spread over its columns
+    /// `s_k, s_v, p, o_k, o_v, o_d, o_l`.
     TripleTable { table: String },
-    /// An RML mapping (Turtle) of ordinary tables, see [`Tables::from_rml`].
+    /// An RML mapping (Turtle) of ordinary tables.
     /// `schema` (a SQL object name: `schema` or `catalog.schema`) is where the
     /// mapping's one `rml:Source` lives: its unqualified table names resolve
     /// against it.
     Rml { mapping: String, schema: Option<String> },
-}
-
-impl SqlMapping {
-    /// Compiles `schema` for this mapping in `dialect`.
-    pub fn compile<D: SqlDialect + Clone>(&self, schema: &IRSchema, dialect: &D) -> Result<SqlPlan, SqlCompileError> {
-        match self {
-            SqlMapping::TripleTable { table } => compile_sql(schema, &TripleTable::new(table)?, dialect),
-            SqlMapping::Rml {
-                mapping,
-                schema: db_schema,
-            } => {
-                let tables = Tables::from_rml(mapping, db_schema.as_deref(), dialect.clone())?;
-                compile_sql(schema, &tables, dialect)
-            },
-        }
-    }
 }

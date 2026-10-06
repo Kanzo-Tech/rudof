@@ -7,7 +7,9 @@ use wasm_bindgen::prelude::*;
 // Every rudof-native type the binding marshals against comes from the façade
 // (`rudof_lib::form`), so this crate depends on `rudof_lib` alone — it never
 // reaches into `shacl`/`rudof_rdf`/`oxrdf` directly.
-use rudof_lib::form::{BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm};
+use rudof_lib::form::{
+    BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, SqlDialect, SqlMapping, Term as OxTerm,
+};
 
 mod dto;
 mod index;
@@ -274,12 +276,15 @@ impl Session {
     /// ones, `sh:sparql`) are an error here, never skipped.
     #[wasm_bindgen(js_name = compileSql)]
     pub fn compile_sql(&mut self, rml: String, schema: Option<String>, dialect: String) -> Result<JsValue, JsError> {
+        let dialect = dialect
+            .parse::<SqlDialect>()
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let mapping = SqlMapping::Rml { mapping: rml, schema };
         let plan = self
             .engine
-            .compile_sql(&rml, schema.as_deref(), &dialect)
-            .map_err(|e| JsError::new(&e.to_string()))?
-            .clone();
-        to_js(&sql::plan_dto(&self.engine, &plan, &dialect))
+            .compile_sql(&mapping, dialect)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&sql::plan_dto(plan, dialect))
     }
 
     /// The validation report of the rows of the last `compileSql` plan's

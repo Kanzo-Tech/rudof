@@ -20,7 +20,7 @@ use crate::validator::sql::ast::{
     SelectBuilder, and_all, case, col, compare, derived, eq, is_not_null, item, join, left_join, query, string, table,
     union_all_of,
 };
-use crate::validator::sql::dialect::SqlDialect;
+use crate::validator::sql::dialect::Dialect;
 use crate::validator::sql::mapping::{PREDICATE_COLUMN, PredicateRel, RelationalMapping, no_triples};
 use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, RDF_LANG_STRING, TermExpr};
 use rudof_iri::IriS;
@@ -109,7 +109,7 @@ pub(crate) struct Rule {
 
 /// Ordinary tables, as an RML mapping describes them; see the module docs.
 #[derive(Debug, Clone)]
-pub struct Tables<D> {
+pub(crate) struct Tables<D> {
     rules: Vec<Rule>,
     /// What an unqualified table name is qualified with.
     schema: Option<ObjectName>,
@@ -119,13 +119,14 @@ pub struct Tables<D> {
 const CHILD: &str = "t";
 const PARENT: &str = "p";
 
-impl<D: SqlDialect> Tables<D> {
+impl<D: Dialect> Tables<D> {
     pub(crate) fn new(rules: Vec<Rule>, schema: Option<ObjectName>, dialect: D) -> Self {
         Self { rules, schema, dialect }
     }
 
     /// The predicates the mapping has triples for.
-    pub fn predicates(&self) -> Vec<&str> {
+    #[cfg(test)]
+    pub(crate) fn predicates(&self) -> Vec<&str> {
         let mut out: Vec<&str> = self.rules.iter().map(|r| r.predicate.as_str()).collect();
         out.sort_unstable();
         out.dedup();
@@ -307,7 +308,7 @@ impl<D: SqlDialect> Tables<D> {
     }
 }
 
-impl<D: SqlDialect> RelationalMapping for Tables<D> {
+impl<D: Dialect> RelationalMapping for Tables<D> {
     fn predicate(&self, predicate: &IriS) -> Option<PredicateRel> {
         let bodies: Vec<_> = self
             .rules

@@ -3,8 +3,8 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 
 ## [Unreleased]
 ### Added
-- SHACL SQL engine (`shacl::validator::sql`): `compile_sql` turns a shapes graph into a SQL script over a relational mapping (a `CREATE TEMPORARY TABLE` per relation several checks read, then one query, a `UNION ALL` of a branch per check tagged by a `check` column, then the drops; `SqlExecutor` gains `execute`) (`TripleTable` for arbitrary RDF, `Tables` for ordinary tables described by an RML 2.0 mapping: RML-Core term maps and joins, RML-IO SQL tables, RML-LV logical views with inner/left joins), with DuckDB as the first dialect, behind the `sql` feature. All of SHACL Core compiles; recursive shapes and SHACL-SPARQL are refused. The W3C core suite runs through both the in-memory evaluator and the SQL engine
-- `Rudof::compile_sql`; `shacl::validator::sql::validate_with_duckdb` (feature `duckdb`, native only)
+- SHACL SQL engine (`shacl::validator::sql`): `compile(&schema, &SqlMapping, SqlDialect)` turns a shapes graph into a `SqlPlan`, a SQL script (a `CREATE TEMPORARY TABLE` per relation several checks read, then one query, a `UNION ALL` of a branch per check tagged by a `check` column, then the drops). `SqlMapping` is a triple table for arbitrary RDF, or ordinary tables described by an RML 2.0 mapping (RML-Core term maps and joins, RML-IO SQL tables, RML-LV logical views with inner/left joins); `SqlDialect` is DuckDB. A synchronous host implements `SqlExecutor` and calls `SqlPlan::validate`; one that runs the script itself hands the query's rows to `SqlPlan::report`. All of SHACL Core compiles; recursive shapes and SHACL-SPARQL are refused. The W3C core suite runs through both the in-memory evaluator and the SQL engine
+- `shacl::validator::sql::DuckDbExecutor` (feature `duckdb`, native only): an in-process DuckDB host, which loads a graph into a triple table
 - `sh:targetWhere` (SHACL 1.2), in both interpretations
 - RML reading: table names and references are read as SQL identifiers (delimited, qualified); a literal keeps its natural lexical form under an `rml:datatype` override (timestamps, binary, time, double specials); a mapping names one `rml:Source`, located by the schema the host passes
 - wasm: `Session.compileSql(rmlTurtle, schema?, dialect)` (the script as `setup`, `query` and `teardown`, plus per-check metadata) and `Session.reportFromRows(rows)`; validation results carry `sourceShape`
@@ -15,7 +15,7 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 - SQL engine: dateTimes with and without a timezone follow the XSD 1.1 partial order (determinate beyond 14 hours)
 - CI: clippy 1.99 findings; the wasm-bindgen CLI version is read from Cargo.lock
 ### Changed
-- SHACL validation is one denotation of the shapes graph into a relational algebra (`shacl::algebra`), with two interpretations: `shacl::validator::validate` evaluates it over any `NeighsRDF` (in memory or a SPARQL endpoint), and `compile_sql` renders it to SQL
+- SHACL validation is one denotation of the shapes graph into a relational algebra (`shacl::algebra`), with two interpretations: `shacl::validator::validate` evaluates it over any `NeighsRDF` (in memory or a SPARQL endpoint), and `shacl::validator::sql::compile` renders it to SQL
 ### Removed
 - The native and SPARQL SHACL engines, and with them `ShaclValidationMode` (rudof_lib, CLI `--mode` / `--shacl-mode`, MCP `mode`, Python `ShaclValidationMode`): there is one validator
 - `shacl::subset`

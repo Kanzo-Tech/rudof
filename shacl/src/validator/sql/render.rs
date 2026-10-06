@@ -27,7 +27,7 @@ use crate::validator::sql::ast::{
     function, in_list, item, join, known_true, left_join, not, not_eq, null, number, or, or_all, query, string, union,
     union_all_of, with,
 };
-use crate::validator::sql::dialect::SqlDialect;
+use crate::validator::sql::dialect::Dialect;
 use crate::validator::sql::mapping::{PREDICATE_COLUMN, RelationalMapping};
 use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, TRIPLE, TermExpr, compare_terms, well_formed_for};
 use rudof_rdf::vocab::RdfVocab;
@@ -137,7 +137,7 @@ pub(crate) struct Renderer<'a, M: ?Sized, D: ?Sized> {
 impl<'a, M, D> Renderer<'a, M, D>
 where
     M: RelationalMapping + ?Sized,
-    D: SqlDialect + ?Sized,
+    D: Dialect + ?Sized,
 {
     pub(crate) fn new(plan: &'a Plan, mapping: &'a M, dialect: &'a D) -> Self {
         Self {

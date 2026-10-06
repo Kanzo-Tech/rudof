@@ -1,6 +1,6 @@
 //! The Fossil → rudof contract, end to end: the RML mapping a Fossil corpus
 //! ships (`fixtures/fossil`, the verbatim output of
-//! `@fossil-lang/corpus@0.3.0-alpha.26`), compiled by `compile_sql` and run
+//! `@fossil-lang/corpus@0.3.0-alpha.26`), compiled by `compile` and run
 //! on DuckDB tables shaped as the corpus stores them, gives the in-memory
 //! engine's report on the same data as RDF.
 //!
@@ -16,7 +16,7 @@ use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
-use shacl::validator::sql::{DuckDb, DuckDbExecutor, SqlPlan, Tables, compile_sql};
+use shacl::validator::sql::{DuckDbExecutor, SqlDialect, SqlMapping, SqlPlan, compile};
 
 const MAPPING: &str = include_str!("fixtures/fossil/fossil-mapping.rml.ttl");
 
@@ -94,9 +94,9 @@ fn the_fossil_mapping_validates_the_corpus_tables_as_the_evaluator_validates_its
 
     let executor = DuckDbExecutor::in_memory().expect("duckdb opens");
     executor.connection().execute_batch(TABLES).expect("tables load");
-    let mapping = Tables::from_rml(MAPPING, Some(r#""Fossil Corpus""#), DuckDb).expect("the Fossil mapping reads");
-    let plan = compile_sql(&schema, &mapping, &DuckDb).expect("shapes compile");
-    let sql = plan.validate(&schema, &executor).expect("plan runs");
+    let mapping = rml(MAPPING, Some(r#""Fossil Corpus""#));
+    let plan = compile(&schema, &mapping, SqlDialect::DuckDb).expect("shapes compile");
+    let sql = plan.validate(&executor).expect("plan runs");
 
     // Bob's score (2.5 < 3) and missing birth time: the two violations, and no
     // hasValue among them — every term of alice's row came out exact.
@@ -116,7 +116,7 @@ fn the_fossil_mapping_validates_the_corpus_tables_as_the_evaluator_validates_its
 
 #[test]
 fn every_table_name_reaches_duckdb_delimited_once() {
-    let mapping = Tables::from_rml(MAPPING, Some(r#""Fossil Corpus""#), DuckDb).expect("reads");
+    let mapping = rml(MAPPING, Some(r#""Fossil Corpus""#));
     let schema = IRSchema::try_from(
         &ShaclParser::new(graph(
             "@prefix sh: <http://www.w3.org/ns/shacl#> . @prefix ex: <http://example.org/> .\n\
@@ -126,7 +126,7 @@ fn every_table_name_reaches_duckdb_delimited_once() {
         .expect("parses"),
     )
     .expect("compiles");
-    let plan = compile_sql(&schema, &mapping, &DuckDb).expect("compiles");
+    let plan = compile(&schema, &mapping, SqlDialect::DuckDb).expect("compiles");
     let sql = script(&plan);
     assert!(sql.contains(r#""Fossil Corpus"."acme.Org""#), "{sql}");
     assert!(sql.contains(r#""Fossil Corpus"."Person_worksFor_acme.Org""#), "{sql}");
@@ -136,8 +136,8 @@ fn every_table_name_reaches_duckdb_delimited_once() {
 #[test]
 fn a_row_naming_no_check_of_the_plan_is_an_error_not_a_result() {
     let schema = IRSchema::try_from(&ShaclParser::new(graph(SHAPES)).parse().expect("shapes parse")).expect("compile");
-    let mapping = Tables::from_rml(MAPPING, None, DuckDb).expect("reads");
-    let plan = compile_sql(&schema, &mapping, &DuckDb).expect("compiles");
+    let mapping = rml(MAPPING, None);
+    let plan = compile(&schema, &mapping, SqlDialect::DuckDb).expect("compiles");
     let row = |check: &str| {
         let mut row = vec![
             Some(check.to_owned()),
@@ -147,9 +147,9 @@ fn a_row_naming_no_check_of_the_plan_is_an_error_not_a_result() {
         row.extend([Some(String::new()), Some(String::new()), None, None, None, None, None]);
         row
     };
-    assert!(plan.report(&schema, &[row("0")]).is_ok());
-    assert!(plan.report(&schema, &[row(&plan.checks.len().to_string())]).is_err());
-    assert!(plan.report(&schema, &[row("one")]).is_err());
+    assert!(plan.report(&[row("0")]).is_ok());
+    assert!(plan.report(&[row(&plan.checks.len().to_string())]).is_err());
+    assert!(plan.report(&[row("one")]).is_err());
 }
 
 /// A relation several checks read is one temporary table: the focus nodes
@@ -158,8 +158,8 @@ fn a_row_naming_no_check_of_the_plan_is_an_error_not_a_result() {
 #[test]
 fn checks_share_the_relations_they_read() {
     let schema = IRSchema::try_from(&ShaclParser::new(graph(SHAPES)).parse().expect("shapes parse")).expect("compile");
-    let mapping = Tables::from_rml(MAPPING, Some(r#""Fossil Corpus""#), DuckDb).expect("reads");
-    let plan = compile_sql(&schema, &mapping, &DuckDb).expect("compiles");
+    let mapping = rml(MAPPING, Some(r#""Fossil Corpus""#));
+    let plan = compile(&schema, &mapping, SqlDialect::DuckDb).expect("compiles");
     assert!(plan.checks.len() > 1);
     let query = plan.query();
     assert_eq!(query.matches(r#" AS "check""#).count(), plan.checks.len(), "{query}");
@@ -170,6 +170,13 @@ fn checks_share_the_relations_they_read() {
         plan.setup()
     );
     assert_eq!(plan.teardown().len(), plan.setup().len());
+}
+
+fn rml(mapping: &str, schema: Option<&str>) -> SqlMapping {
+    SqlMapping::Rml {
+        mapping: mapping.to_owned(),
+        schema: schema.map(str::to_owned),
+    }
 }
 
 /// The plan's statements, in the order a host runs them.
@@ -210,10 +217,9 @@ ex:S a sh:NodeShape ; sh:targetClass ex:Thing ; sh:closed true ; sh:ignoredPrope
             r#"CREATE TABLE thing (id VARCHAR, x VARCHAR); INSERT INTO thing VALUES ('http://example.org/t', 'v');"#,
         )
         .expect("loads");
-    let tables = Tables::from_rml(mapping, None, DuckDb).expect("reads");
-    let sql = compile_sql(&schema, &tables, &DuckDb)
+    let sql = compile(&schema, &rml(mapping, None), SqlDialect::DuckDb)
         .expect("compiles")
-        .validate(&schema, &executor)
+        .validate(&executor)
         .expect("runs");
     assert_eq!(in_memory.results().len(), 1);
     assert_eq!(sql, in_memory, "{sql}\n---\n{in_memory}");

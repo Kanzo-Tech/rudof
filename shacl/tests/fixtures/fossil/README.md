@@ -13,4 +13,4 @@ The manifest exercises what a corpus can name: a delimited mixed-case table
 (`"Person"`), a table whose name contains a dot (`"acme.Org"`), an edge table
 joined to both by surrogate keys, and timestamp, date, time, binary, double
 and list columns. `tests/fossil_contract.rs` runs the mapping through
-`compile_sql` on DuckDB tables shaped as the corpus stores them.
+`compile` on DuckDB tables shaped as the corpus stores them.

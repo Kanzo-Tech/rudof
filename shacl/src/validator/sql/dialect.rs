@@ -3,8 +3,8 @@
 //! The compiler builds standard SQL and asks the dialect only for what has no
 //! standard spelling: regular expressions, the names of the types a lexical
 //! form is cast to, and whether `WITH RECURSIVE` is available. DuckDB is the
-//! first dialect; another engine is one more impl of [`SqlDialect`], and the
-//! compiler does not change.
+//! first dialect; another engine is one more impl of [`Dialect`] and a variant
+//! of [`SqlDialect`], and the compiler does not change.
 
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{case, cast, eq, function, in_list, string};
@@ -13,7 +13,7 @@ use sqlparser::ast::{CastKind, DataType, Expr, Ident, ObjectName, Statement};
 /// A type a lexical form is cast to, to compare it by value or to check that it
 /// lies in a datatype's value space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CastTarget {
+pub(crate) enum CastTarget {
     Int8,
     Int16,
     Int32,
@@ -27,7 +27,7 @@ pub enum CastTarget {
 }
 
 /// The engine-specific parts of the SQL the compiler emits.
-pub trait SqlDialect {
+pub(crate) trait Dialect {
     /// A short name, e.g. `duckdb`.
     fn name(&self) -> &'static str;
 
@@ -76,43 +76,30 @@ pub trait SqlDialect {
     }
 }
 
-/// The dialects a host can name, and the one place a name becomes a dialect:
-/// adding a dialect is an impl of [`SqlDialect`] plus a variant here, and no
-/// caller (facade, CLI, wasm binding) changes.
+/// The engines the SQL is written for. Adding one is a variant here, an impl
+/// of the internal dialect trait and an arm of [`compile`](super::compile);
+/// no caller (facade, CLI, wasm binding) changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SqlDialectName {
-    /// [`DuckDb`], the default.
+pub enum SqlDialect {
+    /// DuckDB, the default.
     #[default]
     DuckDb,
 }
 
-impl SqlDialectName {
-    /// Compiles `schema` for `mapping` in this dialect.
-    pub fn compile(
-        self,
-        mapping: &crate::validator::sql::SqlMapping,
-        schema: &crate::ir::IRSchema,
-    ) -> Result<crate::validator::sql::SqlPlan, SqlCompileError> {
-        match self {
-            SqlDialectName::DuckDb => mapping.compile(schema, &DuckDb),
-        }
-    }
-}
-
-impl std::fmt::Display for SqlDialectName {
+impl std::fmt::Display for SqlDialect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SqlDialectName::DuckDb => write!(f, "duckdb"),
+            SqlDialect::DuckDb => write!(f, "duckdb"),
         }
     }
 }
 
-impl std::str::FromStr for SqlDialectName {
+impl std::str::FromStr for SqlDialect {
     type Err = SqlCompileError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "duckdb" => Ok(SqlDialectName::DuckDb),
+            "duckdb" => Ok(SqlDialect::DuckDb),
             other => Err(SqlCompileError::Unsupported(format!(
                 "the SQL dialect '{other}' (supported: duckdb)"
             ))),
@@ -123,7 +110,7 @@ impl std::str::FromStr for SqlDialectName {
 /// DuckDB: RE2 regular expressions through `regexp_matches`, and its own
 /// names for the unsigned integer types.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct DuckDb;
+pub(crate) struct DuckDb;
 
 /// `expr LIKE 'prefix%'`.
 fn like(expr: &Expr, prefix: &str) -> Expr {
@@ -192,7 +179,7 @@ fn regex_quote(text: &str) -> String {
     out
 }
 
-impl SqlDialect for DuckDb {
+impl Dialect for DuckDb {
     fn name(&self) -> &'static str {
         "duckdb"
     }

@@ -25,6 +25,9 @@ use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
 use std::collections::BTreeMap;
 
+#[cfg(not(target_family = "wasm"))]
+mod common;
+
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_test::wasm_bindgen_test as test;
 
@@ -78,7 +81,7 @@ impl Interpretation {
         match self {
             Interpretation::Eval => shacl::validator::validate(schema, data).map_err(|e| e.to_string()),
             #[cfg(not(target_family = "wasm"))]
-            Interpretation::Sql => shacl::validator::sql::validate_with_duckdb(data, schema),
+            Interpretation::Sql => common::validate_with_duckdb(data, schema),
         }
     }
 }

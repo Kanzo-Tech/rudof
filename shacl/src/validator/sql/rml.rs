@@ -29,7 +29,7 @@
 
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{parse_identifier, parse_object_name};
-use crate::validator::sql::dialect::SqlDialect;
+use crate::validator::sql::dialect::Dialect;
 use crate::validator::sql::tables::{ObjectRule, Rule, Source, Tables, TermRule, TermType, Value, View, ViewJoin};
 use crate::validator::sql::term::encode;
 use oxrdf::{NamedOrBlankNode, Term};
@@ -586,11 +586,11 @@ enum TermPosition {
     Object,
 }
 
-impl<D: SqlDialect> Tables<D> {
+impl<D: Dialect> Tables<D> {
     /// Reads an RML mapping (Turtle); see the [module docs](self) for the
     /// subset read. Unqualified table names are qualified with `schema` when
     /// one is given (`schema.table`).
-    pub fn from_rml(turtle: &str, schema: Option<&str>, dialect: D) -> Result<Self, SqlCompileError> {
+    pub(crate) fn from_rml(turtle: &str, schema: Option<&str>, dialect: D) -> Result<Self, SqlCompileError> {
         let doc = Doc::parse(turtle)?;
         let reader = Reader {
             doc: &doc,

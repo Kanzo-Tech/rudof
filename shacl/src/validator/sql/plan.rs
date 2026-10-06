@@ -49,16 +49,23 @@ pub enum SqlRunError<E: Display> {
     Row(#[from] SqlRowError),
 }
 
-/// What [`compile_sql`](crate::validator::sql::compile_sql) produces: a
-/// script whose query's rows are the results, and the checks they belong to
-/// (a shape's constraint component in one context), by index. The script is
-/// [`setup`](Self::setup), a `CREATE TEMPORARY TABLE` per relation the checks
-/// share, inputs first; then [`query`](Self::query); then
-/// [`teardown`](Self::teardown), which drops those tables.
+/// What [`compile`](crate::validator::sql::compile) produces: a script whose
+/// query's rows are the results, the checks they belong to (a shape's
+/// constraint component in one context), by index, and the shapes graph they
+/// were compiled from. The script is [`setup`](Self::setup), a
+/// `CREATE TEMPORARY TABLE` per relation the checks share, inputs first; then
+/// [`query`](Self::query); then [`teardown`](Self::teardown), which drops
+/// those tables.
+///
+/// A host that runs statements synchronously implements [`SqlExecutor`] and
+/// calls [`validate`](Self::validate); one that cannot (an asynchronous
+/// engine across the wasm ABI) runs the three parts itself and hands the
+/// query's rows to [`report`](Self::report).
 #[derive(Debug, Clone)]
 pub struct SqlPlan {
     /// What every row of a check reports: shape, component, severity, path.
     pub checks: Vec<Check>,
+    pub(crate) schema: IRSchema,
     pub(crate) setup: Vec<String>,
     pub(crate) query: String,
     pub(crate) teardown: Vec<String>,
@@ -99,28 +106,17 @@ impl SqlPlan {
         &self.teardown
     }
 
-    /// Runs the script through `executor`: the setup, the query, and the
-    /// teardown, which runs too when the setup or the query fails. The first
-    /// failure is the one returned.
-    pub fn execute<X: SqlExecutor>(&self, executor: &X) -> Result<Vec<Row>, SqlRunError<X::Error>> {
-        let rows = self
-            .setup
-            .iter()
-            .try_for_each(|statement| executor.execute(statement))
-            .and_then(|()| executor.rows(&self.query));
-        let dropped = self
-            .teardown
-            .iter()
-            .try_for_each(|statement| executor.execute(statement));
-        let rows = rows.map_err(SqlRunError::Executor)?;
-        dropped.map_err(SqlRunError::Executor)?;
-        Ok(rows)
+    /// The shapes graph the plan was compiled from: what a check's
+    /// [`shape`](Check::shape) indexes.
+    pub fn schema(&self) -> &IRSchema {
+        &self.schema
     }
 
     /// The validation report of the query's rows, each built by
     /// [`ValidationResult::of`] for the check it names, as the in-memory
     /// evaluator builds its own, so both reports read alike.
-    pub fn report(&self, schema: &IRSchema, rows: &[Row]) -> Result<ValidationReport, SqlRowError> {
+    pub fn report(&self, rows: &[Row]) -> Result<ValidationReport, SqlRowError> {
+        let schema = &self.schema;
         let mut results = Vec::with_capacity(rows.len());
         for (r, row) in rows.iter().enumerate() {
             let err = |message: String| SqlRowError { row: r, message };
@@ -143,13 +139,21 @@ impl SqlPlan {
             .with_prefixmap(schema.prefix_map().clone()))
     }
 
-    /// Runs the plan and builds its report.
-    pub fn validate<X: SqlExecutor>(
-        &self,
-        schema: &IRSchema,
-        executor: &X,
-    ) -> Result<ValidationReport, SqlRunError<X::Error>> {
-        let rows = self.execute(executor)?;
-        Ok(self.report(schema, &rows)?)
+    /// Runs the script through `executor` and builds the report of its rows.
+    /// The teardown runs too when the setup or the query fails; the first
+    /// failure is the one returned.
+    pub fn validate<X: SqlExecutor>(&self, executor: &X) -> Result<ValidationReport, SqlRunError<X::Error>> {
+        let rows = self
+            .setup
+            .iter()
+            .try_for_each(|statement| executor.execute(statement))
+            .and_then(|()| executor.rows(&self.query));
+        let dropped = self
+            .teardown
+            .iter()
+            .try_for_each(|statement| executor.execute(statement));
+        let rows = rows.map_err(SqlRunError::Executor)?;
+        dropped.map_err(SqlRunError::Executor)?;
+        Ok(self.report(&rows)?)
     }
 }

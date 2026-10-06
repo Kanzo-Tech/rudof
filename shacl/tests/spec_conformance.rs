@@ -9,7 +9,9 @@ use rudof_rdf::{NeighsRDF, RDFFormat};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
-use shacl::validator::sql::validate_with_duckdb;
+
+mod common;
+use common::validate_with_duckdb;
 
 const PREFIXES: &str = r#"
 @prefix sh:  <http://www.w3.org/ns/shacl#> .

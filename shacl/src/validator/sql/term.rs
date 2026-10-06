@@ -16,27 +16,27 @@ use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
     and, and_all, boolean, case, col, compare, eq, function, in_list, item, not_eq, null, number, string,
 };
-use crate::validator::sql::dialect::{CastTarget, SqlDialect};
+use crate::validator::sql::dialect::{CastTarget, Dialect};
 use oxrdf::{BaseDirection, BlankNode, Literal, NamedNode, Term};
 use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 use sqlparser::ast::{BinaryOperator, Expr, SelectItem};
 use std::str::FromStr;
 
-pub const IRI: &str = "I";
-pub const BLANK: &str = "B";
-pub const LITERAL: &str = "L";
-pub const TRIPLE: &str = "T";
+pub(crate) const IRI: &str = "I";
+pub(crate) const BLANK: &str = "B";
+pub(crate) const LITERAL: &str = "L";
+pub(crate) const TRIPLE: &str = "T";
 
 const XSD: &str = "http://www.w3.org/2001/XMLSchema#";
-pub const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
-pub const RDF_LANG_STRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
+pub(crate) const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
+pub(crate) const RDF_LANG_STRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
 
 /// The text of a term, as the engine stores it: `[kind, lexical, datatype, language]`.
-pub type EncodedTerm = [String; 4];
+pub(crate) type EncodedTerm = [String; 4];
 
 /// Encodes an RDF term into the four columns.
-pub fn encode(term: &Term) -> Result<EncodedTerm, SqlCompileError> {
+pub(crate) fn encode(term: &Term) -> Result<EncodedTerm, SqlCompileError> {
     Ok(match term {
         Term::NamedNode(n) => [IRI.to_owned(), n.as_str().to_owned(), String::new(), String::new()],
         Term::BlankNode(b) => [BLANK.to_owned(), b.as_str().to_owned(), String::new(), String::new()],
@@ -54,13 +54,13 @@ pub fn encode(term: &Term) -> Result<EncodedTerm, SqlCompileError> {
 }
 
 /// Encodes a shapes-graph value (`sh:hasValue`, `sh:in`, a bound...).
-pub fn encode_object(object: &Object) -> Result<EncodedTerm, SqlCompileError> {
+pub(crate) fn encode_object(object: &Object) -> Result<EncodedTerm, SqlCompileError> {
     encode(&Term::from(object.clone()))
 }
 
 /// Decodes the four columns back into the term the in-memory evaluator
 /// holds for it (through the same `oxrdf::Term → Object` conversion).
-pub fn decode(kind: &str, lexical: &str, datatype: &str, lang: &str) -> Result<Object, String> {
+pub(crate) fn decode(kind: &str, lexical: &str, datatype: &str, lang: &str) -> Result<Object, String> {
     let term: Term = match kind {
         IRI => NamedNode::new_unchecked(lexical).into(),
         BLANK => BlankNode::new_unchecked(lexical).into(),
@@ -93,7 +93,7 @@ fn concat(parts: Vec<Expr>) -> Expr {
 
 /// A term as four SQL expressions.
 #[derive(Debug, Clone)]
-pub struct TermExpr {
+pub(crate) struct TermExpr {
     pub kind: Expr,
     pub lex: Expr,
     pub datatype: Expr,
@@ -102,7 +102,7 @@ pub struct TermExpr {
 
 impl TermExpr {
     /// The term held in `alias.{prefix}_k`, … columns.
-    pub fn columns(alias: &str, prefix: &str) -> Self {
+    pub(crate) fn columns(alias: &str, prefix: &str) -> Self {
         let c = |s: &str| col(alias, &format!("{prefix}_{s}"));
         Self {
             kind: c("k"),
@@ -112,7 +112,7 @@ impl TermExpr {
         }
     }
 
-    pub fn constant(encoded: &EncodedTerm) -> Self {
+    pub(crate) fn constant(encoded: &EncodedTerm) -> Self {
         Self {
             kind: string(&encoded[0]),
             lex: string(&encoded[1]),
@@ -121,14 +121,14 @@ impl TermExpr {
         }
     }
 
-    pub fn object(object: &Object) -> Result<Self, SqlCompileError> {
+    pub(crate) fn object(object: &Object) -> Result<Self, SqlCompileError> {
         Ok(Self::constant(&encode_object(object)?))
     }
 
     /// The triple term `<<( s p o )>>`: its lexical form is the N-Triples
     /// spelling oxrdf prints, so a triple term built here is the same term as
     /// one the data holds.
-    pub fn triple(s: &TermExpr, p: &IriS, o: &TermExpr) -> Self {
+    pub(crate) fn triple(s: &TermExpr, p: &IriS, o: &TermExpr) -> Self {
         Self {
             kind: string(TRIPLE),
             lex: concat(vec![
@@ -182,7 +182,7 @@ impl TermExpr {
     }
 
     /// `NULL` in every column: the value of a result that has none.
-    pub fn null() -> Self {
+    pub(crate) fn null() -> Self {
         Self {
             kind: null(),
             lex: null(),
@@ -192,7 +192,7 @@ impl TermExpr {
     }
 
     /// Projects the term as `{prefix}_k`, … .
-    pub fn items(&self, prefix: &str) -> Vec<SelectItem> {
+    pub(crate) fn items(&self, prefix: &str) -> Vec<SelectItem> {
         vec![
             item(self.kind.clone(), &format!("{prefix}_k")),
             item(self.lex.clone(), &format!("{prefix}_v")),
@@ -202,7 +202,7 @@ impl TermExpr {
     }
 
     /// RDF term equality.
-    pub fn same(&self, other: &TermExpr) -> Expr {
+    pub(crate) fn same(&self, other: &TermExpr) -> Expr {
         and_all([
             eq(self.kind.clone(), other.kind.clone()),
             eq(self.lex.clone(), other.lex.clone()),
@@ -211,11 +211,11 @@ impl TermExpr {
         ])
     }
 
-    pub fn is_kind(&self, kind: &str) -> Expr {
+    pub(crate) fn is_kind(&self, kind: &str) -> Expr {
         eq(self.kind.clone(), string(kind))
     }
 
-    pub fn is_not_kind(&self, kind: &str) -> Expr {
+    pub(crate) fn is_not_kind(&self, kind: &str) -> Expr {
         not_eq(self.kind.clone(), string(kind))
     }
 }
@@ -278,7 +278,7 @@ fn is_numeric(lexical: Lexical) -> bool {
 }
 
 /// The well-formedness of `lex` under one lexical space.
-fn lexical_check<D: SqlDialect + ?Sized>(dialect: &D, lex: &Expr, lexical: Lexical) -> Result<Expr, SqlCompileError> {
+fn lexical_check<D: Dialect + ?Sized>(dialect: &D, lex: &Expr, lexical: Lexical) -> Result<Expr, SqlCompileError> {
     let matches = |pattern: &str| dialect.regex_match(lex.clone(), pattern, None);
     Ok(match lexical {
         Lexical::Integer(None) => matches(INTEGER_PATTERN)?,
@@ -297,7 +297,7 @@ fn lexical_check<D: SqlDialect + ?Sized>(dialect: &D, lex: &Expr, lexical: Lexic
 /// Whether the literal `t` is well-formed for its own datatype, considering
 /// only the datatypes in `only` (all checked ones when `None`). A literal of an
 /// unchecked datatype is well-formed.
-fn well_formed_among<D: SqlDialect + ?Sized>(
+fn well_formed_among<D: Dialect + ?Sized>(
     dialect: &D,
     t: &TermExpr,
     keep: impl Fn(Lexical) -> bool,
@@ -317,7 +317,7 @@ fn well_formed_among<D: SqlDialect + ?Sized>(
 
 /// A literal well-formed for its datatype, restricted to `datatypes`: the
 /// check `sh:datatype` makes once it knows the datatype is one of them.
-pub fn well_formed_for<D: SqlDialect + ?Sized>(
+pub(crate) fn well_formed_for<D: Dialect + ?Sized>(
     dialect: &D,
     t: &TermExpr,
     datatypes: &[String],
@@ -347,7 +347,7 @@ fn checked_datatypes() -> Vec<Expr> {
     CHECKED.iter().map(|(local, _)| string(&xsd(local))).collect()
 }
 
-fn is_numeric_literal<D: SqlDialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Expr, SqlCompileError> {
+fn is_numeric_literal<D: Dialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Expr, SqlCompileError> {
     Ok(and(
         in_list(t.datatype.clone(), numeric_datatypes()),
         well_formed_among(dialect, t, is_numeric, false)?,
@@ -358,7 +358,7 @@ fn is_string_literal(t: &TermExpr) -> Expr {
     in_list(t.datatype.clone(), vec![string(XSD_STRING), string(RDF_LANG_STRING)])
 }
 
-fn has_datatype<D: SqlDialect + ?Sized>(
+fn has_datatype<D: Dialect + ?Sized>(
     dialect: &D,
     t: &TermExpr,
     local: &str,
@@ -370,12 +370,12 @@ fn has_datatype<D: SqlDialect + ?Sized>(
     ))
 }
 
-fn has_timezone<D: SqlDialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Expr, SqlCompileError> {
+fn has_timezone<D: Dialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Expr, SqlCompileError> {
     dialect.regex_match(t.lex.clone(), r"(Z|[+-][0-9]{2}:[0-9]{2})$", None)
 }
 
 /// A dateTime's instant, an untimezoned one read as UTC.
-fn utc_instant<D: SqlDialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Expr, SqlCompileError> {
+fn utc_instant<D: Dialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Expr, SqlCompileError> {
     let lexical = case(
         vec![(has_timezone(dialect, t)?, t.lex.clone())],
         compare(t.lex.clone(), BinaryOperator::StringConcat, string("Z")),
@@ -389,7 +389,7 @@ const TIMEZONE_SPAN_MS: i64 = 14 * 3600 * 1000;
 
 /// `a op b` for one timezoned and one untimezoned dateTime: `TRUE` or
 /// `FALSE` when determinate, `NULL` (incomparable) otherwise.
-fn mixed_timezone_order<D: SqlDialect + ?Sized>(
+fn mixed_timezone_order<D: Dialect + ?Sized>(
     dialect: &D,
     a: &TermExpr,
     a_utc: &Expr,
@@ -444,7 +444,7 @@ fn boolean_value(t: &TermExpr) -> Expr {
 ///   `xsd:boolean`; two literals of one other datatype compare lexically; any
 ///   ill-formed literal of a checked datatype, and every other pair, is
 ///   incomparable.
-pub fn compare_terms<D: SqlDialect + ?Sized>(
+pub(crate) fn compare_terms<D: Dialect + ?Sized>(
     dialect: &D,
     a: &TermExpr,
     op: BinaryOperator,

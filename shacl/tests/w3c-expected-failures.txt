@@ -1,0 +1,38 @@
+# W3C SHACL cases rudof does not pass yet, by id (`<suite>/<path>`), optionally
+# followed by the one interpretation (`eval`, `sql`) they fail in. The list only
+# shrinks: tests/w3c.rs goes red when a listed case passes.
+
+# SHACL 1.2 Core, being closed in rudof#14 (Kanzo-Tech/rudof#13, block D1).
+shacl12/misc/deactivated-003
+shacl12/misc/message-002 sql
+shacl12/misc/severity-003
+shacl12/node/closed-003
+shacl12/node/closed-004
+shacl12/node/maxListLength-001
+shacl12/node/memberShape-001
+shacl12/node/minListLength-001
+shacl12/node/nodeByExpression-001
+shacl12/node/nodeKind-002
+shacl12/node/rootClass-001
+shacl12/node/uniqueMembers-001
+shacl12/node/uniqueValuesFor-001
+shacl12/node/uniqueValuesFor-002
+shacl12/node/uniqueValuesFor-003
+shacl12/property/class-002
+shacl12/property/disjoint-002
+shacl12/property/equals-002
+shacl12/property/lessThan-003
+shacl12/property/lessThanOrEquals-002
+shacl12/property/maxListLength-001
+shacl12/property/memberShape-001
+shacl12/property/minListLength-001
+shacl12/property/reifierShape-001
+shacl12/property/reifierShape-002
+shacl12/property/singleLine-001
+shacl12/property/someValue-001
+shacl12/property/subsetOf-001
+shacl12/property/subsetOf-002
+shacl12/property/uniqueLang-003
+shacl12/property/uniqueMembers-001
+shacl12/targets/shape-001
+shacl12/targets/targetClassImplicit-002

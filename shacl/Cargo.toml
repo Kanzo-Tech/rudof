@@ -35,10 +35,18 @@ tracing.workspace = true
 duckdb = { workspace = true, optional = true }
 
 [dev-dependencies]
-# The W3C suite runs every fixture through the SQL engine as well, on DuckDB.
+# The SQL interpretation runs on DuckDB in the tests, natively.
 shacl = { path = ".", features = ["duckdb"] }
 oxrdf = { workspace = true, features = [ "oxsdatatypes" ] }
 serde_json.workspace = true
+# The W3C suites are embedded in the test binary, so they run on wasm32 too.
+include_dir.workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 # The endpoint example reads Wikidata through `OxigraphEndpoint`.
 anyhow.workspace = true
 rudof_rdf = { workspace = true, features = ["sparql"] }
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+# Pinned with rudof_wasm's, to the release paired with `wasm-bindgen = "=0.2.120"`.
+wasm-bindgen-test = "=0.3.70"

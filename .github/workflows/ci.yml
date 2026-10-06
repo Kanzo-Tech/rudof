@@ -78,6 +78,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # tests/w3c.rs embeds the W3C suites from the submodule.
+          submodules: recursive
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -127,3 +130,7 @@ jobs:
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
         run: cargo test -p rudof_wasm --target wasm32-unknown-unknown --lib --tests
+      - name: Run the W3C SHACL suites on wasm32
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+        run: cargo test -p shacl --target wasm32-unknown-unknown --test w3c

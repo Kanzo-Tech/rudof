@@ -1,24 +1,21 @@
 //! The SQL interpretation of the [algebra](crate::algebra): the plan of a
 //! shapes graph rendered as a script, a temporary table per relation the
 //! checks share and then one query, a `UNION ALL` of a `SELECT` per shape,
-//! constraint component and context, that a host runs on its own engine over
-//! its own tables. The in-memory evaluator ([`crate::validator::eval`]) reads
-//! the same plan, and the W3C suite holds the two reports equal.
+//! constraint component and context, run on the host's engine over one
+//! `(s, p, o)` relation. The in-memory evaluator ([`crate::validator::eval`])
+//! reads the same plan, and the W3C suite holds the two reports equal.
 //!
 //! ```text
-//! compile(&IRSchema, &SqlMapping, SqlDialect) -> SqlPlan
-//! SqlPlan::validate(&impl SqlExecutor) -> ValidationReport   (a synchronous host)
-//! SqlPlan::report(rows) -> ValidationReport                  (a host that runs the script itself)
+//! validate(&IRSchema, triples: &str, &impl SqlEngine).await -> ValidationReport
 //! ```
 //!
-//! - [`SqlMapping`] says where the RDF terms live: one `(s, p, o)` table for
-//!   arbitrary RDF, or ordinary tables described by an R2RML mapping.
-//! - [`SqlDialect`] names the engine the SQL is written for.
-//! - The plan is text: the compiler builds `sqlparser` ASTs and renders them
-//!   for the dialect, so a host needs no SQL AST.
-//! - [`SqlExecutor`] is implemented by the host: rudof links no engine. A
-//!   DuckDB one, [`DuckDbExecutor`], exists behind the native-only `duckdb`
-//!   feature.
+//! - `triples` names the relation the data is read from, columns
+//!   `s_k, s_v, p, o_k, o_v, o_d, o_l` ([`triples`](self) has them). A table
+//!   or a view: what tables lie under it is the host's, so the engine knows no
+//!   mapping language and no product vocabulary.
+//! - [`SqlEngine`] is implemented by the host: rudof links no engine. A
+//!   DuckDB one, [`DuckDbEngine`], exists behind the native-only `duckdb`
+//!   feature, for the tests.
 //!
 //! Everything SHACL Core defines compiles (`coverage.rs` holds the list
 //! against the Recommendation), and `sh:targetWhere`.
@@ -33,32 +30,25 @@ mod coverage;
 mod dialect;
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
 mod duckdb_host;
-mod mapping;
 mod plan;
-mod r2rml;
-#[cfg(all(test, feature = "duckdb", not(target_family = "wasm")))]
-mod r2rml_suite;
 mod render;
-mod tables;
 mod term;
-mod triple_table;
+mod triples;
 
-pub use dialect::SqlDialect;
 #[cfg(all(feature = "duckdb", not(target_family = "wasm")))]
-pub use duckdb_host::{DuckDbExecutor, DuckDbLoadError};
-pub use mapping::SqlMapping;
-pub use plan::{Row, SqlExecutor, SqlPlan, SqlRowError, SqlRunError};
+pub use duckdb_host::{DuckDbEngine, DuckDbLoadError};
+pub use plan::{Row, SqlEngine, SqlError};
 pub use render::RESULT_COLUMNS;
 
 use crate::algebra::{DenoteError, denote};
 use crate::ir::IRSchema;
+use crate::validator::report::ValidationReport;
 use dialect::{Dialect, DuckDb};
-use mapping::RelationalMapping;
+use plan::SqlPlan;
 use render::Renderer;
 use sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;
 use sqlparser::ast::{Ident, ObjectName, ObjectType, Statement};
-use tables::Tables;
-use triple_table::TripleTable;
+use triples::Triples;
 
 /// Why a shapes graph does not compile to SQL.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -71,11 +61,9 @@ pub enum SqlCompileError {
     RecursiveShapes(String),
     #[error("malformed target: {0}")]
     MalformedTarget(String),
-    #[error("invalid relational mapping: {0}")]
-    Mapping(String),
-    /// An R2RML feature the engine refuses, named first.
-    #[error("the SQL engine does not read the R2RML term {0}")]
-    UnsupportedR2rml(String),
+    /// The triples relation's name is not a SQL object name.
+    #[error("the triples relation {0}")]
+    Table(String),
     #[error("invalid data: {0}")]
     Data(String),
     #[error("internal error of the SQL compiler: {0}")]
@@ -93,37 +81,25 @@ impl From<DenoteError> for SqlCompileError {
     }
 }
 
-/// Compiles `schema` into the SQL script that finds its validation results
-/// in the tables `mapping` describes, written for `dialect`.
+/// Validates the data in the relation `triples` against `schema` on
+/// `engine`: the script of the plan, run on one connection, and the report of
+/// its rows, worded as the in-memory evaluator words its own.
 ///
 /// A shape with targets yields the checks of its components and of its
 /// property shapes; a shape without targets is reached only through another
 /// (as a property shape, or by `sh:node`, `sh:and`, …). Deactivated shapes
 /// yield nothing and conform everywhere.
-pub fn compile(schema: &IRSchema, mapping: &SqlMapping, dialect: SqlDialect) -> Result<SqlPlan, SqlCompileError> {
-    match dialect {
-        SqlDialect::DuckDb => match mapping {
-            SqlMapping::TripleTable { table } => script(schema, &TripleTable::new(table)?, &DuckDb),
-            SqlMapping::R2rml {
-                mapping,
-                schema: db_schema,
-                base_iri,
-            } => script(
-                schema,
-                &Tables::from_r2rml(mapping, db_schema.as_deref(), base_iri.as_deref(), DuckDb)?,
-                &DuckDb,
-            ),
-        },
-    }
+pub async fn validate<E: SqlEngine>(
+    schema: &IRSchema,
+    triples: &str,
+    engine: &E,
+) -> Result<ValidationReport, SqlError<E::Error>> {
+    compile(schema, &Triples::new(triples)?, &DuckDb)?.run(engine).await
 }
 
-fn script<M, D>(schema: &IRSchema, mapping: &M, dialect: &D) -> Result<SqlPlan, SqlCompileError>
-where
-    M: RelationalMapping,
-    D: Dialect,
-{
+fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Result<SqlPlan, SqlCompileError> {
     let plan = denote(schema)?;
-    let (tables, query) = Renderer::new(&plan, mapping, dialect).script(&plan.checks)?;
+    let (tables, query) = Renderer::new(&plan, triples, dialect).script(&plan.checks)?;
     let table = |name: &str| ObjectName::from(vec![Ident::with_quote('"', name)]);
     Ok(SqlPlan {
         setup: tables

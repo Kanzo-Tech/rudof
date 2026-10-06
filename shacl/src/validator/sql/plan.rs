@@ -1,70 +1,56 @@
-//! The compiled plan, the host's executor, and the report built from rows.
+//! The compiled script, the host's engine, and the report built from rows.
 
 use crate::algebra::Check;
 use crate::ir::IRSchema;
 use crate::validator::report::{ValidationReport, ValidationResult};
+use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::render::RESULT_COLUMNS;
 use crate::validator::sql::term::decode;
 use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 use std::fmt::Display;
 
-/// One row of the plan's query, in [`RESULT_COLUMNS`] order: the index of
+/// One row of the script's query, in [`RESULT_COLUMNS`] order: the index of
 /// its check, the focus term, the value term (all `NULL` when the result has
 /// none) and the path override.
 pub type Row = Vec<Option<String>>;
 
-/// Runs the plan's statements. Hosts implement it over their engine; rudof
-/// links none.
+/// The host's SQL engine; rudof links none.
 ///
-/// Statements arrive as text, rendered for the plan's dialect: a host needs no
-/// SQL AST, and the plan's public surface does not tie rudof's semver to the
-/// AST crate's. All of one plan's statements run on one connection, since its
-/// tables are temporary, and a connection runs one plan at a time, since their
-/// names are the plan's.
-pub trait SqlExecutor {
+/// Asynchronous, because the engine a browser holds (DuckDB-WASM) answers
+/// across the event loop; a synchronous one answers at once. Statements
+/// arrive as text, so a host needs no SQL AST. All of one validation's
+/// statements run on one connection, since its tables are temporary, and a
+/// connection runs one validation at a time, since their names are fixed.
+#[allow(async_fn_in_trait)]
+pub trait SqlEngine {
     type Error: Display;
 
     /// Runs `sql`, a statement without rows.
-    fn execute(&self, sql: &str) -> Result<(), Self::Error>;
+    async fn execute(&self, sql: &str) -> Result<(), Self::Error>;
 
     /// Every row of `sql`, each in [`RESULT_COLUMNS`] order, as text.
-    fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error>;
+    async fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error>;
 }
 
-/// A row that cannot be read back as a result.
+/// Why a validation through SQL failed.
 #[derive(Debug, thiserror::Error)]
-#[error("row {row}: {message}")]
-pub struct SqlRowError {
-    pub row: usize,
-    pub message: String,
-}
-
-/// Running a plan: the executor failed, or a row was malformed.
-#[derive(Debug, thiserror::Error)]
-pub enum SqlRunError<E: Display> {
-    #[error("executing the plan: {0}")]
-    Executor(E),
+pub enum SqlError<E: Display> {
     #[error(transparent)]
-    Row(#[from] SqlRowError),
+    Compile(#[from] SqlCompileError),
+    #[error("the engine: {0}")]
+    Engine(E),
+    #[error("row {row}: {message}")]
+    Row { row: usize, message: String },
 }
 
-/// What [`compile`](crate::validator::sql::compile) produces: a script whose
-/// query's rows are the results, the checks they belong to (a shape's
-/// constraint component in one context), by index, and the shapes graph they
-/// were compiled from. The script is [`setup`](Self::setup), a
-/// `CREATE TEMPORARY TABLE` per relation the checks share, inputs first; then
-/// [`query`](Self::query); then [`teardown`](Self::teardown), which drops
-/// those tables.
-///
-/// A host that runs statements synchronously implements [`SqlExecutor`] and
-/// calls [`validate`](Self::validate); one that cannot (an asynchronous
-/// engine across the wasm ABI) runs the three parts itself and hands the
-/// query's rows to [`report`](Self::report).
+/// The script of one shapes graph over one triples relation: the setup,
+/// a `CREATE TEMPORARY TABLE` per relation the checks share, inputs first;
+/// then the query whose rows are the results; then the teardown, which drops
+/// those tables. The rows name their check by index.
 #[derive(Debug, Clone)]
-pub struct SqlPlan {
-    /// What every row of a check reports: shape, component, severity, path.
-    pub checks: Vec<Check>,
+pub(crate) struct SqlPlan {
+    pub(crate) checks: Vec<Check>,
     pub(crate) schema: IRSchema,
     pub(crate) setup: Vec<String>,
     pub(crate) query: String,
@@ -89,37 +75,14 @@ fn term(row: &Row, offset: usize) -> Result<Option<Object>, String> {
 }
 
 impl SqlPlan {
-    /// The statements that create the shared tables, in order.
-    pub fn setup(&self) -> &[String] {
-        &self.setup
-    }
-
-    /// The query whose rows are the results; its columns are
-    /// [`RESULT_COLUMNS`].
-    pub fn query(&self) -> &str {
-        &self.query
-    }
-
-    /// The statements that drop the shared tables, which hold whether or not
-    /// all of them were created.
-    pub fn teardown(&self) -> &[String] {
-        &self.teardown
-    }
-
-    /// The shapes graph the plan was compiled from: what a check's
-    /// [`shape`](Check::shape) indexes.
-    pub fn schema(&self) -> &IRSchema {
-        &self.schema
-    }
-
     /// The validation report of the query's rows, each built by
     /// [`ValidationResult::of`] for the check it names, as the in-memory
     /// evaluator builds its own, so both reports read alike.
-    pub fn report(&self, rows: &[Row]) -> Result<ValidationReport, SqlRowError> {
+    fn report<E: Display>(&self, rows: &[Row]) -> Result<ValidationReport, SqlError<E>> {
         let schema = &self.schema;
         let mut results = Vec::with_capacity(rows.len());
         for (r, row) in rows.iter().enumerate() {
-            let err = |message: String| SqlRowError { row: r, message };
+            let err = |message: String| SqlError::Row { row: r, message };
             if row.len() != RESULT_COLUMNS.len() {
                 return Err(err(format!("{} columns, not {}", row.len(), RESULT_COLUMNS.len())));
             }
@@ -139,21 +102,25 @@ impl SqlPlan {
             .with_prefixmap(schema.prefix_map().clone()))
     }
 
-    /// Runs the script through `executor` and builds the report of its rows.
-    /// The teardown runs too when the setup or the query fails; the first
-    /// failure is the one returned.
-    pub fn validate<X: SqlExecutor>(&self, executor: &X) -> Result<ValidationReport, SqlRunError<X::Error>> {
-        let rows = self
-            .setup
-            .iter()
-            .try_for_each(|statement| executor.execute(statement))
-            .and_then(|()| executor.rows(&self.query));
-        let dropped = self
-            .teardown
-            .iter()
-            .try_for_each(|statement| executor.execute(statement));
-        let rows = rows.map_err(SqlRunError::Executor)?;
-        dropped.map_err(SqlRunError::Executor)?;
-        Ok(self.report(&rows)?)
+    /// Runs the script on `engine` and builds the report of its rows. The
+    /// teardown runs too when the setup or the query fails; the first failure
+    /// is the one returned.
+    pub(crate) async fn run<X: SqlEngine>(&self, engine: &X) -> Result<ValidationReport, SqlError<X::Error>> {
+        let rows = async {
+            for statement in &self.setup {
+                engine.execute(statement).await?;
+            }
+            engine.rows(&self.query).await
+        }
+        .await;
+        let mut dropped = Ok(());
+        for statement in &self.teardown {
+            if let Err(e) = engine.execute(statement).await {
+                dropped = dropped.and(Err(e));
+            }
+        }
+        let rows = rows.map_err(SqlError::Engine)?;
+        dropped.map_err(SqlError::Engine)?;
+        self.report(&rows)
     }
 }

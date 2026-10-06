@@ -11,11 +11,11 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-# The SQL engine (`validator::sql`): SHACL Core compiled to SQL over a
-# relational mapping. Wasm-clean; off by default so that a plain SHACL build
+# The SQL engine (`validator::sql`): SHACL Core run as SQL over a triples
+# relation. Wasm-clean; off by default so that a plain SHACL build
 # does not pull the SQL AST.
 sql = ["dep:sqlparser"]
-# An in-process DuckDB host for the SQL engine: `DuckDbExecutor`. Native
+# An in-process DuckDB engine for the SQL interpretation: `DuckDbEngine`. Native
 # only, never default.
 duckdb = ["sql", "dep:duckdb"]
 
@@ -48,6 +48,8 @@ anyhow.workspace = true
 rudof_rdf = { workspace = true, features = ["sparql"] }
 # The W3C suites' differential test draws its graphs, natively.
 proptest.workspace = true
+# Drives `sql::validate`, which is async, over the synchronous DuckDB engine.
+futures.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 # Pinned with rudof_wasm's, to the release paired with `wasm-bindgen = "=0.2.120"`.

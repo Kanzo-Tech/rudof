@@ -33,7 +33,7 @@ pub use rudof_rdf::{BuildRDF, RDFFormat, SHACLPath};
 pub use shacl::ast::{ASTComponent, ASTNodeShape, ASTPropertyShape, ASTSchema, ASTShape};
 pub use shacl::types::{NodeKind, Severity, Target, Value};
 pub use shacl::validator::report::ValidationResult;
-pub use shacl::validator::sql::{RESULT_COLUMNS, Row as SqlRow, SqlDialect, SqlMapping, SqlPlan};
+pub use shacl::validator::sql::{RESULT_COLUMNS, Row as SqlRow, SqlEngine};
 pub use shacl::vocab::shui;
 
 pub use crate::base::STRING_BASE;
@@ -81,9 +81,6 @@ pub struct FormEngine {
     /// The wording of results whose shape has no `sh:message`: the built-in
     /// catalog until [`FormEngine::load_messages`] extends it.
     messages: Option<MessageCatalog>,
-    /// The last [`FormEngine::compile_sql`] plan, which
-    /// [`FormEngine::report_from_rows`] reads rows against.
-    sql: Option<SqlPlan>,
 }
 
 impl FormEngine {
@@ -304,27 +301,23 @@ impl FormEngine {
             .map_err(|e| FormError::Validation(e.to_string()))
     }
 
-    /// Compile the loaded shapes into a SQL script over the tables `mapping`
-    /// describes, in `dialect`. The host runs the script on its own engine and
-    /// hands the query's rows to [`FormEngine::report_from_rows`]; the plan is
-    /// kept for that until the next compilation.
-    pub fn compile_sql(&mut self, mapping: &SqlMapping, dialect: SqlDialect) -> Result<&SqlPlan, FormError> {
-        let plan = shacl::validator::sql::compile(&self.compile()?, mapping, dialect)
-            .map_err(|e| FormError::Validation(e.to_string()))?;
-        Ok(self.sql.insert(plan))
-    }
-
-    /// The report of the rows of the last [`FormEngine::compile_sql`] plan's
-    /// statement, each in [`RESULT_COLUMNS`] order. Messages are worded as
-    /// [`FormEngine::validate`] words them.
-    pub fn report_from_rows(&self, rows: &[SqlRow]) -> Result<ValidationOutcome, FormError> {
-        let plan = self
-            .sql
-            .as_ref()
-            .ok_or_else(|| FormError::Validation("no SQL plan; call compileSql first".to_owned()))?;
-        plan.report(rows)
-            .map(outcome)
-            .map_err(|e| FormError::Validation(e.to_string()))
+    /// Validate, through SQL on the host's `engine`, the data in the
+    /// relation `triples` (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`) against
+    /// the loaded shapes. Messages are worded as [`FormEngine::validate`]
+    /// words them. The shapes are read now; the future owns what it needs, so
+    /// it outlives the session's borrow.
+    pub fn validate_sql<E: SqlEngine + 'static>(
+        &self,
+        triples: String,
+        engine: E,
+    ) -> Result<impl std::future::Future<Output = Result<ValidationOutcome, FormError>> + 'static, FormError> {
+        let schema = self.compile()?;
+        Ok(async move {
+            shacl::validator::sql::validate(&schema, &triples, &engine)
+                .await
+                .map(outcome)
+                .map_err(|e| FormError::Validation(e.to_string()))
+        })
     }
 
     /// Compile the loaded shapes AST into the validator's internal representation.

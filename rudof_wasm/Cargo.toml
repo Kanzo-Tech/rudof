@@ -18,6 +18,10 @@ wasm-opt = ['-Oz']
 
 [dependencies]
 wasm-bindgen = "=0.2.120"
+# The page's SQL engine answers with a Promise: `validateTable` awaits it.
+# Pinned to the releases paired with `wasm-bindgen = "=0.2.120"`.
+js-sys = "=0.3.97"
+wasm-bindgen-futures = "=0.4.70"
 serde = { workspace = true, features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1"

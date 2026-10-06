@@ -350,7 +350,7 @@ spargebra = { version = "0.4.0", features = ["sparql-12"] }
 # The SHACL SQL engine builds its queries as this AST. No default features: the
 # default `recursive-protection` pulls `stacker`, which wasm32 cannot build;
 # `visitor` is how a check finds the CTEs it references.
-sqlparser = { version = "0.63", default-features = false, features = ["std", "visitor"] }
+sqlparser = { version = "0.63", default-features = false, features = ["std"] }
 sparql_service = { version = "0.3.4", path = "./sparql_service", default-features = false }
 supports-color = "3.0.0"
 tabled = { version = "0.20.0", features = ["ansi"] }

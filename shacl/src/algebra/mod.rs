@@ -5,7 +5,7 @@
 //! relations over the data graph. This module states that once. [`denote`]
 //! turns a shapes graph ([`IRSchema`]) into a [`Plan`]: a DAG of [`Op`]s, one
 //! root per check. Interpretations run the plan and know nothing of SHACL:
-//! [`crate::validator::sql`] renders it as SQL over a relational mapping, and
+//! [`crate::validator::sql`] runs it as SQL over a triples relation, and
 //! [`crate::validator::eval`] evaluates it over an in-memory graph. Both read
 //! the same plan, so they cannot disagree about what SHACL means; the W3C
 //! suite runs through both and holds their reports equal.

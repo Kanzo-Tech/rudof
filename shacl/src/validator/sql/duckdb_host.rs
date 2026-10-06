@@ -1,22 +1,22 @@
-//! An in-process DuckDB host for the SQL engine (feature `duckdb`, native only).
+//! An in-process DuckDB engine for the SQL interpretation (feature `duckdb`, native only).
 //!
 //! rudof's library links no engine: this module exists so that the W3C suite
 //! and the differential tests can run every fixture through the SQL engine. A
-//! browser host implements [`SqlExecutor`] over its own DuckDB.
+//! browser host implements [`SqlEngine`] over its own DuckDB.
 
 use crate::validator::sql::term::encode;
-use crate::validator::sql::{RESULT_COLUMNS, Row, SqlCompileError, SqlExecutor, SqlMapping};
+use crate::validator::sql::{RESULT_COLUMNS, Row, SqlCompileError, SqlEngine};
 use duckdb::{Connection, appender_params_from_iter};
 use rudof_iri::IriS;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::term::Triple;
 
-/// Runs a plan's statements on a DuckDB connection.
-pub struct DuckDbExecutor {
+/// A DuckDB connection as a [`SqlEngine`].
+pub struct DuckDbEngine {
     connection: Connection,
 }
 
-/// The columns of a triple table, in order (see [`SqlMapping::TripleTable`]).
+/// The columns of a triples relation, in order (see [`super::validate`]).
 const COLUMNS: [&str; 7] = ["s_k", "s_v", "p", "o_k", "o_v", "o_d", "o_l"];
 
 /// The rows of `store` in [`COLUMNS`] order.
@@ -47,7 +47,7 @@ pub enum DuckDbLoadError {
     Data(#[from] SqlCompileError),
 }
 
-impl DuckDbExecutor {
+impl DuckDbEngine {
     pub fn new(connection: Connection) -> Self {
         Self { connection }
     }
@@ -61,8 +61,9 @@ impl DuckDbExecutor {
         &self.connection
     }
 
-    /// Creates the triple table `table` and loads `store` into it.
-    pub fn load_triples<S>(&self, table: &str, store: &S) -> Result<SqlMapping, DuckDbLoadError>
+    /// Creates the triples table `table` (unquoted, in the default schema)
+    /// and loads `store` into it.
+    pub fn load_triples<S>(&self, table: &str, store: &S) -> Result<(), DuckDbLoadError>
     where
         S: NeighsRDF<Term = oxrdf::Term>,
     {
@@ -79,20 +80,18 @@ impl DuckDbExecutor {
             appender.append_row(appender_params_from_iter(row.iter()))?;
         }
         appender.flush()?;
-        Ok(SqlMapping::TripleTable {
-            table: format!("\"{table}\""),
-        })
+        Ok(())
     }
 }
 
-impl SqlExecutor for DuckDbExecutor {
+impl SqlEngine for DuckDbEngine {
     type Error = duckdb::Error;
 
-    fn execute(&self, sql: &str) -> Result<(), Self::Error> {
+    async fn execute(&self, sql: &str) -> Result<(), Self::Error> {
         self.connection.execute_batch(sql)
     }
 
-    fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error> {
+    async fn rows(&self, sql: &str) -> Result<Vec<Row>, Self::Error> {
         let mut statement = self.connection.prepare(sql)?;
         let rows = statement.query_map([], |row| {
             (0..RESULT_COLUMNS.len())

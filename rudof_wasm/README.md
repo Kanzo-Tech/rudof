@@ -31,12 +31,10 @@ const form = session.projectForm(focus, shapeId);
 const report = session.validate(null);           // { conforms, results }
 const ttl = session.serialize("text/turtle");
 
-// SHACL on the host's own SQL engine: compile once, run the script on one connection, read back.
-const plan = session.compileSql(r2rmlTurtle, "warehouse", "duckdb"); // { setup, query, teardown, columns, checks }
-for (const s of plan.setup) await run(s);                // a temporary table per shared relation
-const rows = await runQuery(plan.query);                 // string | null cells, in plan.columns order
-for (const s of plan.teardown) await run(s);             // drop them, also after a failure
-const sqlReport = session.reportFromRows(rows);          // same RudofReport as validate()
+// SHACL on the page's SQL engine, over a triples relation (s_k, s_v, p, o_k, o_v, o_d, o_l):
+// `@fossil-lang/corpus`'s open() creates "<job>".triples; engine is mosaic's engine().
+const sqlReport = await session.validateTable({ table: `"${job}".triples`, engine, signal });
+// same RudofReport as validate()
 ```
 
 ## Notes

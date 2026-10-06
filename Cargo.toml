@@ -248,6 +248,7 @@ wildcard_dependencies = "warn"
 zero_sized_map_values = "warn"
 
 [workspace.dependencies]
+include_dir = "0.7"
 anyhow = "1.0"
 axum = "0.8.4"
 axum-server = "0.7"

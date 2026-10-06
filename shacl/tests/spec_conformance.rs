@@ -1,14 +1,13 @@
 //! Conformance to the SHACL Recommendation beyond the W3C test suite, held by
-//! both engines: each case runs through the native engine and through the SQL
+//! both engines: each case runs through the in-memory evaluator and through the SQL
 //! engine (on DuckDB, over a triple table) and must give the result the spec
 //! prescribes.
 #![cfg(not(target_family = "wasm"))]
 
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
-use rudof_rdf::{BuildRDF, NeighsRDF, RDFFormat};
+use rudof_rdf::{NeighsRDF, RDFFormat};
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
-use shacl::validator::processor::validate_with_subset;
 use shacl::validator::report::ValidationReport;
 use shacl::validator::sql::validate_with_duckdb;
 
@@ -57,14 +56,10 @@ fn both(shapes: &str, data: &str) -> Vec<(String, String, String, String)> {
     let ast = ShaclParser::new(graph(shapes)).parse().expect("shapes parse");
     let schema = IRSchema::try_from(&ast).expect("schema compiles");
     let data = graph(data);
-    let native = summary(
-        &validate_with_subset(&data, &schema, OxigraphInMemory::empty())
-            .expect("native")
-            .0,
-    );
+    let in_memory = summary(&shacl::validator::validate(&schema, &data).expect("in memory"));
     let sql = summary(&validate_with_duckdb(&data, &schema).expect("sql"));
-    assert_eq!(sql, native, "the SQL engine and the native engine disagree");
-    native
+    assert_eq!(sql, in_memory, "the SQL engine and the in-memory evaluator disagree");
+    in_memory
 }
 
 /// The values (as displayed) that a component reported.

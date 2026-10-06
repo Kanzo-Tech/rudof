@@ -1,22 +1,14 @@
 use crate::{
     Result, Rudof,
     errors::{DataError, ShaclError},
-    formats::ShaclValidationMode,
     types::Data,
 };
 use shacl::ir::IRSchema;
-use shacl::validator::processor::{GraphValidation, ShaclProcessor};
-use shacl::validator::store::Graph;
 
-pub fn validate_shacl(rudof: &mut Rudof, mode: Option<&ShaclValidationMode>) -> Result<()> {
+pub fn validate_shacl(rudof: &mut Rudof) -> Result<()> {
     let (data, shacl_schema_ir) = validate_loaded_data_schema_and_shapes(rudof)?;
 
-    let mode = mode.copied().unwrap_or_default();
-
-    let graph: Graph = data.unwrap_rdf_mut().clone().into();
-    let mut validator: GraphValidation = graph.into();
-
-    let result = ShaclProcessor::validate(&mut validator, shacl_schema_ir, &mode.into())
+    let result = shacl::validator::validate(shacl_schema_ir, data.unwrap_rdf_mut())
         .map_err(|e| ShaclError::FailedShaclValidation { error: e.to_string() })?;
 
     rudof.shacl_validation_results = Some(result);

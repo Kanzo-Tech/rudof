@@ -413,14 +413,11 @@ pub struct RudofReport {
     pub results: Vec<RudofResult>,
 }
 
-/// One check of a SQL plan: a query whose rows are validation results, and
-/// what every one of those results carries besides its rows.
+/// One check of a SQL plan: what every result of the rows naming it carries
+/// besides those rows.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlCheckDto {
-    /// The query, rendered for the plan's dialect. Its columns are the plan's
-    /// `columns`.
-    pub sql: String,
     /// `sh:sourceShape`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_shape: Option<TermValue>,
@@ -436,16 +433,18 @@ pub struct SqlCheckDto {
     pub path_key: Option<String>,
 }
 
-/// The SQL plan of the loaded shapes: one check per shape, constraint
-/// component and context. Run each `sql`, then hand the rows, one array per
-/// check and in this order, to `reportFromRows`.
+/// The SQL plan of the loaded shapes: one statement, and one check per
+/// shape, constraint component and context. Run `sql`, then hand its rows to
+/// `reportFromRows`.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlPlanDto {
     pub dialect: String,
-    /// The columns of every check's rows: the focus term, the value term and
-    /// a path override, each term as kind (`I`/`B`/`L`), lexical form,
-    /// datatype and language.
+    /// The statement, rendered for the dialect. Its columns are `columns`.
+    pub sql: String,
+    /// The columns of the statement's rows: the index of the row's check in
+    /// `checks`, then the focus term, the value term and a path override,
+    /// each term as kind (`I`/`B`/`L`), lexical form, datatype and language.
     pub columns: Vec<String>,
     pub checks: Vec<SqlCheckDto>,
 }

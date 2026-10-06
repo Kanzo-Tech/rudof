@@ -1,16 +1,21 @@
+//! Validates a node of Wikidata, read through its SPARQL endpoint.
+//!
+//! Only the arcs the shapes reach from their focus nodes are fetched: the
+//! evaluator looks up a path's predicate node by node.
+
 #[cfg(target_family = "wasm")]
 fn main() {}
 
 #[cfg(not(target_family = "wasm"))]
 fn main() -> anyhow::Result<()> {
     use prefixmap::PrefixMap;
+    use rudof_iri::iri;
     use rudof_rdf::RDFFormat;
-    use shacl::validator::ShaclValidationMode;
-    use shacl::validator::processor::{EndpointValidation, ShaclProcessor};
-    use shacl::validator::store::ShaclDataManager;
-    use std::io::Cursor;
+    use rudof_rdf::backend::{OxigraphEndpoint, OxigraphInMemory, ReaderMode};
+    use shacl::ir::IRSchema;
+    use shacl::rdf::ShaclParser;
 
-    let shacl = r#"
+    let shapes = r#"
         @prefix ex:  <http://example.org/> .
         @prefix wd:  <http://www.wikidata.org/entity/> .
         @prefix wdt: <http://www.wikidata.org/prop/direct/> .
@@ -28,12 +33,11 @@ fn main() -> anyhow::Result<()> {
             ] .
     "#;
 
-    let schema = ShaclDataManager::load(&mut Cursor::new(shacl), "Test", &RDFFormat::Turtle, None)?;
+    let graph = OxigraphInMemory::from_str(shapes, &RDFFormat::Turtle, None, &ReaderMode::default())?;
+    let schema = IRSchema::try_from(&ShaclParser::new(graph).parse()?)?;
+    let wikidata = OxigraphEndpoint::new(&iri!("https://query.wikidata.org/sparql"), &PrefixMap::default())?;
 
-    let mut endpoint_validation = EndpointValidation::new("https://query.wikidata.org/sparql", &PrefixMap::default())?;
-
-    let report = endpoint_validation.validate(&schema, &ShaclValidationMode::Native)?;
-
+    let report = shacl::validator::validate(&schema, &wikidata)?;
     println!("{report}");
     Ok(())
 }

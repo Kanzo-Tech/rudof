@@ -196,15 +196,6 @@ Validation
 SHACL Validation
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ShaclValidationMode
-   :members:
-   :undoc-members:
-
-   SHACL validation engines:
-
-   * ``ShaclValidationMode.Native`` - Native SHACL validation engine (faster, recommended)
-   * ``ShaclValidationMode.Sparql`` - SPARQL-based validation (slower, useful for debugging)
-
 .. autoclass:: ShapesGraphSource
    :members:
    :undoc-members:

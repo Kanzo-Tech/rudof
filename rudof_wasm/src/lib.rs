@@ -225,7 +225,7 @@ impl Session {
         }
     }
 
-    /// Validate the current data graph against the loaded shapes (native engine).
+    /// Validate the current data graph against the loaded shapes (in memory).
     ///
     /// * `shape_id == None`     → validate the whole graph against every shape.
     /// * `shape_id == Some(id)` → validate only that shape (and its nested
@@ -266,11 +266,11 @@ impl Session {
     /// `schema` (the catalog or schema the tables are attached under) when it
     /// is given. RML terms outside the subset read are an error naming them.
     ///
-    /// Returns a `SqlPlanDto`: per check, the SQL text and the result metadata
-    /// (`sourceShape`, `sourceConstraintComponent`, `severity`, `path`). Run
-    /// every check on the host's engine and pass the rows to `reportFromRows`.
-    /// Shapes the engine refuses (recursive ones, `sh:sparql`,
-    /// `sh:targetWhere`) are an error here, never skipped.
+    /// Returns a `SqlPlanDto`: the one SQL statement and, per check, the
+    /// result metadata (`sourceShape`, `sourceConstraintComponent`,
+    /// `severity`, `path`). Run the statement on the host's engine and pass
+    /// its rows to `reportFromRows`. Shapes the engine refuses (recursive
+    /// ones, `sh:sparql`) are an error here, never skipped.
     #[wasm_bindgen(js_name = compileSql)]
     pub fn compile_sql(&mut self, rml: String, schema: Option<String>, dialect: String) -> Result<JsValue, JsError> {
         let plan = self
@@ -281,13 +281,12 @@ impl Session {
         to_js(&sql::plan_dto(&self.engine, &plan, &dialect))
     }
 
-    /// The validation report of the rows of the last `compileSql` plan: one
-    /// array of rows per check, in plan order, each row an array of the plan's
-    /// `columns` (`string | null`). Returns a `RudofReport`, worded as the
-    /// native engine words it.
+    /// The validation report of the rows of the last `compileSql` plan's
+    /// statement, each row an array of the plan's `columns` (`string | null`).
+    /// Returns a `RudofReport`, worded as the in-memory evaluator words it.
     #[wasm_bindgen(js_name = reportFromRows)]
     pub fn report_from_rows(&self, rows: JsValue) -> Result<JsValue, JsError> {
-        let rows: Vec<Vec<Vec<Option<String>>>> = from_js(rows)?;
+        let rows: Vec<Vec<Option<String>>> = from_js(rows)?;
         let outcome = self
             .engine
             .report_from_rows(&rows)

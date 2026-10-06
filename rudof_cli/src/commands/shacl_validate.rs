@@ -29,7 +29,6 @@ impl Command for ShaclValidateCommand {
         let data_format = self.args.data_format.into();
         let reader_mode = self.args.reader_mode.into();
         let shacl_schema_format = self.args.shapes_format.into();
-        let shacl_validation_mode = self.args.mode.into();
         let sort_order = self.args.sort_by.into();
         let result_format = self.args.result_format.into();
 
@@ -60,10 +59,7 @@ impl Command for ShaclValidateCommand {
         }
         loading_schema.execute()?;
 
-        ctx.rudof
-            .validate_shacl()
-            .with_shacl_validation_mode(&shacl_validation_mode)
-            .execute()?;
+        ctx.rudof.validate_shacl().execute()?;
 
         ctx.rudof
             .serialize_shacl_validation_results(&mut ctx.writer)

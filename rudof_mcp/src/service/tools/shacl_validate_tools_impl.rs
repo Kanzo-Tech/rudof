@@ -5,9 +5,7 @@ use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content},
 };
-use rudof_lib::formats::{
-    InputSpec, ResultShaclValidationFormat, ShaclFormat, ShaclValidationMode, ShaclValidationSortByMode,
-};
+use rudof_lib::formats::{InputSpec, ResultShaclValidationFormat, ShaclFormat, ShaclValidationSortByMode};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -26,9 +24,6 @@ pub struct ValidateShaclRequest {
 
     /// Base IRI for resolving relative IRIs in the shapes. Example: "http://example.org/"
     pub base: Option<String>,
-
-    /// SHACL validation engine. One of: native (default), sparql.
-    pub mode: Option<String>,
 
     /// Output format for the validation report.
     /// One of: details (default), compact, minimal, csv, turtle, ntriples, rdfxml, trig, n3, nquads.
@@ -60,7 +55,6 @@ pub struct ValidateShaclResponse {
 /// - Shape format is invalid
 /// - Base IRI is malformed
 /// - Reader mode is invalid
-/// - Validation mode is invalid
 /// - Result format is invalid
 /// - Sort order is invalid
 ///
@@ -71,7 +65,6 @@ pub async fn validate_shacl_impl(
         shapes,
         shapes_format,
         base,
-        mode,
         result_format,
         sort_by,
     }): Parameters<ValidateShaclRequest>,
@@ -79,7 +72,6 @@ pub async fn validate_shacl_impl(
     let mut rudof = service.rudof.lock().await;
 
     let shape_format_hint = format!("Supported values: {}", SHACL_FORMATS);
-    let mode_hint = "Supported values: native, sparql";
     let result_format_hint = format!("Supported values: {}", SHACL_RESULT_FORMATS);
     let sort_by_hint = format!("Supported values: {}", SHACL_SORT_BY_MODES);
 
@@ -98,16 +90,6 @@ pub async fn validate_shacl_impl(
         "shapes format",
         &shape_format_hint,
         ShaclFormat::from_str,
-    ) {
-        Ok(value) => value,
-        Err(e) => return Ok(e.into_call_tool_result()),
-    };
-
-    let parsed_mode = match parse_optional_value_with_hint(
-        mode.as_deref(),
-        "validation mode",
-        mode_hint,
-        ShaclValidationMode::from_str,
     ) {
         Ok(value) => value,
         Err(e) => return Ok(e.into_call_tool_result()),
@@ -158,11 +140,7 @@ pub async fn validate_shacl_impl(
         .into_call_tool_result());
     }
 
-    let mut validation = rudof.validate_shacl();
-    if let Some(mode) = &parsed_mode {
-        validation = validation.with_shacl_validation_mode(mode);
-    }
-    if let Err(e) = validation.execute() {
+    if let Err(e) = rudof.validate_shacl().execute() {
         return Ok(ToolExecutionError::with_hint(
             format!("SHACL validation failed: {}", e),
             "Ensure the RDF data is loaded and the SHACL shapes are correct",

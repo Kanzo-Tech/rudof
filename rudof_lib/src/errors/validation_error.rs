@@ -7,10 +7,6 @@ pub enum ValidationError {
     #[error("Unsupported validation mode: '{mode}'. Valid modes are: 'shex', 'shacl', 'pgschema'")]
     UnsupportedValidationMode { mode: String },
 
-    /// The SHACL validation mode specified is not supported by Rudof.
-    #[error("Unsupported SHACL validation mode: '{mode}'. Valid modes are: 'native', 'sparql', 'sql'")]
-    UnsupportedSHACLValidationMode { mode: String },
-
     /// The validation result sorting mode is not supported by Rudof.
     #[error("Unsupported validation sort by mode: '{mode}'. Valid options are: 'node', 'details'")]
     UnsupportedValidationSortByMode { mode: String },

@@ -127,7 +127,7 @@ impl ValidationReport {
                     .map_err(error_mapper::<RDF>("Error adding result to bnode"))?;
 
                 let result_node_subject: RDF::Subject = RDF::Subject::try_from(result_node_term)
-                    .map_err(|_| ValidationError::CastError("term".to_string(), "subject".to_string()))?;
+                    .map_err(|_| ValidationError::Graph("a result node that is not a subject".to_owned()))?;
                 vr.to_rdf(writer, result_node_subject)?;
             }
         }
@@ -176,5 +176,5 @@ impl Display for ValidationReport {
 }
 
 fn error_mapper<RDF: Rdf>(msg: &str) -> impl FnOnce(RDF::Err) -> ValidationError {
-    move |e| ValidationError::new_graph_error_ctx::<RDF>(e, msg)
+    move |e| ValidationError::Graph(format!("{msg}: {e}"))
 }

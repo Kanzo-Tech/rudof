@@ -70,6 +70,12 @@ pub trait SqlDialect {
         true
     }
 
+    /// Whether a CTE can be written `AS MATERIALIZED`. A relation more than one
+    /// consumer reads is then computed once; without it the engine decides.
+    fn supports_materialized_cte(&self) -> bool {
+        false
+    }
+
     /// The text of `query` for this engine.
     fn render(&self, query: &Query) -> String {
         query.to_string()
@@ -195,6 +201,10 @@ fn regex_quote(text: &str) -> String {
 impl SqlDialect for DuckDb {
     fn name(&self) -> &'static str {
         "duckdb"
+    }
+
+    fn supports_materialized_cte(&self) -> bool {
+        true
     }
 
     fn regex_match(&self, text: Expr, pattern: &str, flags: Option<&str>) -> Result<Expr, SqlCompileError> {

@@ -2,24 +2,31 @@
 //!
 //! A term is four text columns — kind, lexical form, datatype and language —
 //! and every comparison the engine makes over them follows RDF/SPARQL
-//! semantics, never SQL typing. Kinds are `I` (IRI), `B` (blank node) and `L`
-//! (literal); a non-literal has an empty datatype and language, and a literal
-//! always has a datatype (`xsd:string` for a simple literal, `rdf:langString`
-//! for a language-tagged one). Empty strings rather than `NULL` keep term
-//! equality a plain conjunction of `=`.
+//! semantics, never SQL typing. Kinds are `I` (IRI), `B` (blank node), `L`
+//! (literal) and `T` (triple term, RDF 1.2); a non-literal has an empty
+//! datatype and language, and a literal always has a datatype (`xsd:string`
+//! for a simple literal, `rdf:langString` for a language-tagged one,
+//! `rdf:dirLangString` for one with a base direction, whose language column
+//! reads `tag--direction` as N-Triples spells it). A triple term's lexical form
+//! is its N-Triples spelling, `<<( s p o )>>`, which
+//! [`TermExpr::triple`] builds from the terms of its parts. Empty strings
+//! rather than `NULL` keep term equality a plain conjunction of `=`.
 
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
-    and, and_all, boolean, case, col, compare, eq, in_list, item, not_eq, null, number, or_all, string,
+    and, and_all, boolean, case, col, compare, eq, function, in_list, item, not_eq, null, number, string,
 };
 use crate::validator::sql::dialect::{CastTarget, SqlDialect};
-use oxrdf::{BlankNode, Literal, NamedNode, Term};
+use oxrdf::{BaseDirection, BlankNode, Literal, NamedNode, Term};
+use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 use sqlparser::ast::{BinaryOperator, Expr, SelectItem};
+use std::str::FromStr;
 
 pub const IRI: &str = "I";
 pub const BLANK: &str = "B";
 pub const LITERAL: &str = "L";
+pub const TRIPLE: &str = "T";
 
 const XSD: &str = "http://www.w3.org/2001/XMLSchema#";
 pub const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
@@ -33,18 +40,16 @@ pub fn encode(term: &Term) -> Result<EncodedTerm, SqlCompileError> {
     Ok(match term {
         Term::NamedNode(n) => [IRI.to_owned(), n.as_str().to_owned(), String::new(), String::new()],
         Term::BlankNode(b) => [BLANK.to_owned(), b.as_str().to_owned(), String::new(), String::new()],
-        Term::Literal(l) => [
-            LITERAL.to_owned(),
-            l.value().to_owned(),
-            l.datatype().as_str().to_owned(),
-            l.language().unwrap_or_default().to_owned(),
-        ],
-        #[allow(unreachable_patterns)]
-        other => {
-            return Err(SqlCompileError::Unsupported(format!(
-                "the term {other} (only IRIs, blank nodes and literals have a SQL encoding)"
-            )));
+        Term::Literal(l) => {
+            let direction = l.direction().map(|d| format!("--{d}")).unwrap_or_default();
+            [
+                LITERAL.to_owned(),
+                l.value().to_owned(),
+                l.datatype().as_str().to_owned(),
+                format!("{}{direction}", l.language().unwrap_or_default()),
+            ]
         },
+        Term::Triple(_) => [TRIPLE.to_owned(), term.to_string(), String::new(), String::new()],
     })
 }
 
@@ -53,18 +58,37 @@ pub fn encode_object(object: &Object) -> Result<EncodedTerm, SqlCompileError> {
     encode(&Term::from(object.clone()))
 }
 
-/// Decodes the four columns back into the term the native engine would have
-/// built for it (through the same `oxrdf::Term → Object` conversion).
+/// Decodes the four columns back into the term the in-memory evaluator
+/// holds for it (through the same `oxrdf::Term → Object` conversion).
 pub fn decode(kind: &str, lexical: &str, datatype: &str, lang: &str) -> Result<Object, String> {
     let term: Term = match kind {
         IRI => NamedNode::new_unchecked(lexical).into(),
         BLANK => BlankNode::new_unchecked(lexical).into(),
-        LITERAL if !lang.is_empty() => Literal::new_language_tagged_literal_unchecked(lexical, lang).into(),
+        LITERAL if !lang.is_empty() => match lang.split_once("--") {
+            Some((tag, direction)) => {
+                let direction = match direction {
+                    "ltr" => BaseDirection::Ltr,
+                    "rtl" => BaseDirection::Rtl,
+                    other => return Err(format!("unknown base direction {other:?}")),
+                };
+                Literal::new_directional_language_tagged_literal_unchecked(lexical, tag, direction).into()
+            },
+            None => Literal::new_language_tagged_literal_unchecked(lexical, lang).into(),
+        },
         LITERAL if datatype.is_empty() || datatype == XSD_STRING => Literal::new_simple_literal(lexical).into(),
         LITERAL => Literal::new_typed_literal(lexical, NamedNode::new_unchecked(datatype)).into(),
+        TRIPLE => Term::from_str(lexical).map_err(|e| e.to_string())?,
         other => return Err(format!("unknown term kind {other:?}")),
     };
     Object::try_from(term).map_err(|e| e.to_string())
+}
+
+/// `a || b || …`.
+fn concat(parts: Vec<Expr>) -> Expr {
+    parts
+        .into_iter()
+        .reduce(|a, b| compare(a, BinaryOperator::StringConcat, b))
+        .unwrap_or_else(|| string(""))
 }
 
 /// A term as four SQL expressions.
@@ -99,6 +123,62 @@ impl TermExpr {
 
     pub fn object(object: &Object) -> Result<Self, SqlCompileError> {
         Ok(Self::constant(&encode_object(object)?))
+    }
+
+    /// The triple term `<<( s p o )>>`: its lexical form is the N-Triples
+    /// spelling oxrdf prints, so a triple term built here is the same term as
+    /// one the data holds.
+    pub fn triple(s: &TermExpr, p: &IriS, o: &TermExpr) -> Self {
+        Self {
+            kind: string(TRIPLE),
+            lex: concat(vec![
+                string("<<( "),
+                s.ntriples(),
+                string(&format!(" <{}> ", p.as_str())),
+                o.ntriples(),
+                string(" )>>"),
+            ]),
+            datatype: string(""),
+            lang: string(""),
+        }
+    }
+
+    /// The term's N-Triples spelling, as `oxrdf` prints it.
+    fn ntriples(&self) -> Expr {
+        // `print_quoted_str`: backslash first, so no escape is escaped again.
+        let mut quoted = self.lex.clone();
+        for (from, to) in [
+            ("\\", "\\\\"),
+            ("\"", "\\\""),
+            ("\n", "\\n"),
+            ("\r", "\\r"),
+            ("\t", "\\t"),
+            ("\u{8}", "\\b"),
+            ("\u{C}", "\\f"),
+        ] {
+            quoted = function("REPLACE", vec![quoted, string(from), string(to)]);
+        }
+        let suffix = case(
+            vec![
+                (
+                    not_eq(self.lang.clone(), string("")),
+                    concat(vec![string("@"), self.lang.clone()]),
+                ),
+                (eq(self.datatype.clone(), string(XSD_STRING)), string("")),
+            ],
+            concat(vec![string("^^<"), self.datatype.clone(), string(">")]),
+        );
+        case(
+            vec![
+                (
+                    self.is_kind(IRI),
+                    concat(vec![string("<"), self.lex.clone(), string(">")]),
+                ),
+                (self.is_kind(BLANK), concat(vec![string("_:"), self.lex.clone()])),
+                (self.is_kind(TRIPLE), self.lex.clone()),
+            ],
+            concat(vec![string("\""), quoted, string("\""), suffix]),
+        )
     }
 
     /// `NULL` in every column: the value of a result that has none.
@@ -138,14 +218,9 @@ impl TermExpr {
     pub fn is_not_kind(&self, kind: &str) -> Expr {
         not_eq(self.kind.clone(), string(kind))
     }
-
-    /// Membership in a list of constant terms.
-    pub fn in_terms(&self, terms: &[EncodedTerm]) -> Expr {
-        or_all(terms.iter().map(|t| self.same(&TermExpr::constant(t))))
-    }
 }
 
-/// How the native engine reads a literal's lexical form against its datatype.
+/// How the in-memory evaluator reads a literal's lexical form against its datatype.
 ///
 /// `check_literal_datatype` in `rudof_rdf` parses a fixed set of XSD types and
 /// turns an ill-formed lexical form into a `WrongDatatypeLiteral`: a value of
@@ -357,7 +432,7 @@ fn boolean_value(t: &TermExpr) -> Expr {
     in_list(t.lex.clone(), vec![string("true"), string("1")])
 }
 
-/// `a op b` under the order the native engine uses (`Object::sparql_compare`
+/// `a op b` under the order the in-memory evaluator uses (`Object::sparql_compare`
 /// over `ConcreteLiteral::sparql_compare`): a boolean, or `NULL` when the two
 /// terms are incomparable.
 ///

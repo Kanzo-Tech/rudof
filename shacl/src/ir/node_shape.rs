@@ -5,7 +5,7 @@ use crate::ir::error::IRError;
 use crate::ir::schema::IRSchema;
 use crate::ir::shape::IRShape;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
-use crate::types::{ClosedInfo, MessageMap, Severity, Target};
+use crate::types::{Annotation, ClosedInfo, MessageMap, Severity, Target};
 use rudof_iri::IriS;
 use rudof_rdf::BuildRDF;
 use rudof_rdf::term::Object;
@@ -16,6 +16,9 @@ use std::collections::{HashMap, HashSet};
 pub struct IRNodeShape {
     id: Object,
     components: Vec<IRComponent>,
+    /// What the shapes graph says about each component alone, aligned with
+    /// `components`.
+    annotations: Vec<Annotation>,
     targets: Vec<Target>,
     property_shapes: Vec<ShapeLabelIdx>,
     closed_info: ClosedInfo,
@@ -34,6 +37,7 @@ impl IRNodeShape {
         IRNodeShape {
             id,
             components: Vec::new(),
+            annotations: Vec::new(),
             targets: Vec::new(),
             property_shapes: Vec::new(),
             closed_info: ClosedInfo::No,
@@ -46,8 +50,8 @@ impl IRNodeShape {
         }
     }
 
-    pub fn with_components(mut self, components: Vec<IRComponent>) -> Self {
-        self.components = components;
+    pub fn with_components(mut self, components: Vec<(IRComponent, Annotation)>) -> Self {
+        (self.components, self.annotations) = components.into_iter().unzip();
         self
     }
 
@@ -119,6 +123,11 @@ impl IRNodeShape {
         &self.components
     }
 
+    /// The annotation of the component at `index` in [`Self::components`].
+    pub fn annotation(&self, index: usize) -> &Annotation {
+        &self.annotations[index]
+    }
+
     pub fn targets(&self) -> &Vec<Target> {
         &self.targets
     }
@@ -140,14 +149,21 @@ impl IRNodeShape {
     /// Compiles an AST NodeShape to an internal representation NodeShape
     /// It embeds some components like deactivated as boolean attributes of the internal representation of the node shape
     pub fn compile(shape: &ASTNodeShape, ast: &ASTSchema, ir: &mut IRSchema) -> Result<Self, IRError> {
+        // A deactivated constraint (SHACL 1.2 §2.1.5) is not compiled.
         let mut compiled_components = Vec::new();
         for component in shape.components() {
-            let compiled = IRComponent::compile(component, ast, ir)?;
-            compiled_components.push(compiled);
+            let annotation = shape.annotation(component);
+            if !annotation.deactivated {
+                compiled_components.push((IRComponent::compile(component, ast, ir)?, annotation));
+            }
         }
 
         let mut compiled_prop_shapes = Vec::new();
+        let property = ShaclVocab::sh_property();
         for prop_shape in shape.property_shapes() {
+            if shape.deactivates(&property, prop_shape) {
+                continue;
+            }
             let idx = ir.register_shape(prop_shape, None, ast)?;
             compiled_prop_shapes.push(idx);
         }

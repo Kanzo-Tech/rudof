@@ -1,5 +1,8 @@
+use crate::ast::ASTComponent;
 use crate::ast::node_shape::ASTNodeShape;
 use crate::ast::property_shape::ASTPropertyShape;
+use crate::types::Annotations;
+use rudof_iri::IriS;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -20,6 +23,57 @@ impl ASTShape {
     /// Creates a property shape
     pub fn property_shape(ps: ASTPropertyShape) -> Self {
         Self::PropertyShape(Box::new(ps))
+    }
+
+    pub fn components(&self) -> &Vec<ASTComponent> {
+        match self {
+            Self::NodeShape(ns) => ns.components(),
+            Self::PropertyShape(ps) => ps.components(),
+        }
+    }
+
+    fn with_components(self, components: Vec<ASTComponent>) -> Self {
+        match self {
+            Self::NodeShape(ns) => Self::node_shape(ns.with_components(components)),
+            Self::PropertyShape(ps) => Self::property_shape(ps.with_components(components)),
+        }
+    }
+
+    /// Whether the shape is `sh:closed sh:ByTypes`.
+    pub fn closed_by_types(&self) -> bool {
+        self.components()
+            .iter()
+            .any(|c| matches!(c, ASTComponent::Closed { by_types: Some(_), .. }))
+    }
+
+    /// The shape with `properties` as what `sh:closed sh:ByTypes` permits for
+    /// each type.
+    pub fn with_properties_by_type(self, properties: &[(IriS, Vec<IriS>)]) -> Self {
+        let components = self
+            .components()
+            .iter()
+            .cloned()
+            .map(|c| match c {
+                ASTComponent::Closed {
+                    is_closed,
+                    ignored_properties,
+                    by_types: Some(_),
+                } => ASTComponent::Closed {
+                    is_closed,
+                    ignored_properties,
+                    by_types: Some(properties.to_vec()),
+                },
+                other => other,
+            })
+            .collect();
+        self.with_components(components)
+    }
+
+    pub fn with_annotations(self, annotations: Annotations) -> Self {
+        match self {
+            Self::NodeShape(ns) => Self::node_shape(ns.with_annotations(annotations)),
+            Self::PropertyShape(ps) => Self::property_shape(ps.with_annotations(annotations)),
+        }
     }
 }
 

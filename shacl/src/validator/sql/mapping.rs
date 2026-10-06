@@ -82,7 +82,7 @@ pub trait RelationalMapping {
                 TermExpr::columns("t", "o").same(&TermExpr::columns("sub", "c")),
             ))
             .into_query();
-        Some(Relation(with(vec![cte("sub", sub)], true, instances)))
+        Some(Relation(with(vec![cte("sub", sub, false)], true, instances)))
     }
 
     /// Every subject of a triple.

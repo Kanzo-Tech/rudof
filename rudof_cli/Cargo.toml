@@ -13,11 +13,6 @@ repository.workspace = true
 path = "src/main.rs"
 name = "rudof"
 
-[features]
-default = []
-# `--mode sql`: the SHACL SQL engine on an in-process DuckDB.
-duckdb = ["rudof_lib/duckdb"]
-
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 anyhow.workspace = true
 clap.workspace = true

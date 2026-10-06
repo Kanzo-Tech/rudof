@@ -1,5 +1,5 @@
-//! The SQL engine across the ABI: the plan of the loaded shapes as SQL text
-//! plus the metadata of each check, and the report read back from the rows
+//! The SQL engine across the ABI: the plan of the loaded shapes as one SQL
+//! statement plus the metadata of each check, and the report read back from the rows
 //! the host's engine returned. Compilation and the report are the façade's
 //! (`FormEngine::compile_sql` / `report_from_rows`); here they are only
 //! marshalled.
@@ -14,12 +14,12 @@ use crate::validate::{object_to_term, path_to_term, severity_iri};
 pub fn plan_dto(engine: &FormEngine, plan: &SqlPlan, dialect: &str) -> SqlPlanDto {
     SqlPlanDto {
         dialect: dialect.to_lowercase(),
+        sql: plan.sql().to_owned(),
         columns: RESULT_COLUMNS.iter().map(|c| (*c).to_string()).collect(),
         checks: plan
             .checks
             .iter()
             .map(|check| SqlCheckDto {
-                sql: check.sql().to_owned(),
                 source_shape: engine.sql_shape_id(&check.shape).map(object_to_term),
                 source_constraint_component: check.component.as_str().to_string(),
                 severity: severity_iri(&check.severity),
@@ -47,8 +47,9 @@ mod tests {
             rml:subjectMap [ rml:reference "id" ; rml:class :C ] ;
             rml:predicateObjectMap [ rml:predicate :p ; rml:objectMap [ rml:reference "p" ] ] ."#;
 
-    fn row(focus: &str) -> SqlRow {
+    fn row(check: &str, focus: &str) -> SqlRow {
         let mut row: SqlRow = vec![
+            Some(check.into()),
             Some("I".into()),
             Some(focus.into()),
             Some(String::new()),
@@ -65,10 +66,10 @@ mod tests {
         let plan = engine.compile_sql(TABLES, Some("warehouse"), "duckdb").unwrap().clone();
         let dto = plan_dto(&engine, &plan, "DuckDB");
         assert_eq!(dto.dialect, "duckdb");
-        assert_eq!(dto.columns.len(), 9);
+        assert_eq!(dto.columns.len(), 10);
+        assert!(dto.sql.contains("\"warehouse\".\"c\""), "{}", dto.sql);
         assert_eq!(dto.checks.len(), 1);
         let check = &dto.checks[0];
-        assert!(check.sql.contains("\"warehouse\".\"c\""), "{}", check.sql);
         assert_eq!(
             check.source_constraint_component,
             "http://www.w3.org/ns/shacl#MinCountConstraintComponent"
@@ -80,16 +81,17 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    fn rows_come_back_as_the_native_report() {
+    fn rows_come_back_as_the_in_memory_report() {
         let mut engine = FormEngine::new();
         engine.load_shapes(SHAPES, &RDFFormat::Turtle, None).unwrap();
         engine.compile_sql(TABLES, Some("warehouse"), "duckdb").unwrap();
-        let outcome = engine.report_from_rows(&[vec![row("http://example.org/n")]]).unwrap();
+        let outcome = engine.report_from_rows(&[row("0", "http://example.org/n")]).unwrap();
         assert!(!outcome.conforms);
         assert_eq!(outcome.results.len(), 1);
         assert!(!outcome.results[0].message().messages().is_empty());
-        // One row set per check, or the rows cannot be attributed.
-        assert!(engine.report_from_rows(&[]).is_err());
+        assert!(engine.report_from_rows(&[]).unwrap().conforms);
+        // A row naming no check of the plan cannot be attributed.
+        assert!(engine.report_from_rows(&[row("1", "http://example.org/n")]).is_err());
     }
 
     #[wasm_bindgen_test]

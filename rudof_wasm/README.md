@@ -31,15 +31,15 @@ const form = session.projectForm(focus, shapeId);
 const report = session.validate(null);           // { conforms, results }
 const ttl = session.serialize("text/turtle");
 
-// SHACL on the host's own SQL engine: compile once, run each check, read back.
-const plan = session.compileSql(rmlTurtle, "warehouse", "duckdb"); // { columns, checks: [{ sql, sourceShape, … }] }
-const rows = plan.checks.map((c) => runOnDuckDb(c.sql));  // string | null cells, in plan.columns order
-const sqlReport = session.reportFromRows(rows);           // same RudofReport as validate()
+// SHACL on the host's own SQL engine: compile once, run one statement, read back.
+const plan = session.compileSql(rmlTurtle, "warehouse", "duckdb"); // { sql, columns, checks: [{ sourceShape, … }] }
+const rows = runOnDuckDb(plan.sql);                      // string | null cells, in plan.columns order
+const sqlReport = session.reportFromRows(rows);          // same RudofReport as validate()
 ```
 
 ## Notes
 
-- SHACL validation uses the native engine over an in-memory graph. Shapes are
-  validated sequentially on wasm (no rayon/threads), in parallel elsewhere.
+- SHACL validation evaluates the shapes' algebra over the in-memory graph; the
+  SQL statement is the same algebra, rendered.
 - `projectForm` evaluates each property path of a node shape from a focus node,
   preserving value order (forms need deterministic ordering).

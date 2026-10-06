@@ -13,8 +13,8 @@ use rudof_lib::{
         ComparisonFormat, ComparisonMode, ConversionFormat, ConversionMode, DCTapFormat, DataFormat, DataReaderMode,
         InputSpec, NodeInspectionMode, QueryType, ResultConversionFormat, ResultConversionMode, ResultDCTapFormat,
         ResultDataFormat, ResultQueryFormat, ResultServiceFormat, ResultShExValidationFormat,
-        ResultShaclValidationFormat, ShExFormat, ShExValidationSortByMode, ShaclFormat, ShaclValidationMode,
-        ShaclValidationSortByMode, ShapeMapFormat,
+        ResultShaclValidationFormat, ShExFormat, ShExValidationSortByMode, ShaclFormat, ShaclValidationSortByMode,
+        ShapeMapFormat,
     },
 };
 use std::{io::BufWriter, path::Path, str::FromStr};
@@ -629,34 +629,10 @@ impl PyRudof {
 
     /// Validates the current RDF data against the loaded SHACL shapes.
     ///
-    /// Performs comprehensive SHACL validation checking all constraints defined
-    /// in the shapes graph.
-    ///
-    /// Args:
-    ///     mode (ShaclValidationMode, optional): Validation engine. Defaults to ``ShaclValidationMode.Native``.
-    ///         - ``Native``: Fast built-in engine (recommended)
-    ///         - ``Sparql``: SPARQL-based engine (slower, for debugging)
-    ///
-    /// Returns:
-    ///     ValidationReport: Detailed validation report with conformance status and violations.
-    ///
     /// Raises:
     ///     RudofError: If no data or schema is loaded, or validation fails.
-    ///
-    /// Note:
-    ///     - Native mode is recommended for production (faster)
-    ///     - SPARQL mode useful for debugging complex constraints
-    #[pyo3(signature = (mode=None))]
-    pub fn validate_shacl(&mut self, mode: Option<&PyShaclValidationMode>) -> PyResult<()> {
-        let mode = cnv_shacl_validation_mode(mode);
-
-        let mut valiate_shacl = self.inner.validate_shacl();
-        if let Some(mode) = mode {
-            valiate_shacl = valiate_shacl.with_shacl_validation_mode(mode);
-        }
-        valiate_shacl.execute().map_err(cnv_err)?;
-
-        Ok(())
+    pub fn validate_shacl(&mut self) -> PyResult<()> {
+        self.inner.validate_shacl().execute().map_err(cnv_err)
     }
 
     /// Serializes the results of the last SHACL validation operation to a string.
@@ -1344,14 +1320,6 @@ pub enum PyShaclFormat {
     NQuads,
 }
 
-/// SHACL validation engine.
-#[pyclass(eq, eq_int, name = "ShaclValidationMode")]
-#[derive(PartialEq)]
-pub enum PyShaclValidationMode {
-    Native,
-    Sparql,
-}
-
 #[pyclass(eq, eq_int, name = "ShaclValidationSortMode")]
 #[derive(PartialEq, Clone)]
 pub enum PyShaclValidationSortMode {
@@ -1726,22 +1694,6 @@ fn cnv_shacl_format(format: Option<&PyShaclFormat>) -> Option<&ShaclFormat> {
         PyShaclFormat::TriG => Some(&ShaclFormat::TriG),
         PyShaclFormat::N3 => Some(&ShaclFormat::N3),
         PyShaclFormat::NQuads => Some(&ShaclFormat::NQuads),
-    }
-}
-
-/// Converts a Python SHACL validation mode enum into the corresponding Rust `ShaclValidationMode`.
-///
-/// Args:
-///     mode (PyShaclValidationMode): Python enum indicating the SHACL validation mode.
-///
-/// Returns:
-///     ShaclValidationMode: Corresponding Rust enum.
-fn cnv_shacl_validation_mode(mode: Option<&PyShaclValidationMode>) -> Option<&ShaclValidationMode> {
-    mode?;
-
-    match mode.unwrap() {
-        PyShaclValidationMode::Native => Some(&ShaclValidationMode::Native),
-        PyShaclValidationMode::Sparql => Some(&ShaclValidationMode::Sparql),
     }
 }
 

@@ -7,7 +7,7 @@ use crate::ir::node_shape::IRNodeShape;
 use crate::ir::property_shape::IRPropertyShape;
 use crate::ir::schema::IRSchema;
 use crate::ir::shape_label_idx::ShapeLabelIdx;
-use crate::types::{MessageMap, Severity, Target};
+use crate::types::{Annotation, MessageMap, Severity, Target};
 use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 use rudof_rdf::{BuildRDF, SHACLPath};
@@ -75,6 +75,14 @@ impl IRShape {
         match self {
             IRShape::NodeShape(ns) => ns.components(),
             IRShape::PropertyShape(ps) => ps.components(),
+        }
+    }
+
+    /// The annotation of the component at `index` in [`Self::components`].
+    pub fn annotation(&self, index: usize) -> &Annotation {
+        match self {
+            IRShape::NodeShape(ns) => ns.annotation(index),
+            IRShape::PropertyShape(ps) => ps.annotation(index),
         }
     }
 

@@ -30,7 +30,6 @@ Options:
           [default: turtle] [possible values: turtle, ntriples, rdfxml, trig, n3, nquads]
       --max-steps <max steps to run>
           [default: 100]
-  -S, --shacl-mode <SHACL validation mode>
           Execution mode [default: default] [possible values: default, sparql]
       --reader-mode <RDF Reader mode>
           RDF Reader mode [default: strict] [possible values: lax, strict]

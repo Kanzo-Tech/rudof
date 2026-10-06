@@ -11,41 +11,42 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-default = ["sparql"]
-sparql = ["sparql_service/sparql", "rudof_rdf/sparql" ]
 # The SQL engine (`validator::sql`): SHACL Core compiled to SQL over a
 # relational mapping. Wasm-clean; off by default so that a plain SHACL build
 # does not pull the SQL AST.
-sql = ["dep:sqlparser", "dep:oxrdf"]
+sql = ["dep:sqlparser"]
 # An in-process DuckDB host for the SQL engine: `DuckDbExecutor` and
-# `ShaclValidationMode::Sql` in the processors. Native only, never default.
+# `validate_with_duckdb`. Native only, never default.
 duckdb = ["sql", "dep:duckdb"]
 
 [dependencies]
-anyhow.workspace = true
-dashmap.workspace = true
-indoc.workspace = true
 itertools.workspace = true
-oxrdf = { workspace = true, optional = true }
+oxrdf.workspace = true
 rudof_iri.workspace = true
 petgraph.workspace = true
 prefixmap.workspace = true
 rudof_rdf.workspace = true
 serde.workspace = true
-sparql_service.workspace = true
 sqlparser = { workspace = true, optional = true }
 thiserror.workspace = true
-toml.workspace = true
 tracing.workspace = true
 
-# rayon needs OS threads; keep it out of the wasm build (validation runs
-# sequentially there — see validator/processor).
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-rayon.workspace = true
 duckdb = { workspace = true, optional = true }
 
 [dev-dependencies]
-# The W3C suite runs every fixture through the SQL engine as well, on DuckDB.
+# The SQL interpretation runs on DuckDB in the tests, natively.
 shacl = { path = ".", features = ["duckdb"] }
 oxrdf = { workspace = true, features = [ "oxsdatatypes" ] }
 serde_json.workspace = true
+# The W3C suites are embedded in the test binary, so they run on wasm32 too.
+include_dir.workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+# The endpoint example reads Wikidata through `OxigraphEndpoint`.
+anyhow.workspace = true
+rudof_rdf = { workspace = true, features = ["sparql"] }
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+# Pinned with rudof_wasm's, to the release paired with `wasm-bindgen = "=0.2.120"`.
+wasm-bindgen-test = "=0.3.70"

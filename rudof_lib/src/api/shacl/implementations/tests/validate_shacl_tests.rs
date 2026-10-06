@@ -4,9 +4,7 @@ use crate::{
     api::shacl::implementations::load_shacl_schema::load_shacl_schema,
     api::shacl::implementations::serialize_shacl_validation_results::serialize_shacl_validation_results,
     api::shacl::implementations::validate_shacl::validate_shacl,
-    formats::{
-        DataFormat, InputSpec, ResultShaclValidationFormat, ShaclFormat, ShaclValidationMode, ShaclValidationSortByMode,
-    },
+    formats::{DataFormat, InputSpec, ResultShaclValidationFormat, ShaclFormat, ShaclValidationSortByMode},
 };
 
 /// Helper: serialize validation results to string
@@ -82,7 +80,7 @@ fn test_validate_shacl_conforming_data() {
     .unwrap();
 
     // Validate
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Minimal));
 
@@ -151,7 +149,7 @@ fn test_validate_shacl_non_conforming_data() {
     .unwrap();
 
     // Validate
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Minimal));
 
@@ -188,7 +186,7 @@ fn test_validate_shacl_without_data() {
     load_shacl_schema(&mut rudof, Some(&schema), Some(&ShaclFormat::Turtle), None, None).unwrap();
 
     // Try to validate without data
-    let result = validate_shacl(&mut rudof, None);
+    let result = validate_shacl(&mut rudof);
 
     assert!(result.is_err());
 }
@@ -221,7 +219,7 @@ fn test_validate_shacl_without_schema() {
     .unwrap();
 
     // Try to validate without schema
-    let result = validate_shacl(&mut rudof, None);
+    let result = validate_shacl(&mut rudof);
 
     assert!(result.is_err());
 }
@@ -271,7 +269,7 @@ fn test_validate_shacl_datatype_violations() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Minimal));
 
@@ -334,7 +332,7 @@ fn test_validate_shacl_min_max_violations() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Minimal));
 
@@ -397,7 +395,7 @@ fn test_validate_shacl_pattern_violations() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Minimal));
 
@@ -467,7 +465,7 @@ fn test_validate_shacl_node_shape_violations() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Minimal));
 
@@ -523,7 +521,7 @@ fn test_serialize_validation_results_compact() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Compact));
 
@@ -580,7 +578,7 @@ fn test_serialize_validation_results_details() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Details));
 
@@ -638,7 +636,7 @@ fn test_serialize_validation_results_turtle() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Turtle));
 
@@ -708,8 +706,7 @@ fn test_validate_shacl_with_validation_mode() {
     )
     .unwrap();
 
-    // Validate with default mode
-    validate_shacl(&mut rudof, Some(&ShaclValidationMode::default())).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Minimal));
 
@@ -781,7 +778,7 @@ fn test_validate_multiple_violations() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Minimal));
 
@@ -841,7 +838,7 @@ fn test_validate_shacl_json_result_format() {
     )
     .unwrap();
 
-    validate_shacl(&mut rudof, None).unwrap();
+    validate_shacl(&mut rudof).unwrap();
 
     let result = serialize_validation_to_string(&rudof, None, Some(ResultShaclValidationFormat::Json));
 

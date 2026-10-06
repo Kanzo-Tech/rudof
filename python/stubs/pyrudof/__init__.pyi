@@ -24,7 +24,6 @@ from .pyrudof import (
     ResultShaclValidationFormat as ResultShaclValidationFormat,
     ServiceDescriptionFormat as ServiceDescriptionFormat,
     ShaclFormat as ShaclFormat,
-    ShaclValidationMode as ShaclValidationMode,
     ShaclValidationSortMode as ShaclValidationSortMode,
     ShapeMapFormat as ShapeMapFormat,
     ShapesGraphSource as ShapesGraphSource,

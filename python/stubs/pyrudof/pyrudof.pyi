@@ -61,11 +61,6 @@ class ShaclFormat(IntEnum):
     N3 = 4
     NQuads = 5
 
-class ShaclValidationMode(IntEnum):
-    """SHACL validation engine to use."""
-    Native = 0
-    Sparql = 1
-
 class ShaclValidationSortMode(IntEnum):
     """Sort order for SHACL validation result rows."""
     Severity = 0
@@ -516,11 +511,8 @@ class Rudof:
         """
         ...
 
-    def validate_shacl(self, mode: Optional[ShaclValidationMode] = None) -> None:
+    def validate_shacl(self) -> None:
         """Validate the loaded RDF data against the loaded SHACL shapes.
-
-        Args:
-            mode: Validation engine. Default: ``ShaclValidationMode.Native``.
 
         Raises:
             RudofError: If no data or shapes are loaded, or validation fails.

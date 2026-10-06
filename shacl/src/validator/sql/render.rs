@@ -251,6 +251,15 @@ where
                 .distinct()
                 .from(derived(self.triples.predicate(iri), "m"))
                 .into_query(),
+            Op::Scope => SelectBuilder::new(TermExpr::columns("m", "n").items("f"))
+                .distinct()
+                .from(derived(
+                    self.triples
+                        .scope()
+                        .ok_or_else(|| SqlCompileError::Internal("a scoped plan with no focus relation".to_owned()))?,
+                    "m",
+                ))
+                .into_query(),
             Op::Class(iri) => SelectBuilder::new(TermExpr::columns("m", "n").items("f"))
                 .distinct()
                 .from(derived(self.triples.class_extent(iri), "m"))

@@ -31,18 +31,35 @@ use sqlparser::ast::{ObjectName, Query};
 /// The predicate column.
 pub(crate) const PREDICATE_COLUMN: &str = "p";
 
-/// The `(s, p, o)` relation the data is read from.
+/// The `(s, p, o)` relation the data is read from, and the relation of the
+/// focus nodes validation is restricted to, if any.
 #[derive(Debug, Clone)]
 pub(crate) struct Triples {
     table: ObjectName,
+    focus: Option<ObjectName>,
 }
 
 impl Triples {
     /// The relation named `table`, a SQL object name (`triples`,
-    /// `"job".triples`, `"My Triples"`).
-    pub(crate) fn new(table: &str) -> Result<Self, SqlCompileError> {
-        let table = parse_object_name(table).map_err(|e| SqlCompileError::Table(format!("{table}: {e}")))?;
-        Ok(Self { table })
+    /// `"job".triples`, `"My Triples"`), and `focus`, the name of a relation
+    /// whose `s_k, s_v` are nodes, spelled as the triples' subjects.
+    pub(crate) fn new(table: &str, focus: Option<&str>) -> Result<Self, SqlCompileError> {
+        let name = |n: &str| parse_object_name(n).map_err(|e| SqlCompileError::Table(format!("{n}: {e}")));
+        Ok(Self {
+            table: name(table)?,
+            focus: focus.map(name).transpose()?,
+        })
+    }
+
+    /// The nodes of the focus relation, `n_k, n_v, n_d, n_l`; `None` when
+    /// validation is not restricted.
+    pub(crate) fn scope(&self) -> Option<Query> {
+        let focus = self.focus.as_ref()?;
+        Some(
+            SelectBuilder::new(Self::subject("t").items("n"))
+                .from(table(focus, "t"))
+                .into_query(),
+        )
     }
 
     fn subject(alias: &str) -> TermExpr {

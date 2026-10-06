@@ -114,6 +114,12 @@ export interface Engine {
 export interface TableValidation {
   /** A relation of columns `s_k, s_v, p, o_k, o_v, o_d, o_l`, e.g. `"job".triples`. */
   table: string;
+  /**
+   * A relation of nodes in columns `s_k, s_v`, spelled as the table's
+   * subjects: each shape's focus nodes are its targets among them, checked
+   * against the whole table. A selection, for one.
+   */
+  focus?: string;
   engine: Engine;
   /** Stops the running statement. */
   signal?: AbortSignal;
@@ -187,10 +193,19 @@ impl Shapes {
         let table = field("table")
             .as_string()
             .ok_or_else(|| JsError::new("table: expected the name of a triples relation"))?;
+        let focus = field("focus");
+        let focus = match focus.is_undefined() || focus.is_null() {
+            true => None,
+            false => Some(
+                focus
+                    .as_string()
+                    .ok_or_else(|| JsError::new("focus: expected the name of a relation of nodes"))?,
+            ),
+        };
         let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
         let validation = self
             .inner
-            .validate_sql(table, engine)
+            .validate_sql(table, focus, engine)
             .map_err(|e| JsError::new(&e.to_string()))?;
         Ok(wasm_bindgen_futures::future_to_promise(async move {
             let outcome = validation.await.map_err(|e| JsError::new(&e.to_string()))?;

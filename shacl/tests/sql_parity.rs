@@ -4,8 +4,10 @@
 #![cfg(not(target_family = "wasm"))]
 
 use futures::executor::block_on;
+use rudof_iri::IriS;
 use rudof_rdf::RDFFormat;
 use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::term::Object;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::validator::report::ValidationReport;
@@ -144,7 +146,7 @@ fn through_tables(schema: &IRSchema, db_schema: Option<&str>) -> ValidationRepor
         .connection()
         .execute_batch(&format!("CREATE VIEW {prefix}triples AS {}", view(&prefix)))
         .expect("the view is created");
-    block_on(validate(schema, &format!("{prefix}triples"), &engine)).expect("validates")
+    block_on(validate(schema, &format!("{prefix}triples"), None, &engine)).expect("validates")
 }
 
 #[test]
@@ -272,4 +274,36 @@ ex:W a sh:NodeShape ; sh:class ex:Person .
     let sql = validate_with_duckdb(&data, &schema).expect("sql validates");
     assert_eq!(sql, in_memory(&data, &schema));
     assert_eq!(sql.results().len(), 1);
+}
+
+#[test]
+fn a_focus_relation_scopes_the_focus_nodes_and_not_the_data() {
+    let data = graph(DATA);
+    let schema = schema(
+        r#"
+ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
+    sh:property [ sh:path ex:knows ; sh:class ex:Person ] ;
+    sh:property [ sh:path ex:age ; sh:minInclusive 18 ] .
+"#,
+    );
+    let bob = Object::Iri(IriS::new_unchecked("http://example.org/bob"));
+    let in_memory_scoped =
+        shacl::validator::validate_scoped(&schema, &data, std::slice::from_ref(&bob)).expect("validates");
+
+    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
+    engine.load_triples("triples", &data).expect("triples load");
+    engine
+        .connection()
+        .execute_batch("CREATE TABLE focus AS SELECT 'I' AS s_k, 'http://example.org/bob' AS s_v")
+        .expect("the focus is created");
+    let sql = block_on(validate(&schema, "triples", Some("focus"), &engine)).expect("validates");
+    assert_eq!(sql, in_memory_scoped, "{sql}\n---\n{in_memory_scoped}");
+
+    // Bob's own results, and every one of them: what Bob knows is read from
+    // the whole graph, so the people outside the scope are still people.
+    let whole = in_memory(&data, &schema);
+    let bobs: Vec<_> = whole.results().iter().filter(|r| r.focus_node() == &bob).collect();
+    assert!(!bobs.is_empty(), "bob is under age: {whole}");
+    assert_eq!(in_memory_scoped.results().len(), bobs.len(), "{in_memory_scoped}");
+    assert!(bobs.iter().all(|r| in_memory_scoped.results().contains(r)));
 }

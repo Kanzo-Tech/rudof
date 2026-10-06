@@ -9,5 +9,5 @@ use shacl::validator::sql::{DuckDbEngine, validate};
 pub fn validate_with_duckdb(data: &OxigraphInMemory, schema: &IRSchema) -> Result<ValidationReport, String> {
     let engine = DuckDbEngine::in_memory().map_err(|e| e.to_string())?;
     engine.load_triples("triples", data).map_err(|e| e.to_string())?;
-    futures::executor::block_on(validate(schema, "triples", &engine)).map_err(|e| e.to_string())
+    futures::executor::block_on(validate(schema, "triples", None, &engine)).map_err(|e| e.to_string())
 }

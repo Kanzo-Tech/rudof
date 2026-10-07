@@ -5,13 +5,14 @@ use crate::{AsyncRDF, BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf};
 
 use crate::vocab::RdfVocab;
 use colored::*;
+use oxiri::IriParseError;
 use oxjsonld::JsonLdParser;
 use oxrdf::{
     BlankNode as OxBlankNode, Graph, GraphName, Literal as OxLiteral, NamedNode as OxNamedNode, NamedNodeRef,
     NamedOrBlankNode as OxSubject, NamedOrBlankNodeRef as OxSubjectRef, Quad, Term as OxTerm, TermRef,
     Triple as OxTriple, TripleRef,
 };
-use oxrdfio::{JsonLdProfileSet, RdfFormat, RdfSerializer};
+use oxrdfio::{JsonLdProfileSet, RdfFormat, RdfParseError, RdfSerializer};
 use oxrdfxml::RdfXmlParser;
 use oxttl::{NQuadsParser, NTriplesParser, TurtleParser};
 use prefixmap::{PrefixMapError, prefix_map::*};
@@ -136,10 +137,10 @@ impl OxigraphInMemory {
                 self.parse_turtle(reader, source_name, base, reader_mode)?;
             },
             RDFFormat::NTriples => {
-                self.parse_ntriples(reader, reader_mode)?;
+                self.parse_ntriples(reader, source_name, reader_mode)?;
             },
             RDFFormat::Rdfxml => {
-                self.parse_rdfxml(reader, reader_mode)?;
+                self.parse_rdfxml(reader, source_name, reader_mode)?;
             },
             RDFFormat::TriG => {
                 return Err(OxigraphInMemoryError::UnsupportedFormat {
@@ -152,10 +153,10 @@ impl OxigraphInMemory {
                 });
             },
             RDFFormat::NQuads => {
-                self.parse_nquads(reader, reader_mode)?;
+                self.parse_nquads(reader, source_name, reader_mode)?;
             },
             RDFFormat::JsonLd => {
-                self.parse_jsonld(reader, reader_mode)?;
+                self.parse_jsonld(reader, source_name, reader_mode)?;
             },
         }
         if let Some(base) = base {
@@ -193,26 +194,17 @@ impl OxigraphInMemory {
         let graph = &mut self.graph;
 
         for triple_result in turtle_reader.by_ref() {
-            let triple = match handle_parse_error(triple_result, reader_mode, |e| {
-                OxigraphInMemoryError::TurtleParseError {
-                    source_name: source_name.to_string(),
-                    error: e,
-                }
-            })? {
+            let triple = match handle_parse_error(triple_result, source_name, reader_mode)? {
                 Some(t) => t,
                 None => continue,
             };
             let triple_ref = triple.as_ref();
-            if let Err(e) = validate_triple_iris(triple_ref) {
-                // In strict mode `?` propagates the typed `TurtleParseError`; in lax
-                // mode `handle_parse_error` yields `Ok(None)` and we skip this triple.
-                // (`Err` input can never produce `Ok(Some(_))`, so there is no success arm.)
-                handle_parse_error(Err::<(), _>(e), reader_mode, |e| {
-                    OxigraphInMemoryError::TurtleParseError {
-                        source_name: source_name.to_string(),
-                        error: format!("Invalid IRI in triple: {e}"),
-                    }
-                })?;
+            // The lenient parser does not check IRIs, so this does: the error is
+            // the IRI's own and, unlike a syntax error, has no place in the text.
+            if let Err(err) = validate_triple_iris(triple_ref) {
+                if reader_mode.is_strict() {
+                    return Err(err.into());
+                }
                 continue;
             }
             graph.insert(triple_ref);
@@ -242,6 +234,7 @@ impl OxigraphInMemory {
     fn parse_ntriples<R: io::Read>(
         &mut self,
         reader: &mut R,
+        source_name: &str,
         reader_mode: &ReaderMode,
     ) -> Result<(), OxigraphInMemoryError> {
         let parser = NTriplesParser::new();
@@ -249,14 +242,10 @@ impl OxigraphInMemory {
         let graph = &mut self.graph;
 
         for triple_result in nt_reader.by_ref() {
-            let triple =
-                match handle_parse_error(triple_result, reader_mode, |e| OxigraphInMemoryError::NTriplesError {
-                    data: "Reading N-Triples".to_string(),
-                    error: e,
-                })? {
-                    Some(t) => t,
-                    None => continue,
-                };
+            let triple = match handle_parse_error(triple_result, source_name, reader_mode)? {
+                Some(t) => t,
+                None => continue,
+            };
             graph.insert(triple.as_ref());
         }
 
@@ -276,6 +265,7 @@ impl OxigraphInMemory {
     fn parse_rdfxml<R: io::Read>(
         &mut self,
         reader: &mut R,
+        source_name: &str,
         reader_mode: &ReaderMode,
     ) -> Result<(), OxigraphInMemoryError> {
         let parser = RdfXmlParser::new();
@@ -283,10 +273,7 @@ impl OxigraphInMemory {
         let graph = &mut self.graph;
 
         for triple_result in xml_reader.by_ref() {
-            let triple = match handle_parse_error(triple_result, reader_mode, |e| OxigraphInMemoryError::RDFXMLError {
-                data: "Reading RDF/XML".to_string(),
-                error: e,
-            })? {
+            let triple = match handle_parse_error(triple_result, source_name, reader_mode)? {
                 Some(t) => t,
                 None => continue,
             };
@@ -310,6 +297,7 @@ impl OxigraphInMemory {
     fn parse_nquads<R: io::Read>(
         &mut self,
         reader: &mut R,
+        source_name: &str,
         reader_mode: &ReaderMode,
     ) -> Result<(), OxigraphInMemoryError> {
         let parser = NQuadsParser::new();
@@ -317,10 +305,7 @@ impl OxigraphInMemory {
         let graph = &mut self.graph;
 
         for triple_result in nq_reader.by_ref() {
-            let triple = match handle_parse_error(triple_result, reader_mode, |e| OxigraphInMemoryError::NQuadsError {
-                data: "Reading NQuads".to_string(),
-                error: e,
-            })? {
+            let triple = match handle_parse_error(triple_result, source_name, reader_mode)? {
                 Some(t) => t,
                 None => continue,
             };
@@ -343,6 +328,7 @@ impl OxigraphInMemory {
     fn parse_jsonld<R: io::Read>(
         &mut self,
         reader: &mut R,
+        source_name: &str,
         reader_mode: &ReaderMode,
     ) -> Result<(), OxigraphInMemoryError> {
         let parser = JsonLdParser::new();
@@ -350,10 +336,7 @@ impl OxigraphInMemory {
         let graph = &mut self.graph;
 
         for triple_result in jsonld_reader.by_ref() {
-            let triple = match handle_parse_error(triple_result, reader_mode, |e| OxigraphInMemoryError::JsonLDError {
-                data: "Reading JSON-LD".to_string(),
-                error: e,
-            })? {
+            let triple = match handle_parse_error(triple_result, source_name, reader_mode)? {
                 Some(t) => t,
                 None => continue,
             };
@@ -1119,6 +1102,17 @@ fn triple_to_quad(t: TripleRef, graph_name: GraphName) -> Quad {
     Quad::new(subj, pred, obj, graph_name)
 }
 
+fn validate_triple_iris(triple: TripleRef) -> Result<(), IriParseError> {
+    if let oxrdf::NamedOrBlankNodeRef::NamedNode(n) = triple.subject {
+        OxNamedNode::new(n.as_str())?;
+    }
+    OxNamedNode::new(triple.predicate.as_str())?;
+    if let TermRef::NamedNode(n) = triple.object {
+        OxNamedNode::new(n.as_str())?;
+    }
+    Ok(())
+}
+
 /// Helper function to handle parse errors consistently.
 ///
 /// This function implements a consistent error handling strategy across all parsers.
@@ -1127,39 +1121,30 @@ fn triple_to_quad(t: TripleRef, graph_name: GraphName) -> Quad {
 /// # Parameters
 ///
 /// * `result` - The parse result to handle
+/// * `source_name` - Name used for error reporting
 /// * `reader_mode` - Controls error handling behavior
-/// * `error_constructor` - Function to construct an appropriate error type
 ///
 /// # Returns
 ///
 /// * `Ok(Some(value))` - Parsing succeeded
 /// * `Ok(None)` - Parsing failed in lax mode (skip this item)
-/// * `Err(error)` - Parsing failed in strict mode
-fn validate_triple_iris(triple: TripleRef) -> Result<(), String> {
-    if let oxrdf::NamedOrBlankNodeRef::NamedNode(n) = triple.subject {
-        OxNamedNode::new(n.as_str()).map_err(|e| e.to_string())?;
-    }
-    OxNamedNode::new(triple.predicate.as_str()).map_err(|e| e.to_string())?;
-    if let TermRef::NamedNode(n) = triple.object {
-        OxNamedNode::new(n.as_str()).map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-fn handle_parse_error<T, E: std::fmt::Display>(
-    result: Result<T, E>,
+/// * `Err(error)` - Parsing failed in strict mode: the parser's own error, as
+///   [`OxigraphInMemoryError::Syntax`] or, for a failed read, `IOError`
+fn handle_parse_error<T>(
+    result: Result<T, impl Into<RdfParseError>>,
+    source_name: &str,
     reader_mode: &ReaderMode,
-    error_constructor: impl FnOnce(String) -> OxigraphInMemoryError,
 ) -> Result<Option<T>, OxigraphInMemoryError> {
     match result {
         Ok(val) => Ok(Some(val)),
-        Err(e) => {
-            if reader_mode.is_strict() {
-                Err(error_constructor(e.to_string()))
-            } else {
-                Ok(None)
-            }
-        },
+        Err(_) if !reader_mode.is_strict() => Ok(None),
+        Err(e) => Err(match e.into() {
+            RdfParseError::Io(err) => OxigraphInMemoryError::IOError { err },
+            RdfParseError::Syntax(error) => OxigraphInMemoryError::Syntax {
+                source_name: source_name.to_string(),
+                error,
+            },
+        }),
     }
 }
 

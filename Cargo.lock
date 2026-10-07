@@ -4007,6 +4007,7 @@ dependencies = [
  "dctap",
  "either",
  "oxrdf",
+ "oxrdfio",
  "pgschema",
  "prefixmap",
  "rdf_config",

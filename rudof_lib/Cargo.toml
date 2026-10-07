@@ -53,6 +53,7 @@ url.workspace = true
 # rudof_rdf without `sparql`, and no sparql_service/reqwest.
 [target.'cfg(target_family = "wasm")'.dependencies]
 oxrdf = { workspace = true }
+oxrdfio = { workspace = true }
 prefixmap = { workspace = true }
 rudof_iri = { workspace = true }
 rudof_rdf = { workspace = true }

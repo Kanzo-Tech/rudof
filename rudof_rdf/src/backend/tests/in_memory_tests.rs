@@ -1,4 +1,4 @@
-use crate::backend::{OxigraphInMemory, ReaderMode};
+use crate::backend::{OxigraphInMemory, OxigraphInMemoryError, ReaderMode};
 use crate::rdf_parser;
 use crate::{
     Any, BuildRDF, NeighsRDF, RDFError, RDFFormat,
@@ -353,4 +353,22 @@ fn test_add_triple_ref() {
     let o = OxNamedNode::new_unchecked("http://example.org/y");
     graph.add_triple_ref(&s, &p, &o).unwrap();
     assert_eq!(graph.len(), 1);
+}
+
+/// A syntax error is the parser's own, and keeps where the parser found it:
+/// `oxrdfio`'s location, 0-based, which its message counts from 1.
+#[test]
+fn a_syntax_error_keeps_the_parsers_location() {
+    let doc = "prefix : <http://example.org/>\n:x :p 1 .\n:y :p ;\n";
+    let Err(OxigraphInMemoryError::Syntax { error, .. }) =
+        OxigraphInMemory::from_str(doc, &RDFFormat::Turtle, None, &ReaderMode::Strict)
+    else {
+        panic!("a Turtle document missing an object must be a syntax error")
+    };
+    let start = error.location().expect("the Turtle parser places its errors").start;
+    assert_eq!((start.line, start.column), (2, 6));
+    assert!(
+        error.to_string().starts_with("Parser error at line 3 column 7"),
+        "{error}"
+    );
 }

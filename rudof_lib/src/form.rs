@@ -39,6 +39,8 @@ pub use shacl::vocab::shui;
 
 pub use crate::base::STRING_BASE;
 
+use oxrdfio::RdfSyntaxError;
+use rudof_rdf::backend::OxigraphInMemoryError;
 use shacl::ir::{IRSchema, ShapeLabelIdx};
 use shacl::messages::MessageCatalog;
 use shacl::rdf::ShaclParser;
@@ -49,6 +51,10 @@ use std::collections::HashSet;
 /// the binding renders them to a `JsError` via `Display`.
 #[derive(Debug, thiserror::Error)]
 pub enum FormError {
+    /// The text is not in the syntax of its format: the RDF parser's own error,
+    /// placed in the text when the parser can ([`RdfSyntaxError::location`]).
+    #[error(transparent)]
+    Syntax(RdfSyntaxError),
     #[error("{0}")]
     Parse(String),
     #[error("{0}")]
@@ -219,8 +225,10 @@ impl FormEngine {
     /// back to the workspace's own synthetic string base, [`STRING_BASE`].
     pub fn parse_graph(text: &str, format: &RDFFormat, base: Option<&str>) -> Result<OxigraphInMemory, FormError> {
         let base = base.unwrap_or(STRING_BASE);
-        OxigraphInMemory::from_str(text, format, Some(base), &ReaderMode::Strict)
-            .map_err(|e| FormError::Parse(e.to_string()))
+        OxigraphInMemory::from_str(text, format, Some(base), &ReaderMode::Strict).map_err(|e| match e {
+            OxigraphInMemoryError::Syntax { error, .. } => FormError::Syntax(error),
+            e => FormError::Parse(e.to_string()),
+        })
     }
 
     // ---- data ----------------------------------------------------------------

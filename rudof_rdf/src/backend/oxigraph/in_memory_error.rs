@@ -1,5 +1,5 @@
 use oxiri::IriParseError;
-use oxttl::TurtleParseError;
+use oxrdfio::RdfSyntaxError;
 use prefixmap::PrefixMapError;
 use rudof_iri::error::IriSError;
 use std::io;
@@ -39,13 +39,15 @@ pub enum OxigraphInMemoryError {
     #[error("Running query {query} error: {msg}")]
     RunningQueryError { query: String, msg: String },
 
-    /// Error parsing Turtle RDF data.
+    /// The data is not in the syntax of its format: the RDF parser's own error,
+    /// which places itself in the text when the parser can
+    /// ([`RdfSyntaxError::location`]: 0-based, columns in code points).
     ///
     /// # Fields
     /// - `source_name`: The name or path of the data source
-    /// - `error`: Detailed description of the parsing failure
-    #[error("Error parsing Turtle data from {source_name}: {error}")]
-    TurtleParseError { source_name: String, error: String },
+    /// - `error`: The parser's error
+    #[error("Error parsing RDF data from {source_name}: {error}")]
+    Syntax { source_name: String, error: RdfSyntaxError },
 
     /// Error when an RDF serialization format is not supported by this backend.
     ///
@@ -77,16 +79,6 @@ pub enum OxigraphInMemoryError {
     #[error("Reading path {path_name:?} error: {error:?}")]
     ReadingPathError { path_name: String, error: io::Error },
 
-    /// Error reading Turtle data.
-    ///
-    /// # Fields
-    /// - `err`: The underlying Turtle parsing error
-    #[error(transparent)]
-    ErrorReadingTurtle {
-        #[from]
-        err: TurtleParseError,
-    },
-
     /// General I/O error.
     ///
     /// # Fields
@@ -96,49 +88,6 @@ pub enum OxigraphInMemoryError {
         #[from]
         err: IOError,
     },
-
-    /// Error parsing Turtle data with context.
-    ///
-    /// # Fields
-    /// - `data`: The Turtle data that failed to parse
-    /// - `turtle_error`: The underlying Turtle parsing error
-    #[error("Turtle error: {turtle_error}\nData:\n{data}")]
-    TurtleError {
-        data: String,
-        turtle_error: TurtleParseError,
-    },
-
-    /// Error parsing RDF/XML data.
-    ///
-    /// # Fields
-    /// - `data`: The RDF/XML data that failed to parse
-    /// - `error`: Detailed description of the parsing failure
-    #[error("RDF/XML error: {error}\nData: {data}")]
-    RDFXMLError { data: String, error: String },
-
-    /// Error parsing N-Triples data.
-    ///
-    /// # Fields
-    /// - `data`: The N-Triples data that failed to parse
-    /// - `error`: Detailed description of the parsing failure
-    #[error("N-Triples error: {error}\nData: {data}")]
-    NTriplesError { data: String, error: String },
-
-    /// Error parsing N-Quads data.
-    ///
-    /// # Fields
-    /// - `data`: The N-Quads data that failed to parse
-    /// - `error`: Detailed description of the parsing failure
-    #[error("NQuads error: {error}\nData: {data}")]
-    NQuadsError { data: String, error: String },
-
-    /// Error parsing JSON-LD data.
-    ///
-    /// # Fields
-    /// - `data`: The JSON-LD data that failed to parse
-    /// - `error`: Detailed description of the parsing failure
-    #[error("JSON-LD error: {error}\nData: {data}")]
-    JsonLDError { data: String, error: String },
 
     /// Error parsing an IRI.
     ///

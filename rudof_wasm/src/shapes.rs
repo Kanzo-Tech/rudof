@@ -341,7 +341,7 @@ fn shape_core(
             },
             ASTComponent::In(vals) => value.in_values = Some(vals.iter().map(value_to_term).collect()),
             ASTComponent::HasValue(v) => value.has_value = Some(value_to_term(v)),
-            ASTComponent::Node(o) => node = object_iri(o),
+            ASTComponent::Node(o) => node = Some(object_str(o)),
             ASTComponent::Or(refs) => logical.or = Some(resolve_branches(refs, schema, graph, scoring, depth)),
             ASTComponent::Xone(refs) => logical.xone = Some(resolve_branches(refs, schema, graph, scoring, depth)),
             ASTComponent::And(refs) => logical.and = Some(resolve_branches(refs, schema, graph, scoring, depth)),
@@ -393,7 +393,7 @@ fn property_to_ir_at(
     }
 
     PropertyShapeIR {
-        id: object_iri(ps.id()),
+        id: object_str(ps.id()),
         path: path_to_ir(ps.path()),
         path_key: path_key(ps.path()),
         cardinality,
@@ -471,7 +471,7 @@ fn branch_to_ir(o: &Object, schema: &ASTSchema, graph: &SubjectIndex, scoring: &
             } = shape_core(ns.components(), schema, graph, scoring, next);
             let presentation = presentation(graph, scoring, o, ns.components());
             Some(ShapeIR {
-                id: object_iri(o),
+                id: object_str(o),
                 path: None,
                 path_key: None,
                 cardinality,
@@ -1042,7 +1042,7 @@ mod tests {
         assert_eq!(report.results.len(), 1);
         let result = &report.results[0];
         assert_eq!(result.path_key.as_deref(), Some(JUSTIFICATION));
-        let mut languages: Vec<&str> = result.message.iter().map(|m| m.language.as_str()).collect();
+        let mut languages: Vec<&str> = result.result_message.iter().map(|m| m.language.as_str()).collect();
         languages.retain(|l| !l.is_empty());
         languages.sort();
         assert_eq!(languages, vec!["ca", "es"]);

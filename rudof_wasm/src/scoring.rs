@@ -433,7 +433,7 @@ mod tests {
             .expect("the node shape")
             .properties;
         ps.sort_by_key(|p| {
-            let id = p.id.as_deref().expect("a named property shape");
+            let id = p.id.as_str();
             id.rsplit('P')
                 .next()
                 .and_then(|n| n.parse::<usize>().ok())

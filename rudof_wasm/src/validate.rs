@@ -1,17 +1,17 @@
-//! Marshalling between the façade's validation outcome and the `RudofReport`
+//! Marshalling between the façade's validation outcome and the `ValidationReport`
 //! ABI DTO. The validation itself (full / shape-scoped / single-focus) runs in
 //! `rudof_lib::form::FormEngine`; here we only map rudof's `ValidationResult`
 //! into the vocabulary-agnostic report the JS side consumes.
 
-use rudof_lib::form::{IriS, Object, SHACLPath, Severity, Unchecked, ValidationOutcome, ValidationResult};
+use rudof_lib::form::{IriS, Object, SHACLPath, Severity, Unchecked, ValidationOutcome};
 
-use crate::dto::{LangString, RudofReport, RudofResult, RudofUnchecked, TermValue};
+use crate::dto::{LangString, RudofUnchecked, TermValue, ValidationReport, ValidationResult};
 use crate::object_to_value;
 use crate::shapes::path_key;
 
 /// Map a façade [`ValidationOutcome`] into the ABI report DTO.
-pub fn report_from_outcome(outcome: &ValidationOutcome) -> RudofReport {
-    RudofReport {
+pub fn report_from_outcome(outcome: &ValidationOutcome) -> ValidationReport {
+    ValidationReport {
         conforms: outcome.conforms,
         results: outcome.results.iter().map(result_to_dto).collect(),
         unchecked: unchecked_to_dto(&outcome.unchecked),
@@ -35,10 +35,10 @@ pub fn focus_object(focus: &TermValue) -> Result<Object, String> {
     Object::try_from(crate::term_to_object(focus)).map_err(|e| e.to_string())
 }
 
-fn result_to_dto(r: &ValidationResult) -> RudofResult {
-    RudofResult {
+fn result_to_dto(r: &rudof_lib::form::ValidationResult) -> ValidationResult {
+    ValidationResult {
         focus_node: object_to_term(r.focus_node()),
-        path: r.path().and_then(path_to_term),
+        result_path: r.path().and_then(path_to_term),
         // Never re-derived here. `shapes::path_key` is the one that produced the
         // keys the fields are indexed by, so calling anything else — however
         // identical it looked — would file errors under keys no field has, and
@@ -47,7 +47,7 @@ fn result_to_dto(r: &ValidationResult) -> RudofResult {
         value: r.value().map(object_to_term),
         // Preserve the language key of each message: `Some(lang)` → its tag,
         // `None` (engine default / untagged) → "". The JS side selects by locale.
-        message: r
+        result_message: r
             .message()
             .messages()
             .iter()
@@ -56,7 +56,7 @@ fn result_to_dto(r: &ValidationResult) -> RudofResult {
                 language: lang.as_ref().map(|l| l.as_str().to_string()).unwrap_or_default(),
             })
             .collect(),
-        severity: Some(severity_iri(r.severity())),
+        result_severity: severity_iri(r.severity()),
         source_constraint_component: object_iri(r.constraint_component()),
         source_shape: r.source().map(object_to_term),
     }
@@ -119,7 +119,7 @@ mod tests {
         let report = report_from_outcome(&engine.validate().unwrap());
         assert_eq!(report.results.len(), 1);
         let mut m: Vec<_> = report.results[0]
-            .message
+            .result_message
             .iter()
             .map(|l| (l.language.clone(), l.value.clone()))
             .collect();

@@ -186,11 +186,11 @@ impl Shapes {
     /// statement. Every statement runs through `engine.query`, on its one
     /// connection.
     ///
-    /// Resolves to a `RudofReport`, worded as `FormSession.validate` words it.
+    /// Resolves to a `ValidationReport`, worded as `FormSession.validate` words it.
     /// A shape the engine does not check (outside its profile, recursive, or
     /// depending on such a shape) is listed in `unchecked`; the rest are
     /// checked.
-    #[wasm_bindgen(unchecked_return_type = "Promise<RudofReport>")]
+    #[wasm_bindgen(unchecked_return_type = "Promise<ValidationReport>")]
     pub fn validate(
         &self,
         #[wasm_bindgen(unchecked_param_type = "TableValidation")] options: JsValue,
@@ -379,7 +379,7 @@ impl FormSession {
     /// * `shape_id == None`     → validate the whole graph against every shape.
     /// * `shape_id == Some(id)` → validate only that shape (and its nested
     ///   property shapes) against its own targets — shape-scoped.
-    pub fn validate(&self, shape_id: Option<String>) -> Result<Ts<RudofReport>, JsError> {
+    pub fn validate(&self, shape_id: Option<String>) -> Result<Ts<ValidationReport>, JsError> {
         let outcome = match shape_id {
             Some(id) => self.engine.validate_shape(&id),
             None => self.engine.validate(),
@@ -392,7 +392,7 @@ impl FormSession {
     /// per-field / per-keystroke revalidation path used by the React form: it
     /// validates just `focus` against `shape_id`, not the whole graph.
     #[wasm_bindgen(js_name = validateFocus)]
-    pub fn validate_focus(&self, focus: Ts<TermValue>, shape_id: String) -> Result<Ts<RudofReport>, JsError> {
+    pub fn validate_focus(&self, focus: Ts<TermValue>, shape_id: String) -> Result<Ts<ValidationReport>, JsError> {
         let focus: TermValue = from_js(focus)?;
         let focus = validate::focus_object(&focus).map_err(|e| JsError::new(&e))?;
         let outcome = self

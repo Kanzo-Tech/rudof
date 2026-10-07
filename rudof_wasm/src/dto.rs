@@ -376,18 +376,20 @@ pub struct RudofQuad {
     pub object: TermValue,
 }
 
+/// An `sh:ValidationResult` (SHACL §3.6.2), its properties named as the
+/// vocabulary names them, camel-cased.
 #[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct RudofResult {
+pub struct ValidationResult {
     pub focus_node: TermValue,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<TermValue>,
+    pub result_path: Option<TermValue>,
     /// The path as its canonical key — the SAME string `shapes::path_key` gives
     /// the projection, because the consumer files an error under
     /// `${focusNode}|${pathKey}` and a field it cannot match is an error that
     /// silently becomes node-level.
     ///
-    /// `path` above carries only a predicate, so every inverse, sequence,
+    /// `result_path` above carries only a predicate, so every inverse, sequence,
     /// alternative and quantified path reported its violation with no path at
     /// all. That was survivable while those fields were read-only. It is not
     /// now: hundreds of alternative-path fields carry `sh:minCount 1`, and a
@@ -400,9 +402,10 @@ pub struct RudofResult {
     /// Lang-tagged messages: the engine's default (untagged, `language: ""`)
     /// merged with the shape's per-language `sh:message` entries. The JS side
     /// picks the best by locale; untagged is the fallback.
-    pub message: Vec<LangString>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub severity: Option<String>,
+    pub result_message: Vec<LangString>,
+    /// The severity's IRI: `sh:Violation`, `sh:Warning`, `sh:Info`, SHACL
+    /// 1.2's `sh:Debug` and `sh:Trace`, or the shape's own.
+    pub result_severity: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_constraint_component: Option<String>,
     /// `sh:sourceShape`: the shape that declares the violated constraint.
@@ -410,11 +413,11 @@ pub struct RudofResult {
     pub source_shape: Option<TermValue>,
 }
 
-// The validation report crossing the ABI (also produced by the Node fake).
+/// An `sh:ValidationReport` (SHACL §3.6.1).
 #[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
-pub struct RudofReport {
+pub struct ValidationReport {
     pub conforms: bool,
-    pub results: Vec<RudofResult>,
+    pub results: Vec<ValidationResult>,
     /// The shapes the engine did not check, so a result can be missing for
     /// them: outside its profile, recursive, or depending on such a shape.
     pub unchecked: Vec<RudofUnchecked>,

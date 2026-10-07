@@ -1042,7 +1042,7 @@ mod tests {
         assert_eq!(report.results.len(), 1);
         let result = &report.results[0];
         assert_eq!(result.path_key.as_deref(), Some(JUSTIFICATION));
-        let mut languages: Vec<&str> = result.message.iter().map(|m| m.language.as_str()).collect();
+        let mut languages: Vec<&str> = result.result_message.iter().map(|m| m.language.as_str()).collect();
         languages.retain(|l| !l.is_empty());
         languages.sort();
         assert_eq!(languages, vec!["ca", "es"]);

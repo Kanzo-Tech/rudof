@@ -28,10 +28,18 @@ where
     let mut rows = Vec::new();
     for triple in triples {
         let (subject, predicate, object) = triple.into_components();
-        let [s_k, s_v, _, _] = encode(&S::subject_as_term(&subject))?;
+        let [s_type, s_value, _, _] = encode(&S::subject_as_term(&subject))?;
         let predicate: IriS = predicate.into();
-        let [o_k, o_v, o_d, o_l] = encode(&object)?;
-        rows.push([s_k, s_v, predicate.as_str().to_owned(), o_k, o_v, o_d, o_l]);
+        let [o_type, o_value, o_datatype, o_lang] = encode(&object)?;
+        rows.push([
+            s_type,
+            s_value,
+            predicate.as_str().to_owned(),
+            o_type,
+            o_value,
+            o_datatype,
+            o_lang,
+        ]);
     }
     Ok(rows)
 }

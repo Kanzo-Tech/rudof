@@ -112,10 +112,10 @@ export interface Engine {
 
 /** What `Shapes.validate` reads: a triples relation, on an engine. */
 export interface TableValidation {
-  /** A relation of columns `s_k, s_v, p, o_k, o_v, o_d, o_l`, e.g. `"job".triples`. */
+  /** A relation of columns `s_type, s_value, p, o_type, o_value, o_datatype, o_lang`, e.g. `"job".triples`. */
   table: string;
   /**
-   * A relation of nodes in columns `s_k, s_v`, spelled as the table's
+   * A relation of nodes in columns `s_type, s_value`, spelled as the table's
    * subjects: each shape's focus nodes are its targets among them, checked
    * against the whole table. A selection, for one.
    */
@@ -179,7 +179,7 @@ impl Shapes {
     }
 
     /// Validate, through SQL on the page's engine, the data in a triples
-    /// relation: `table` names it (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`,
+    /// relation: `table` names it (columns `s_type, s_value, p, o_type, o_value, o_datatype, o_lang`,
     /// e.g. `"job".triples`, the view `@fossil-lang/corpus`'s `open` creates);
     /// `engine` is `{ query(sql, { signal }): Promise<Table> }`, which
     /// `@kanzo-tech/mosaic`'s `engine()` is; `signal` stops the running

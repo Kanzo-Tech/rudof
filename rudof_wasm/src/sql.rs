@@ -1,9 +1,11 @@
 //! The SQL engine across the ABI: the page's engine, `{ query(sql, { signal })
-//! => Promise<Table> }` (`@kanzo-tech/mosaic`'s `engine()` as it is), driven
-//! from Rust. Validation is the façade's (`FormEngine::validate_sql`); here
-//! the engine's Arrow answers are only read back as rows.
+//! => Promise<Table> }`, driven from Rust. `Table` is `@fossil-lang/types`'
+//! answer in columns (`numRows`, `getChild(name).get(i)`), which an Arrow
+//! table is and `@kanzo-tech/mosaic`'s `engine()` answers. Validation is the
+//! façade's (`FormEngine::validate_sql`); here the answers are only read back
+//! as rows.
 
-use js_sys::{Array, Function, Object, Promise, Reflect};
+use js_sys::{Function, Object, Promise, Reflect};
 use rudof_lib::form::{SqlEngine, SqlRow, RESULT_COLUMNS};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -38,21 +40,22 @@ fn text(cell: JsValue) -> Option<String> {
 }
 
 impl JsEngine {
-    /// `engine` must have a `query` method; `signal`, when not `undefined`,
-    /// is an `AbortSignal` that stops the running statement.
+    /// `engine` must have a `query` method, and `signal` is the
+    /// `AbortSignal` every statement carries, as `query` takes one.
     pub fn new(engine: JsValue, signal: JsValue) -> Result<Self, String> {
         let query = Reflect::get(&engine, &"query".into())
             .ok()
             .and_then(|q| q.dyn_into::<Function>().ok())
             .ok_or("engine: expected an object with a query(sql, { signal }) method")?;
+        if signal.is_undefined() || signal.is_null() {
+            return Err("signal: expected the AbortSignal every statement carries".into());
+        }
         Ok(Self { engine, query, signal })
     }
 
     async fn answer(&self, sql: &str) -> Result<JsValue, String> {
         let options = Object::new();
-        if !self.signal.is_undefined() {
-            Reflect::set(&options, &"signal".into(), &self.signal).map_err(message)?;
-        }
+        Reflect::set(&options, &"signal".into(), &self.signal).map_err(message)?;
         let pending = self.query.call2(&self.engine, &sql.into(), &options).map_err(message)?;
         JsFuture::from(Promise::resolve(&pending)).await.map_err(message)
     }
@@ -65,21 +68,42 @@ impl SqlEngine for JsEngine {
         self.answer(sql).await.map(drop)
     }
 
-    /// The rows of the answer, an Arrow `Table`, by column name.
+    /// The rows of the answer, a `Table`, read column by column: each of
+    /// `RESULT_COLUMNS` through `getChild`, a column the answer lacks reading
+    /// as `NULL`.
     async fn rows(&self, sql: &str) -> Result<Vec<SqlRow>, String> {
         let table = self.answer(sql).await?;
-        let rows = Reflect::get(&table, &"toArray".into())
+        let not_a_table = || "the engine's answer is not a table: it has no numRows and getChild(name)";
+        let rows = Reflect::get(&table, &"numRows".into())
+            .ok()
+            .and_then(|n| n.as_f64())
+            .ok_or_else(not_a_table)?;
+        let get_child = Reflect::get(&table, &"getChild".into())
             .ok()
             .and_then(|f| f.dyn_into::<Function>().ok())
-            .ok_or("the engine's answer is not a table: it has no toArray()")?
-            .call0(&table)
-            .map_err(message)?;
-        Array::from(&rows)
+            .ok_or_else(not_a_table)?;
+        let columns = RESULT_COLUMNS
             .iter()
-            .map(|row| {
-                RESULT_COLUMNS
+            .map(|name| {
+                let column = get_child.call1(&table, &(*name).into()).map_err(message)?;
+                if column.is_null() || column.is_undefined() {
+                    return Ok(None);
+                }
+                let get = Reflect::get(&column, &"get".into())
+                    .ok()
+                    .and_then(|f| f.dyn_into::<Function>().ok())
+                    .ok_or_else(|| format!("the answer's column {name} has no get(index)"))?;
+                Ok(Some((column, get)))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        (0..rows as u32)
+            .map(|at| {
+                columns
                     .iter()
-                    .map(|column| Reflect::get(&row, &(*column).into()).map(text).map_err(message))
+                    .map(|column| match column {
+                        None => Ok(None),
+                        Some((column, get)) => get.call1(column, &at.into()).map(text).map_err(message),
+                    })
                     .collect()
             })
             .collect()
@@ -99,23 +123,38 @@ mod tests {
 :S a sh:NodeShape ; sh:targetClass :C ; sh:property [ sh:path :p ; sh:minCount 1 ] ."#;
 
     /// An engine that answers the script's query with `rows` (a JS array
-    /// literal) and every other statement with nothing, and keeps each
-    /// statement in `engine.seen`.
+    /// literal of objects, turned into a `Table` of the columns they name)
+    /// and every other statement with nothing, and keeps each statement in
+    /// `engine.seen`. It has no `toArray()`: the answer is read in columns.
     fn engine(rows: &str) -> JsValue {
         Function::new_no_args(&format!(
             "const seen = []; return {{ seen, query: async (sql, options) => {{ \
                seen.push(sql); \
                const rows = /^\\s*(CREATE|DROP)/i.test(sql) ? [] : {rows}; \
-               return {{ toArray: () => rows }}; }} }};"
+               const names = [...new Set(rows.flatMap(Object.keys))]; \
+               return {{ numRows: rows.length, schema: {{ fields: names.map((name) => ({{ name }})) }}, \
+                 getChild: (name) => names.includes(name) \
+                   ? {{ length: rows.length, get: (i) => rows[i][name] ?? null }} : null }}; }} }};"
         ))
         .call0(&JsValue::NULL)
         .unwrap()
     }
 
-    async fn validate(shapes: &Shapes, engine: &JsValue) -> Result<JsValue, JsValue> {
+    /// The options of a validation over `"job".triples` on `engine`, with a
+    /// signal that never aborts.
+    fn options(engine: &JsValue) -> js_sys::Object {
         let options = js_sys::Object::new();
         Reflect::set(&options, &"table".into(), &"\"job\".triples".into()).unwrap();
         Reflect::set(&options, &"engine".into(), engine).unwrap();
+        let signal = Function::new_no_args("return new AbortController().signal")
+            .call0(&JsValue::NULL)
+            .unwrap();
+        Reflect::set(&options, &"signal".into(), &signal).unwrap();
+        options
+    }
+
+    async fn validate(shapes: &Shapes, engine: &JsValue) -> Result<JsValue, JsValue> {
+        let options = options(engine);
         let promise = shapes.validate(options.into()).map_err(JsValue::from)?;
         JsFuture::from(promise).await
     }
@@ -171,10 +210,8 @@ mod tests {
     #[wasm_bindgen_test]
     async fn a_focus_relation_scopes_the_targets() {
         let engine = engine("[]");
-        let options = js_sys::Object::new();
-        Reflect::set(&options, &"table".into(), &"\"job\".triples".into()).unwrap();
+        let options = options(&engine);
         Reflect::set(&options, &"focus".into(), &"selection".into()).unwrap();
-        Reflect::set(&options, &"engine".into(), &engine).unwrap();
         JsFuture::from(shapes().validate(options.into()).unwrap())
             .await
             .expect("validates");
@@ -188,10 +225,8 @@ mod tests {
     #[wasm_bindgen_test]
     async fn a_fragment_is_written_to_its_table() {
         let engine = engine("[]");
-        let options = js_sys::Object::new();
-        Reflect::set(&options, &"table".into(), &"\"job\".triples".into()).unwrap();
+        let options = options(&engine);
         Reflect::set(&options, &"into".into(), &"\"job\".fragment".into()).unwrap();
-        Reflect::set(&options, &"engine".into(), &engine).unwrap();
         let fragment = JsFuture::from(shapes().fragment(options.into()).unwrap())
             .await
             .expect("a fragment");
@@ -213,6 +248,27 @@ mod tests {
                focus_lang: '' }]",
         );
         assert!(validate(&shapes(), &engine).await.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    async fn an_answer_of_rows_is_not_a_table() {
+        let engine = Function::new_no_args("return { query: async () => ({ toArray: () => [] }) };")
+            .call0(&JsValue::NULL)
+            .unwrap();
+        let error = validate(&shapes(), &engine)
+            .await
+            .expect_err("an answer without getChild");
+        assert!(
+            format!("{error:?}").contains("getChild"),
+            "the error names the contract: {error:?}"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_validation_without_a_signal_is_refused() {
+        let options = options(&engine("[]"));
+        Reflect::delete_property(&options, &"signal".into()).unwrap();
+        assert!(shapes().validate(options.into()).is_err());
     }
 
     #[wasm_bindgen_test]

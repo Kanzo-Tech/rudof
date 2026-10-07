@@ -6,13 +6,17 @@
 //! reads the same plan, and the W3C suite holds the two reports equal.
 //!
 //! ```text
-//! validate(&IRSchema, triples: &str, &impl SqlEngine).await -> ValidationReport
+//! validate(&IRSchema, triples: &str, focus: Option<&str>, &impl SqlEngine).await -> ValidationReport
 //! ```
 //!
 //! - `triples` names the relation the data is read from, columns
 //!   `s_k, s_v, p, o_k, o_v, o_d, o_l` ([`triples`](self) has them). A table
 //!   or a view: what tables lie under it is the host's, so the engine knows no
 //!   mapping language and no product vocabulary.
+//! - `focus`, when given, names a relation of nodes in `s_k, s_v`, spelled as
+//!   the triples' subjects: each shape's focus nodes are then its targets
+//!   among them, and the paths still read all of `triples`. A selection
+//!   scopes validation without hiding the data it depends on.
 //! - [`SqlEngine`] is implemented by the host: rudof links no engine. A
 //!   DuckDB one, [`DuckDbEngine`], exists behind the native-only `duckdb`
 //!   feature, for the tests.
@@ -84,13 +88,16 @@ impl From<DenoteError> for SqlCompileError {
 pub async fn validate<E: SqlEngine>(
     schema: &IRSchema,
     triples: &str,
+    focus: Option<&str>,
     engine: &E,
 ) -> Result<ValidationReport, SqlError<E::Error>> {
-    compile(schema, &Triples::new(triples)?, &DuckDb)?.run(engine).await
+    compile(schema, &Triples::new(triples, focus)?, &DuckDb)?
+        .run(engine)
+        .await
 }
 
 fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Result<SqlPlan, SqlCompileError> {
-    let mut plan = denote(schema)?;
+    let mut plan = denote(schema, triples.scope().is_some())?;
     let (tables, query) = Renderer::new(&plan, triples, dialect).script(&plan.checks)?;
     let table = |name: &str| ObjectName::from(vec![Ident::with_quote('"', name)]);
     Ok(SqlPlan {

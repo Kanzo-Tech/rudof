@@ -126,17 +126,19 @@ impl Shapes {
     }
 
     /// Validate, through SQL on the host's `engine`, the data in the relation
-    /// `triples` (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`). Messages are worded
-    /// as [`FormEngine::validate`] words them. The shapes are compiled now; the
-    /// future owns what it needs, so it outlives this borrow.
+    /// `triples` (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`), with every shape's
+    /// focus nodes among the `s_k, s_v` of the relation `focus` when given.
+    /// Messages are worded as [`FormEngine::validate`] words them. The shapes are
+    /// compiled now; the future owns what it needs, so it outlives this borrow.
     pub fn validate_sql<E: SqlEngine + 'static>(
         &self,
         triples: String,
+        focus: Option<String>,
         engine: E,
     ) -> Result<impl std::future::Future<Output = Result<ValidationOutcome, FormError>> + 'static, FormError> {
         let schema = self.compile()?;
         Ok(async move {
-            shacl::validator::sql::validate(&schema, &triples, &engine)
+            shacl::validator::sql::validate(&schema, &triples, focus.as_deref(), &engine)
                 .await
                 .map(outcome)
                 .map_err(|e| FormError::Validation(e.to_string()))

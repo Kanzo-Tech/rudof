@@ -56,8 +56,15 @@ impl From<SortError> for DenoteError {
 /// A shape with targets yields the checks of its components and of its
 /// property shapes for its focus nodes. A shape without targets is reached only through another (as a property shape, or by `sh:node`,
 /// `sh:and`, …). Deactivated shapes yield nothing and conform everywhere.
-pub fn denote(schema: &IRSchema) -> Result<Plan, DenoteError> {
+///
+/// When `scoped`, each shape's focus nodes are its targets among
+/// [`Op::Scope`], the nodes the host restricts validation to; the data the
+/// paths read stays the whole graph.
+pub fn denote(schema: &IRSchema, scoped: bool) -> Result<Plan, DenoteError> {
     let mut d = Denoter::new(schema)?;
+    if scoped {
+        d.scope = Some(d.op(Op::Scope)?);
+    }
     let mut shapes: Vec<ShapeLabelIdx> = schema
         .iter()
         .filter_map(|(id, _)| schema.get_idx(id).copied())
@@ -97,6 +104,8 @@ struct Denoter<'a> {
     b: PlanBuilder,
     fails: HashMap<(ShapeLabelIdx, RelId), Option<RelId>>,
     unchecked: HashMap<ShapeLabelIdx, Unchecked>,
+    /// The scope every focus relation is restricted to, if any.
+    scope: Option<RelId>,
 }
 
 /// Where a path starts.
@@ -156,6 +165,7 @@ impl<'a> Denoter<'a> {
             b: PlanBuilder::new(),
             fails: HashMap::new(),
             unchecked: profile::unchecked(schema)?,
+            scope: None,
         })
     }
 
@@ -192,8 +202,8 @@ impl<'a> Denoter<'a> {
 
     // --- targets -------------------------------------------------------------
 
-    /// The focus nodes of `shape`, distinct: those of its targets. `None` for
-    /// a shape with none.
+    /// The focus nodes of `shape`, distinct: those of its targets, within the
+    /// scope when there is one. `None` for a shape with none.
     ///
     /// TODO: `sh:shape` in the data graph (SHACL 1.2 §3.1.3.7), whose section
     /// is still a TODO in the draft. It is left out until the section settles.
@@ -205,7 +215,11 @@ impl<'a> Denoter<'a> {
         if parts.is_empty() {
             return Ok(None);
         }
-        Ok(Some(self.distinct_union(parts, Sort::Nodes)?))
+        let targets = self.distinct_union(parts, Sort::Nodes)?;
+        Ok(Some(match self.scope {
+            Some(scope) => self.op(Op::Filter(targets, Pred::Member(Expr::f(), scope)))?,
+            None => targets,
+        }))
     }
 
     fn target(&mut self, target: &Target) -> Result<RelId, DenoteError> {

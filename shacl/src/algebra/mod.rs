@@ -236,6 +236,9 @@ pub enum Op {
     Triples,
     /// Every node of the data: the subjects and objects of its triples. → Nodes
     AllNodes,
+    /// The nodes the host restricts validation to: every shape's focus nodes
+    /// are its targets among these. → Nodes
+    Scope,
     /// Bag union of relations of one sort.
     Union(Vec<RelId>),
     /// Duplicates removed.
@@ -298,9 +301,13 @@ impl Op {
     /// The operator's inputs.
     pub fn inputs(&self) -> Vec<RelId> {
         let mut out = match self {
-            Op::Empty(_) | Op::Constants(_) | Op::Predicate(_) | Op::Class(_) | Op::Triples | Op::AllNodes => {
-                Vec::new()
-            },
+            Op::Empty(_)
+            | Op::Constants(_)
+            | Op::Predicate(_)
+            | Op::Class(_)
+            | Op::Triples
+            | Op::AllNodes
+            | Op::Scope => Vec::new(),
             Op::Union(rels) => rels.clone(),
             Op::Distinct(r)
             | Op::Focus(r)
@@ -487,7 +494,7 @@ impl PlanBuilder {
         use Sort::*;
         Ok(match op {
             Op::Empty(sort) => *sort,
-            Op::Constants(_) | Op::Class(_) | Op::AllNodes => Nodes,
+            Op::Constants(_) | Op::Class(_) | Op::AllNodes | Op::Scope => Nodes,
             Op::Predicate(_) => Pairs,
             Op::Triples => Triples,
             Op::Union(rels) => {

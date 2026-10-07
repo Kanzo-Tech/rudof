@@ -113,7 +113,17 @@ pub fn validate<S>(schema: &IRSchema, store: &S) -> Result<ValidationReport, Val
 where
     S: NeighsRDF<Term = Term>,
 {
-    report(schema, &denote(schema)?, store)
+    report(schema, &denote(schema, false)?, store, None)
+}
+
+/// Validates `store` against `schema` with the focus nodes of every shape
+/// restricted to `focus`: its targets among them, against the whole graph.
+pub fn validate_scoped<S>(schema: &IRSchema, store: &S, focus: &[Object]) -> Result<ValidationReport, ValidationError>
+where
+    S: NeighsRDF<Term = Term>,
+{
+    let focus: Vec<Term> = focus.iter().map(|n| Term::from(n.clone())).collect();
+    report(schema, &denote(schema, true)?, store, Some(&focus))
 }
 
 /// Validates `store` against one shape and its property shapes: `focus` when
@@ -127,15 +137,20 @@ pub fn validate_shape<S>(
 where
     S: NeighsRDF<Term = Term>,
 {
-    report(schema, &denote_shape(schema, shape, focus)?, store)
+    report(schema, &denote_shape(schema, shape, focus)?, store, None)
 }
 
 /// The report of `plan`'s rows over `store`.
-fn report<S>(schema: &IRSchema, plan: &Plan, store: &S) -> Result<ValidationReport, ValidationError>
+fn report<S>(
+    schema: &IRSchema,
+    plan: &Plan,
+    store: &S,
+    scope: Option<&[Term]>,
+) -> Result<ValidationReport, ValidationError>
 where
     S: NeighsRDF<Term = Term>,
 {
-    let rows = evaluate(plan, store)?;
+    let rows = evaluate(plan, store, scope)?;
     let mut results = Vec::new();
     for (check, rows) in plan.checks.iter().zip(rows) {
         let err = |message: String| EvalError {
@@ -160,9 +175,10 @@ where
         .with_prefixmap(prefixes))
 }
 
-/// Evaluates every relation the checks of `plan` reach over `store`; the rows
-/// of `plan.checks[i]` are the `i`-th vector.
-pub fn evaluate<S>(plan: &Plan, store: &S) -> Result<Vec<Vec<Row>>, EvalError>
+/// Evaluates every relation the checks of `plan` reach over `store`, with
+/// `scope` as [`Op::Scope`]; the rows of `plan.checks[i]` are the `i`-th
+/// vector.
+pub fn evaluate<S>(plan: &Plan, store: &S, scope: Option<&[Term]>) -> Result<Vec<Vec<Row>>, EvalError>
 where
     S: NeighsRDF<Term = Term>,
 {
@@ -170,6 +186,7 @@ where
     let mut eval = Evaluator {
         plan,
         store,
+        scope,
         rels: vec![None; plan.len()],
         members: HashMap::new(),
         pairs: HashMap::new(),
@@ -184,6 +201,7 @@ where
 struct Evaluator<'a, S> {
     plan: &'a Plan,
     store: &'a S,
+    scope: Option<&'a [Term]>,
     rels: Vec<Option<Rel>>,
     /// The focus nodes of a relation, as a set, for [`Pred::Member`].
     members: HashMap<RelId, HashSet<Term>>,
@@ -460,6 +478,7 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
             Op::Predicate(iri) => Rel::Pairs(self.predicate(&NamedNode::new_unchecked(iri.as_str()))?),
             Op::Class(iri) => Rel::Nodes(self.class(&NamedNode::new_unchecked(iri.as_str()))?),
             Op::Triples => Rel::Triples(self.triples()?),
+            Op::Scope => Rel::Nodes(distinct(self.scope.ok_or("a scoped plan evaluated without a scope")?)),
             Op::AllNodes => {
                 let triples = self.triples()?;
                 let nodes: Vec<Term> = triples.iter().flat_map(|(s, _, o)| [s.clone(), o.clone()]).collect();

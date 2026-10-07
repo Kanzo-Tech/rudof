@@ -169,6 +169,23 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
+    async fn a_focus_relation_scopes_the_targets() {
+        let engine = engine("[]");
+        let options = js_sys::Object::new();
+        Reflect::set(&options, &"table".into(), &"\"job\".triples".into()).unwrap();
+        Reflect::set(&options, &"focus".into(), &"selection".into()).unwrap();
+        Reflect::set(&options, &"engine".into(), &engine).unwrap();
+        JsFuture::from(shapes().validate(options.into()).unwrap())
+            .await
+            .expect("validates");
+        let seen = js_sys::Array::from(&Reflect::get(&engine, &"seen".into()).unwrap());
+        assert!(
+            seen.iter().any(|sql| sql.as_string().unwrap().contains("selection")),
+            "the script reads the focus relation"
+        );
+    }
+
+    #[wasm_bindgen_test]
     async fn a_row_naming_no_check_is_an_error() {
         let engine = engine(
             "[{ check: 7, focus_kind: 'I', focus_value: 'http://example.org/n', focus_datatype: '', \

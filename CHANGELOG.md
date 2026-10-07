@@ -20,6 +20,7 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 ### Changed
 - SHACL validation is one denotation of the shapes graph into a relational algebra (`shacl::algebra`), with two interpretations: `shacl::validator::validate` evaluates it over any `NeighsRDF` (in memory or a SPARQL endpoint), and `shacl::validator::sql::validate` runs it as SQL
 - wasm: `Session` is two classes. `Shapes` is a parsed shapes graph (`model()`, `loadMessages()`, `validate()`); `new FormSession(shapes)` edits, projects and validates a data graph under it. `Session.loadShapes` is `Shapes.parse(...).model()`, and `loadMessages` moved to `Shapes`
+- wasm: every shape in `model()` has an `id`, its IRI or `_:` and the label of a blank node, the node a result's `sourceShape` names; property shapes and `sh:or`/`sh:and`/`sh:xone`/`sh:not` members had one only when named by an IRI, and `node` now names a blank node shape too
 ### Removed
 - The native and SPARQL SHACL engines, and with them `ShaclValidationMode` (rudof_lib, CLI `--mode` / `--shacl-mode`, MCP `mode`, Python `ShaclValidationMode`): there is one validator
 - `shacl::subset`

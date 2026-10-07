@@ -223,8 +223,10 @@ pub struct ComponentIR {
 #[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ShapeIR {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
+    /// The shape's node: its IRI, or `_:` and the label of a blank node. The
+    /// report's `sourceShape` names the same node (SHACL §3.6.2), so a result
+    /// finds the shape it came from.
+    pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<PathExpr>,
     /// Canonical SPARQL-ish path key. Absent exactly when `path` is.
@@ -261,8 +263,8 @@ impl From<PropertyShapeIR> for ShapeIR {
 #[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PropertyShapeIR {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
+    /// As [`ShapeIR::id`].
+    pub id: String,
     pub path: PathExpr,
     /// Canonical SPARQL-ish path key (`(a/b)`, `^p`), matching the projected
     /// `ProjectedProperty.pathKey` — lets consumers align a property shape to its
@@ -286,6 +288,7 @@ pub struct PropertyShapeIR {
 #[derive(Tsify, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeShapeIR {
+    /// As [`ShapeIR::id`].
     pub id: String,
     pub target_classes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

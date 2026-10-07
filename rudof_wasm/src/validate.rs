@@ -138,6 +138,18 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
+    fn a_result_names_the_blank_property_shape_the_model_lists() {
+        let engine = engine(shapes(""));
+        let model = crate::shapes::schema_to_json(engine.shapes().ast(), engine.shapes().graph());
+        let source = report_from_outcome(&engine.validate().unwrap()).results[0]
+            .source_shape
+            .clone()
+            .unwrap();
+        assert_eq!(source.term_type, "BlankNode");
+        assert_eq!(model.node_shapes[0].properties[0].id, format!("_:{}", source.value));
+    }
+
+    #[wasm_bindgen_test]
     fn a_silent_shape_gets_one_tagged_message_per_catalog_language() {
         let m = messages(&engine(shapes("")));
         assert_eq!(

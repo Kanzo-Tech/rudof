@@ -18,11 +18,13 @@ mod rdf_data_config;
 mod traits;
 
 pub mod backend;
+mod base;
 pub mod parser;
 pub mod query;
 pub mod utils;
 pub mod vocab;
 
+pub use base::STRING_BASE;
 pub use errors::RDFError;
 pub use model::RDFFormat;
 pub use model::term;

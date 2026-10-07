@@ -191,7 +191,7 @@ impl InputSpec {
             }),
             InputSpec::Stdin => Ok("stdin://".to_string()),
             InputSpec::Url(url_spec) => Ok(url_spec.url.to_string()),
-            InputSpec::Str(_) => Ok(crate::base::STRING_BASE.to_string()),
+            InputSpec::Str(_) => Ok(rudof_rdf::STRING_BASE.to_string()),
         }
     }
 }

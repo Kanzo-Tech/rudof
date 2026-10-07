@@ -24,8 +24,8 @@ use crate::algebra::{Check, CmpOp, Col, Expr as AExpr, Key, Kind, Op, Plan, Pred
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
     SelectBuilder, and, and_all, balanced, boolean, case, col, compare, count_star, cte, cte_ref, derived, eq, exists,
-    function, in_list, item, join, known_true, left_join, not, not_eq, null, number, or, or_all, query, string, union,
-    union_all_of, with,
+    function, in_list, is_not_null, item, join, known_true, left_join, not, not_eq, null, number, or, or_all, query,
+    string, union, union_all_of, with,
 };
 use crate::validator::sql::dialect::Dialect;
 use crate::validator::sql::term::{BLANK, EncodedTerm, IRI, LITERAL, TRIPLE, TermExpr, compare_terms, well_formed_for};
@@ -33,6 +33,10 @@ use crate::validator::sql::triples::{PREDICATE_COLUMN, Triples};
 use rudof_rdf::vocab::RdfVocab;
 use sqlparser::ast::{BinaryOperator, Expr, Query, SelectItem, SetExpr, TableFactor};
 use std::cell::Cell;
+
+/// The deepest a statement nests the subqueries of inline relations: a
+/// longer chain is cut into tables, as a parser recurses once per level.
+const NESTING: usize = 16;
 
 /// The column of a rows relation that overrides the result path (`sh:closed`).
 const PATH_COLUMN: &str = "path";
@@ -148,15 +152,13 @@ where
         }
     }
 
-    /// The script of the plan: every relation the checks reach that more than
+    /// The tables of the script: every relation `roots` reach that more than
     /// one consumer reads (or that reads itself, a closure) as a temporary
-    /// table, inputs first, each with its name; every other relation inline,
-    /// as the one subquery that reads it; then the query of the rows of every
-    /// check under the public [`RESULT_COLUMNS`], tagged with the check's
-    /// index, as one `UNION ALL`.
-    pub(crate) fn script(&mut self, checks: &[Check]) -> Result<(Vec<(String, Query)>, Query), SqlCompileError> {
-        let roots: Vec<RelId> = checks.iter().map(|c| c.rows).collect();
-        let reached = self.plan.reached(&roots);
+    /// table, inputs first, each with its name. Every other relation is
+    /// inline, as the one subquery that reads it; a root is read once, by the
+    /// query of [`Self::checks`] or [`Self::fragment`].
+    pub(crate) fn tables(&mut self, roots: &[RelId]) -> Result<Vec<(String, Query)>, SqlCompileError> {
+        let reached = self.plan.reached(roots);
         let mut readers = vec![0usize; self.plan.len()];
         for id in reached
             .iter()
@@ -165,8 +167,21 @@ where
         {
             readers[id.index()] += 1;
         }
+        // How deep each inline relation nests the subqueries it reads; a
+        // relation that would nest deeper than `NESTING` is a table instead.
+        let mut depth = vec![0usize; self.plan.len()];
         for id in &reached {
-            self.named[id.index()] = readers[id.index()] > 1 || matches!(self.plan.op(*id), Op::Closure { .. });
+            let named = readers[id.index()] > 1 || matches!(self.plan.op(*id), Op::Closure { .. });
+            let nested = 1 + self
+                .plan
+                .op(*id)
+                .inputs()
+                .iter()
+                .map(|input| depth[input.index()])
+                .max()
+                .unwrap_or(0);
+            self.named[id.index()] = named || nested > NESTING;
+            depth[id.index()] = if self.named[id.index()] { 0 } else { nested };
         }
         // Inputs before their readers (the plan's ids are a topological
         // order), each body built once and without recursion.
@@ -190,6 +205,12 @@ where
                 *self.inline[id.index()].get_mut() = Some(body);
             }
         }
+        Ok(tables)
+    }
+
+    /// The query of the rows of every check under the public
+    /// [`RESULT_COLUMNS`], tagged with the check's index, as one `UNION ALL`.
+    pub(crate) fn checks(&self, checks: &[Check]) -> Result<Query, SqlCompileError> {
         let mut selects = Vec::with_capacity(checks.len());
         for (index, check) in checks.iter().enumerate() {
             let f = TermExpr::columns("r", "f");
@@ -212,8 +233,12 @@ where
                     .into_set_expr(),
             );
         }
-        let body = union_all_of(selects, true).unwrap_or_else(no_results);
-        Ok((tables, query(body)))
+        Ok(query(union_all_of(selects, true).unwrap_or_else(no_results)))
+    }
+
+    /// The rows of the triples relation that are triples of `fragment`.
+    pub(crate) fn fragment(&self, fragment: RelId) -> Result<Query, SqlCompileError> {
+        Ok(self.triples.among(self.from(fragment, "m")?))
     }
 
     /// The relation `id` read under `alias`: its table when it has one, else its
@@ -341,6 +366,24 @@ where
             Op::PairRows { pairs, with_value } => {
                 let value = if *with_value { v("a") } else { TermExpr::null() };
                 SelectBuilder::new(row(&x("a"), &value, null()))
+                    .from(self.from(*pairs, "a")?)
+                    .into_query()
+            },
+            Op::RowPairs(r) => SelectBuilder::new(pair(&x("a"), &v("a")))
+                .from(self.from(*r, "a")?)
+                .filter(is_not_null(v("a").kind))
+                .into_query(),
+            Op::RowTriples(r) => SelectBuilder::new(triple(&x("a"), col("a", PATH_COLUMN), &v("a")))
+                .from(self.from(*r, "a")?)
+                .filter(and(is_not_null(v("a").kind), is_not_null(col("a", PATH_COLUMN))))
+                .into_query(),
+            Op::Arcs {
+                pairs,
+                predicate,
+                inverse,
+            } => {
+                let (s, o) = if *inverse { (v("a"), x("a")) } else { (x("a"), v("a")) };
+                SelectBuilder::new(triple(&s, string(predicate.as_str()), &o))
                     .from(self.from(*pairs, "a")?)
                     .into_query()
             },

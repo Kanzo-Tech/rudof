@@ -7,4 +7,4 @@ pub mod report;
 #[cfg(feature = "sql")]
 pub mod sql;
 
-pub use eval::{validate, validate_scoped, validate_shape};
+pub use eval::{Fragment, fragment, validate, validate_scoped, validate_shape};

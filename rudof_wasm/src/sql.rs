@@ -186,6 +186,27 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
+    async fn a_fragment_is_written_to_its_table() {
+        let engine = engine("[]");
+        let options = js_sys::Object::new();
+        Reflect::set(&options, &"table".into(), &"\"job\".triples".into()).unwrap();
+        Reflect::set(&options, &"into".into(), &"\"job\".fragment".into()).unwrap();
+        Reflect::set(&options, &"engine".into(), &engine).unwrap();
+        let fragment = JsFuture::from(shapes().fragment(options.into()).unwrap())
+            .await
+            .expect("a fragment");
+        let unchecked = js_sys::Array::from(&Reflect::get(&fragment, &"unchecked".into()).unwrap());
+        assert_eq!(unchecked.length(), 0);
+        let seen = js_sys::Array::from(&Reflect::get(&engine, &"seen".into()).unwrap());
+        assert!(
+            seen.iter()
+                .map(|sql| sql.as_string().unwrap())
+                .any(|sql| sql.starts_with("CREATE OR REPLACE TABLE") && sql.contains("\"job\".\"fragment\"")),
+            "the script writes the fragment: {seen:?}"
+        );
+    }
+
+    #[wasm_bindgen_test]
     async fn a_row_naming_no_check_is_an_error() {
         let engine = engine(
             "[{ check: 7, focus_kind: 'I', focus_value: 'http://example.org/n', focus_datatype: '', \

@@ -145,6 +145,25 @@ impl Shapes {
         })
     }
 
+    /// Write, through SQL on the host's `engine`, the Shape Fragment of the
+    /// data in the relation `triples` to the table `into`: its rows that make a
+    /// conforming focus node conform, with the focus nodes among the relation
+    /// `focus` when given. Resolves to the shapes that have no fragment.
+    pub fn fragment_sql<E: SqlEngine + 'static>(
+        &self,
+        triples: String,
+        focus: Option<String>,
+        into: String,
+        engine: E,
+    ) -> Result<impl std::future::Future<Output = Result<Vec<Unchecked>, FormError>> + 'static, FormError> {
+        let schema = self.compile()?;
+        Ok(async move {
+            shacl::validator::sql::fragment(&schema, &triples, focus.as_deref(), &into, &engine)
+                .await
+                .map_err(|e| FormError::Validation(e.to_string()))
+        })
+    }
+
     /// Compile the AST into the validator's internal representation.
     fn compile(&self) -> Result<IRSchema, FormError> {
         let ir = IRSchema::try_from(&self.ast).map_err(|e| FormError::Validation(e.to_string()))?;

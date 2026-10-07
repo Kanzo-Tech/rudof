@@ -7,6 +7,7 @@
 //!
 //! ```text
 //! validate(&IRSchema, triples: &str, focus: Option<&str>, &impl SqlEngine).await -> ValidationReport
+//! fragment(&IRSchema, triples: &str, focus: Option<&str>, into: &str, &impl SqlEngine).await -> Vec<Unchecked>
 //! ```
 //!
 //! - `triples` names the relation the data is read from, columns
@@ -41,15 +42,15 @@ pub use duckdb_host::{DuckDbEngine, DuckDbLoadError};
 pub use plan::{Row, SqlEngine, SqlError};
 pub use render::RESULT_COLUMNS;
 
-use crate::algebra::{DenoteError, denote};
+use crate::algebra::{self, DenoteError, Plan, Unchecked, denote};
 use crate::ir::IRSchema;
 use crate::validator::report::ValidationReport;
 use dialect::{Dialect, DuckDb};
 use plan::SqlPlan;
 use render::Renderer;
 use sqlparser::ast::helpers::stmt_create_table::CreateTableBuilder;
-use sqlparser::ast::{Ident, ObjectName, ObjectType, Statement};
-use triples::Triples;
+use sqlparser::ast::{Ident, ObjectName, ObjectType, Query, Statement};
+use triples::{Triples, relation};
 
 /// Why a shapes graph does not compile to SQL.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -59,9 +60,9 @@ pub enum SqlCompileError {
     Unsupported(String),
     #[error("malformed target: {0}")]
     MalformedTarget(String),
-    /// The triples relation's name is not a SQL object name.
-    #[error("the triples relation {0}")]
-    Table(String),
+    /// A relation's name is not a SQL object name.
+    #[error("the relation {0}")]
+    Relation(String),
     #[error("invalid data: {0}")]
     Data(String),
     #[error("internal error of the SQL compiler: {0}")]
@@ -97,10 +98,61 @@ pub async fn validate<E: SqlEngine>(
 }
 
 fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Result<SqlPlan, SqlCompileError> {
-    let mut plan = denote(schema, triples.scope().is_some())?;
-    let (tables, query) = Renderer::new(&plan, triples, dialect).script(&plan.checks)?;
+    let plan = denote(schema, triples.scope().is_some())?;
+    let roots: Vec<_> = plan.checks.iter().map(|c| c.rows).collect();
+    let mut renderer = Renderer::new(&plan, triples, dialect);
+    let tables = renderer.tables(&roots)?;
+    let query = Statement::Query(Box::new(renderer.checks(&plan.checks)?));
+    Ok(script(schema, plan, &tables, &query, dialect))
+}
+
+/// Writes the Shape Fragment of the data in the relation `triples` under
+/// `schema` ([`crate::algebra::fragment`]) to the table `into`, replacing it:
+/// the rows of `triples`, in its seven columns, whose triple makes a
+/// conforming focus node conform. `focus` restricts the focus nodes as
+/// [`validate`] does. Resolves to the shapes that have no fragment, because
+/// they are outside the fragments profile.
+pub async fn fragment<E: SqlEngine>(
+    schema: &IRSchema,
+    triples: &str,
+    focus: Option<&str>,
+    into: &str,
+    engine: &E,
+) -> Result<Vec<Unchecked>, SqlError<E::Error>> {
+    compile_fragment(schema, &Triples::new(triples, focus)?, into, &DuckDb)?
+        .create(engine)
+        .await
+}
+
+fn compile_fragment<D: Dialect>(
+    schema: &IRSchema,
+    triples: &Triples,
+    into: &str,
+    dialect: &D,
+) -> Result<SqlPlan, SqlCompileError> {
+    let plan = algebra::fragment(schema, triples.scope().is_some())?;
+    let root = plan
+        .fragment
+        .ok_or_else(|| SqlCompileError::Internal("a plan without a fragment".to_owned()))?;
+    let mut renderer = Renderer::new(&plan, triples, dialect);
+    let tables = renderer.tables(&[root])?;
+    let create = CreateTableBuilder::new(ast::delimited(&relation(into)?))
+        .or_replace(true)
+        .query(Some(Box::new(renderer.fragment(root)?)))
+        .build();
+    Ok(script(schema, plan, &tables, &Statement::CreateTable(create), dialect))
+}
+
+/// The script of `plan`: its tables, then `statement`, then their teardown.
+fn script<D: Dialect>(
+    schema: &IRSchema,
+    mut plan: Plan,
+    tables: &[(String, Query)],
+    statement: &Statement,
+    dialect: &D,
+) -> SqlPlan {
     let table = |name: &str| ObjectName::from(vec![Ident::with_quote('"', name)]);
-    Ok(SqlPlan {
+    SqlPlan {
         setup: tables
             .iter()
             .map(|(name, body)| {
@@ -111,7 +163,7 @@ fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Res
                 dialect.render(&Statement::CreateTable(create))
             })
             .collect(),
-        query: dialect.render(&Statement::Query(Box::new(query))),
+        query: dialect.render(statement),
         teardown: tables
             .iter()
             .rev()
@@ -128,8 +180,8 @@ fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Res
                 })
             })
             .collect(),
-        checks: plan.checks,
+        checks: std::mem::take(&mut plan.checks),
         unchecked: std::mem::take(&mut plan.unchecked),
         schema: schema.clone(),
-    })
+    }
 }

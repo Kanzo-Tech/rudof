@@ -124,6 +124,12 @@ export interface TableValidation {
   /** Stops the running statement. */
   signal?: AbortSignal;
 }
+
+/** What `Shapes.fragment` reads: a `TableValidation`, and the table it writes. */
+export interface TableFragment extends TableValidation {
+  /** The table the fragment is written to, replaced when it exists, e.g. `"job".fragment`. */
+  into: string;
+}
 "#;
 
 // ---- Shapes ------------------------------------------------------------------
@@ -189,20 +195,7 @@ impl Shapes {
         &self,
         #[wasm_bindgen(unchecked_param_type = "TableValidation")] options: JsValue,
     ) -> Result<js_sys::Promise, JsError> {
-        let field = |name: &str| js_sys::Reflect::get(&options, &name.into()).unwrap_or(JsValue::UNDEFINED);
-        let table = field("table")
-            .as_string()
-            .ok_or_else(|| JsError::new("table: expected the name of a triples relation"))?;
-        let focus = field("focus");
-        let focus = match focus.is_undefined() || focus.is_null() {
-            true => None,
-            false => Some(
-                focus
-                    .as_string()
-                    .ok_or_else(|| JsError::new("focus: expected the name of a relation of nodes"))?,
-            ),
-        };
-        let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
+        let (table, focus, engine) = table_options(&options)?;
         let validation = self
             .inner
             .validate_sql(table, focus, engine)
@@ -212,6 +205,57 @@ impl Shapes {
             Ok(to_js(&validate::report_from_outcome(&outcome))?.into())
         }))
     }
+
+    /// Write the Shape Fragment of a triples relation to the table `into`
+    /// (replacing it): the rows of `table`, in its seven columns, that make a
+    /// conforming focus node conform to its shapes, with the focus nodes among
+    /// `focus` when given; the subset of the data the shapes describe. Options
+    /// are `validate`'s, plus `into`.
+    ///
+    /// Resolves to `{ unchecked }`: the shapes outside the fragments profile,
+    /// which the fragment does not cover.
+    #[wasm_bindgen(unchecked_return_type = "Promise<RudofFragment>")]
+    pub fn fragment(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "TableFragment")] options: JsValue,
+    ) -> Result<js_sys::Promise, JsError> {
+        let (table, focus, engine) = table_options(&options)?;
+        let into = js_sys::Reflect::get(&options, &"into".into())
+            .ok()
+            .and_then(|v| v.as_string())
+            .ok_or_else(|| JsError::new("into: expected the name of the table to write"))?;
+        let fragment = self
+            .inner
+            .fragment_sql(table, focus, into, engine)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(wasm_bindgen_futures::future_to_promise(async move {
+            let unchecked = fragment.await.map_err(|e| JsError::new(&e.to_string()))?;
+            Ok(to_js(&RudofFragment {
+                unchecked: validate::unchecked_to_dto(&unchecked),
+            })?
+            .into())
+        }))
+    }
+}
+
+/// The triples relation, the focus relation and the engine of a
+/// `TableValidation`.
+fn table_options(options: &JsValue) -> Result<(String, Option<String>, sql::JsEngine), JsError> {
+    let field = |name: &str| js_sys::Reflect::get(options, &name.into()).unwrap_or(JsValue::UNDEFINED);
+    let table = field("table")
+        .as_string()
+        .ok_or_else(|| JsError::new("table: expected the name of a triples relation"))?;
+    let focus = field("focus");
+    let focus = match focus.is_undefined() || focus.is_null() {
+        true => None,
+        false => Some(
+            focus
+                .as_string()
+                .ok_or_else(|| JsError::new("focus: expected the name of a relation of nodes"))?,
+        ),
+    };
+    let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
+    Ok((table, focus, engine))
 }
 
 // ---- The form session --------------------------------------------------------

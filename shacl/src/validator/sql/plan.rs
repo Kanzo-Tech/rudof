@@ -44,10 +44,11 @@ pub enum SqlError<E: Display> {
     Row { row: usize, message: String },
 }
 
-/// The script of one shapes graph over one triples relation: the setup,
-/// a `CREATE TEMPORARY TABLE` per relation the checks share, inputs first;
-/// then the query whose rows are the results; then the teardown, which drops
-/// those tables. The rows name their check by index.
+/// The script of one plan over one triples relation: the setup, a `CREATE
+/// TEMPORARY TABLE` per relation the plan shares, inputs first; then its
+/// statement, the query whose rows are the results (they name their check by
+/// index) or the `CREATE TABLE` of a fragment; then the teardown, which drops
+/// those tables.
 #[derive(Debug, Clone)]
 pub(crate) struct SqlPlan {
     pub(crate) checks: Vec<Check>,
@@ -104,15 +105,31 @@ impl SqlPlan {
             .with_prefixmap(schema.prefix_map().clone()))
     }
 
-    /// Runs the script on `engine` and builds the report of its rows. The
-    /// teardown runs too when the setup or the query fails; the first failure
-    /// is the one returned.
+    /// Runs the script on `engine` and builds the report of its rows.
     pub(crate) async fn run<X: SqlEngine>(&self, engine: &X) -> Result<ValidationReport, SqlError<X::Error>> {
-        let rows = async {
+        let rows = self.scripted(engine, engine.rows(&self.query)).await?;
+        self.report(&rows)
+    }
+
+    /// Runs the script on `engine`, its statement one without rows; the
+    /// shapes the plan does not cover.
+    pub(crate) async fn create<X: SqlEngine>(&self, engine: &X) -> Result<Vec<Unchecked>, SqlError<X::Error>> {
+        self.scripted(engine, engine.execute(&self.query)).await?;
+        Ok(self.unchecked.clone())
+    }
+
+    /// The setup, then `main`, then the teardown, which runs too when the
+    /// setup or `main` fails; the first failure is the one returned.
+    async fn scripted<X: SqlEngine, T>(
+        &self,
+        engine: &X,
+        main: impl Future<Output = Result<T, X::Error>>,
+    ) -> Result<T, SqlError<X::Error>> {
+        let out = async {
             for statement in &self.setup {
                 engine.execute(statement).await?;
             }
-            engine.rows(&self.query).await
+            main.await
         }
         .await;
         let mut dropped = Ok(());
@@ -121,8 +138,8 @@ impl SqlPlan {
                 dropped = dropped.and(Err(e));
             }
         }
-        let rows = rows.map_err(SqlError::Engine)?;
+        let out = out.map_err(SqlError::Engine)?;
         dropped.map_err(SqlError::Engine)?;
-        self.report(&rows)
+        Ok(out)
     }
 }

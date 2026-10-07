@@ -40,6 +40,7 @@
 //! interpretation renders it as one CTE; the evaluator computes it once.
 
 pub mod denote;
+pub mod fragment;
 pub mod profile;
 
 use crate::ir::ShapeLabelIdx;
@@ -52,6 +53,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 pub use denote::{DenoteError, denote, denote_shape};
+pub use fragment::fragment;
 pub use profile::{Reason, Unchecked};
 
 /// A relation of a [`Plan`]: an index into its arena.
@@ -263,6 +265,17 @@ pub enum Op {
     Filter(RelId, Pred),
     /// Pairs → Rows: `(f, v, —)`, or `(f, —, —)` when `!with_value`.
     PairRows { pairs: RelId, with_value: bool },
+    /// The rows that have a value, as `(f, v)`. Rows → Pairs
+    RowPairs(RelId),
+    /// The rows that have a value and a path, as `(f, path, v)`. Rows → Triples
+    RowTriples(RelId),
+    /// The triple `(f, predicate, v)` of each pair, or `(v, predicate, f)`
+    /// when `inverse`: the arcs a path of one predicate took. Pairs → Triples
+    Arcs {
+        pairs: RelId,
+        predicate: IriS,
+        inverse: bool,
+    },
     /// Nodes → Rows: `(n, —, —)`.
     NodeRows(RelId),
     /// Every pair or row of `rel` repeated once per occurrence of its focus
@@ -316,6 +329,9 @@ impl Op {
             | Op::Inverse(r)
             | Op::Filter(r, _)
             | Op::NodeRows(r)
+            | Op::RowPairs(r)
+            | Op::RowTriples(r)
+            | Op::Arcs { pairs: r, .. }
             | Op::Duplicates { pairs: r, .. } => vec![*r],
             Op::PairRows { pairs, .. } => vec![*pairs],
             Op::Outgoing { pairs, triples, .. } => vec![*pairs, *triples],
@@ -392,6 +408,9 @@ pub struct Plan {
     pub checks: Vec<Check>,
     /// The shapes that yield no checks, because the engine does not check them.
     pub unchecked: Vec<Unchecked>,
+    /// The Shape Fragment of the shapes graph, a relation of sort
+    /// [`Sort::Triples`], in a plan [`fragment`] built.
+    pub fragment: Option<RelId>,
 }
 
 impl Plan {
@@ -477,6 +496,10 @@ impl PlanBuilder {
         self.plan.checks.push(check);
     }
 
+    pub fn fragment(&mut self, fragment: RelId) {
+        self.plan.fragment = Some(fragment);
+    }
+
     pub fn finish(self) -> Plan {
         self.plan
     }
@@ -544,6 +567,18 @@ impl PlanBuilder {
             Op::NodeRows(r) => {
                 self.expect(*r, &[Nodes], "node rows")?;
                 Rows
+            },
+            Op::RowPairs(r) => {
+                self.expect(*r, &[Rows], "row pairs")?;
+                Pairs
+            },
+            Op::RowTriples(r) => {
+                self.expect(*r, &[Rows], "row triples")?;
+                Triples
+            },
+            Op::Arcs { pairs, .. } => {
+                self.expect(*pairs, &[Pairs], "arcs")?;
+                Triples
             },
             Op::Repeat { rel, bag } => {
                 self.expect(*rel, &[Pairs, Rows], "repeat")?;

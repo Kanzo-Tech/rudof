@@ -7,7 +7,9 @@
 //! SQL; they become [`Object`]s only where a test reads their value
 //! (comparisons, datatypes, languages) and in the report.
 
-use crate::algebra::{Check, CmpOp, Col, Expr, Key, Kind, Op, Plan, Pred, RelId, denote, denote_shape};
+use crate::algebra::{
+    self, Check, CmpOp, Col, Expr, Key, Kind, Op, Plan, Pred, RelId, Unchecked, denote, denote_shape,
+};
 use crate::error::ValidationError;
 use crate::ir::{IRSchema, ShapeLabelIdx};
 use crate::validator::report::{ValidationReport, ValidationResult};
@@ -182,20 +184,54 @@ pub fn evaluate<S>(plan: &Plan, store: &S, scope: Option<&[Term]>) -> Result<Vec
 where
     S: NeighsRDF<Term = Term>,
 {
-    let roots: Vec<RelId> = plan.checks.iter().map(|c| c.rows).collect();
-    let mut eval = Evaluator {
-        plan,
-        store,
-        scope,
-        rels: vec![None; plan.len()],
-        members: HashMap::new(),
-        pairs: HashMap::new(),
-        regexes: HashMap::new(),
-    };
-    for root in &roots {
-        eval.force(*root)?;
+    let mut eval = Evaluator::new(plan, store, scope);
+    for check in &plan.checks {
+        eval.force(check.rows)?;
     }
     plan.checks.iter().map(|c: &Check| eval.rows(c.rows)).collect()
+}
+
+/// A Shape Fragment: the triples that make the conforming focus nodes conform,
+/// and the shapes it was not computed for.
+#[derive(Debug, Clone)]
+pub struct Fragment {
+    pub triples: Vec<Triple>,
+    pub unchecked: Vec<Unchecked>,
+}
+
+/// The Shape Fragment of `store` under `schema` ([`crate::algebra::fragment`]),
+/// with every shape's focus nodes restricted to `focus` when given.
+pub fn fragment<S>(schema: &IRSchema, store: &S, focus: Option<&[Object]>) -> Result<Fragment, ValidationError>
+where
+    S: NeighsRDF<Term = Term>,
+{
+    let plan = algebra::fragment(schema, focus.is_some())?;
+    let focus: Option<Vec<Term>> = focus.map(|nodes| nodes.iter().map(|n| Term::from(n.clone())).collect());
+    let err = |message: &str| EvalError {
+        relation: "the fragment".to_owned(),
+        message: message.to_owned(),
+    };
+    let root = plan.fragment.ok_or_else(|| err("a plan without a fragment"))?;
+    let mut eval = Evaluator::new(&plan, store, focus.as_deref());
+    eval.force(root)?;
+    let Ok(Rel::Triples(triples)) = eval.rel(root) else {
+        return Err(err("not a triples relation").into());
+    };
+    let triples = triples
+        .iter()
+        .filter_map(|(s, p, o)| {
+            let subject = match s {
+                Term::NamedNode(n) => NamedOrBlankNode::NamedNode(n.clone()),
+                Term::BlankNode(b) => NamedOrBlankNode::BlankNode(b.clone()),
+                _ => return None,
+            };
+            Some(Triple::new(subject, p.clone(), o.clone()))
+        })
+        .collect();
+    Ok(Fragment {
+        triples,
+        unchecked: plan.unchecked,
+    })
 }
 
 struct Evaluator<'a, S> {
@@ -210,7 +246,19 @@ struct Evaluator<'a, S> {
     regexes: HashMap<(String, Option<String>), RDFRegex>,
 }
 
-impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
+impl<'a, S: NeighsRDF<Term = Term>> Evaluator<'a, S> {
+    fn new(plan: &'a Plan, store: &'a S, scope: Option<&'a [Term]>) -> Self {
+        Self {
+            plan,
+            store,
+            scope,
+            rels: vec![None; plan.len()],
+            members: HashMap::new(),
+            pairs: HashMap::new(),
+            regexes: HashMap::new(),
+        }
+    }
+
     /// Computes `id`, and first what it reads, on demand: a relation no check
     /// reaches is never computed. The arcs of a predicate from a set of nodes
     /// are looked up node by node ([`Self::arcs`]), so a path read from a few
@@ -301,6 +349,13 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
         match self.rel(id)? {
             Rel::Pairs(ps) => Ok(ps),
             other => Err(format!("{id} is not a pair relation: {other:?}")),
+        }
+    }
+
+    fn row_list(&self, id: RelId) -> Result<&[Row], String> {
+        match self.rel(id)? {
+            Rel::Rows(rs) => Ok(rs),
+            other => Err(format!("{id} is not a rows relation: {other:?}")),
         }
     }
 
@@ -584,6 +639,34 @@ impl<S: NeighsRDF<Term = Term>> Evaluator<'_, S> {
                     })
                     .collect(),
             ),
+            Op::RowPairs(r) => Rel::Pairs(
+                self.row_list(*r)?
+                    .iter()
+                    .filter_map(|r| Some((r.focus.clone(), r.value.clone()?)))
+                    .collect(),
+            ),
+            Op::RowTriples(r) => Rel::Triples(
+                self.row_list(*r)?
+                    .iter()
+                    .filter_map(|r| Some((r.focus.clone(), r.path.clone()?, r.value.clone()?)))
+                    .collect(),
+            ),
+            Op::Arcs {
+                pairs,
+                predicate,
+                inverse,
+            } => {
+                let p = NamedNode::new_unchecked(predicate.as_str());
+                Rel::Triples(
+                    self.pairs_of(*pairs)?
+                        .iter()
+                        .map(|(f, v)| match inverse {
+                            false => (f.clone(), p.clone(), v.clone()),
+                            true => (v.clone(), p.clone(), f.clone()),
+                        })
+                        .collect(),
+                )
+            },
             Op::NodeRows(r) => Rel::Rows(
                 self.nodes(*r)?
                     .iter()

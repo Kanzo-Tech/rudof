@@ -37,7 +37,7 @@ pub use shacl::validator::report::ValidationResult;
 pub use shacl::validator::sql::{RESULT_COLUMNS, Row as SqlRow, SqlEngine};
 pub use shacl::vocab::shui;
 
-pub use crate::base::STRING_BASE;
+use rudof_rdf::STRING_BASE;
 
 use oxrdfio::RdfSyntaxError;
 use rudof_rdf::backend::OxigraphInMemoryError;

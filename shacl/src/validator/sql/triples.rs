@@ -1,6 +1,7 @@
 //! [`Triples`]: the data, as one `(s, p, o)` relation.
 //!
-//! The relation has the columns `s_k, s_v, p, o_k, o_v, o_d, o_l`: each term
+//! The relation has the columns `s_type, s_value, p, o_type, o_value,
+//! o_datatype, o_lang`: each term
 //! spread over the columns of [`crate::validator::sql::term`] (a subject has
 //! no datatype or language) and `p` the predicate IRI. It may be a table or
 //! a view, over any tables a host holds; the engine reads nothing else.
@@ -11,8 +12,8 @@
 //!
 //! | relation | columns |
 //! |---|---|
-//! | [`predicate`](Triples::predicate) (pairs) | `s_k, s_v, s_d, s_l, o_k, o_v, o_d, o_l` |
-//! | [`class_extent`](Triples::class_extent) (nodes) | `n_k, n_v, n_d, n_l` |
+//! | [`predicate`](Triples::predicate) (pairs) | `s_type, s_value, s_datatype, s_lang, o_type, o_value, o_datatype, o_lang` |
+//! | [`class_extent`](Triples::class_extent) (nodes) | `n_type, n_value, n_datatype, n_lang` |
 //! | [`all`](Triples::all) | the pair columns plus `p` |
 //!
 //! The relation may hold a triple twice (a view over several source rows);
@@ -33,7 +34,7 @@ use sqlparser::ast::{ObjectName, Query, SelectItem, TableFactor};
 pub(crate) const PREDICATE_COLUMN: &str = "p";
 
 /// The columns of the relation, in order.
-pub(crate) const COLUMNS: [&str; 7] = ["s_k", "s_v", "p", "o_k", "o_v", "o_d", "o_l"];
+pub(crate) const COLUMNS: [&str; 7] = ["s_type", "s_value", "p", "o_type", "o_value", "o_datatype", "o_lang"];
 
 /// The relation a SQL object name names (`triples`, `"job".triples`,
 /// `"My Triples"`).
@@ -52,7 +53,7 @@ pub(crate) struct Triples {
 impl Triples {
     /// The relation named `table`, a SQL object name (`triples`,
     /// `"job".triples`, `"My Triples"`), and `focus`, the name of a relation
-    /// whose `s_k, s_v` are nodes, spelled as the triples' subjects.
+    /// whose `s_type, s_value` are nodes, spelled as the triples' subjects.
     pub(crate) fn new(table: &str, focus: Option<&str>) -> Result<Self, SqlCompileError> {
         Ok(Self {
             table: relation(table)?,
@@ -60,7 +61,7 @@ impl Triples {
         })
     }
 
-    /// The nodes of the focus relation, `n_k, n_v, n_d, n_l`; `None` when
+    /// The nodes of the focus relation, `n_type, n_value, n_datatype, n_lang`; `None` when
     /// validation is not restricted.
     pub(crate) fn scope(&self) -> Option<Query> {
         let focus = self.focus.as_ref()?;

@@ -77,8 +77,8 @@ fn view(schema: &str) -> String {
     };
     [
         format!(
-            "SELECT 'I' AS s_k, iri AS s_v, '{rdf_type}' AS p, 'I' AS o_k, 'http://example.org/Person' AS o_v, \
-             '' AS o_d, '' AS o_l FROM {schema}person"
+            "SELECT 'I' AS s_type, iri AS s_value, '{rdf_type}' AS p, 'I' AS o_type, 'http://example.org/Person' AS o_value, \
+             '' AS o_datatype, '' AS o_lang FROM {schema}person"
         ),
         column("person", "name", "name", "name", string),
         column("person", "age", "age", "CAST(age AS VARCHAR)", integer),
@@ -294,7 +294,7 @@ ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
     engine.load_triples("triples", &data).expect("triples load");
     engine
         .connection()
-        .execute_batch("CREATE TABLE focus AS SELECT 'I' AS s_k, 'http://example.org/bob' AS s_v")
+        .execute_batch("CREATE TABLE focus AS SELECT 'I' AS s_type, 'http://example.org/bob' AS s_value")
         .expect("the focus is created");
     let sql = block_on(validate(&schema, "triples", Some("focus"), &engine)).expect("validates");
     assert_eq!(sql, in_memory_scoped, "{sql}\n---\n{in_memory_scoped}");
@@ -354,7 +354,7 @@ ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
     assert!(unchecked.is_empty());
     let mut statement = engine
         .connection()
-        .prepare("SELECT s_v, p, o_v FROM fragment ORDER BY ALL")
+        .prepare("SELECT s_value, p, o_value FROM fragment ORDER BY ALL")
         .expect("the fragment is a table");
     let rows: Vec<(String, String, String)> = statement
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))

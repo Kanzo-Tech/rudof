@@ -32,6 +32,11 @@ const XSD: &str = "http://www.w3.org/2001/XMLSchema#";
 pub(crate) const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
 pub(crate) const RDF_LANG_STRING: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString";
 
+/// The suffix of each of a term's four columns, `{prefix}_type`, … — SPARQL 1.1
+/// Query Results JSON's names for a term's members (§3.2.2), the language
+/// shortened to `lang` as `xml:lang` is.
+const SUFFIXES: [&str; 4] = ["type", "value", "datatype", "lang"];
+
 /// The text of a term, as the engine stores it: `[kind, lexical, datatype, language]`.
 pub(crate) type EncodedTerm = [String; 4];
 
@@ -105,12 +110,12 @@ pub(crate) struct TermExpr {
 impl TermExpr {
     /// The term held in `alias.{prefix}_k`, … columns.
     pub(crate) fn columns(alias: &str, prefix: &str) -> Self {
-        let c = |s: &str| col(alias, &format!("{prefix}_{s}"));
+        let [kind, lex, datatype, lang] = SUFFIXES.map(|s| col(alias, &format!("{prefix}_{s}")));
         Self {
-            kind: c("k"),
-            lex: c("v"),
-            datatype: c("d"),
-            lang: c("l"),
+            kind,
+            lex,
+            datatype,
+            lang,
         }
     }
 
@@ -193,14 +198,14 @@ impl TermExpr {
         }
     }
 
-    /// Projects the term as `{prefix}_k`, … .
+    /// Projects the term as `{prefix}_type`, `{prefix}_value`,
+    /// `{prefix}_datatype` and `{prefix}_lang`.
     pub(crate) fn items(&self, prefix: &str) -> Vec<SelectItem> {
-        vec![
-            item(self.kind.clone(), &format!("{prefix}_k")),
-            item(self.lex.clone(), &format!("{prefix}_v")),
-            item(self.datatype.clone(), &format!("{prefix}_d")),
-            item(self.lang.clone(), &format!("{prefix}_l")),
-        ]
+        [&self.kind, &self.lex, &self.datatype, &self.lang]
+            .into_iter()
+            .zip(SUFFIXES)
+            .map(|(e, s)| item(e.clone(), &format!("{prefix}_{s}")))
+            .collect()
     }
 
     /// RDF term equality.

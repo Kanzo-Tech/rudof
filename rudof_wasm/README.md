@@ -28,7 +28,7 @@ validation engine (the `sparql` feature, which needs an endpoint, is off).
 const shapes = Shapes.parse(shaclTurtle, { mediaType: "text/turtle" });
 const model = shapes.model();                     // ShapeModelJson
 
-// SHACL on the page's SQL engine, over a triples relation (s_k, s_v, p, o_k, o_v, o_d, o_l):
+// SHACL on the page's SQL engine, over a triples relation (s_type, s_value, p, o_type, o_value, o_datatype, o_lang):
 // `@fossil-lang/corpus`'s open() creates "<job>".triples; engine is mosaic's engine().
 const report = await shapes.validate({ table: `"${job}".triples`, engine, signal });
 

@@ -132,8 +132,8 @@ impl Shapes {
     }
 
     /// Validate, through SQL on the host's `engine`, the data in the relation
-    /// `triples` (columns `s_k, s_v, p, o_k, o_v, o_d, o_l`), with every shape's
-    /// focus nodes among the `s_k, s_v` of the relation `focus` when given.
+    /// `triples` (columns `s_type, s_value, p, o_type, o_value, o_datatype, o_lang`), with every shape's
+    /// focus nodes among the `s_type, s_value` of the relation `focus` when given.
     /// Messages are worded as [`FormEngine::validate`] words them. The shapes are
     /// compiled now; the future owns what it needs, so it outlives this borrow.
     pub fn validate_sql<E: SqlEngine + 'static>(

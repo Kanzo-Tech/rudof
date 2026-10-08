@@ -11,10 +11,10 @@
 //! ```
 //!
 //! - `triples` names the relation the data is read from, columns
-//!   `s_k, s_v, p, o_k, o_v, o_d, o_l` ([`triples`](self) has them). A table
+//!   `s_type, s_value, p, o_type, o_value, o_datatype, o_lang` ([`triples`](self) has them). A table
 //!   or a view: what tables lie under it is the host's, so the engine knows no
 //!   mapping language and no product vocabulary.
-//! - `focus`, when given, names a relation of nodes in `s_k, s_v`, spelled as
+//! - `focus`, when given, names a relation of nodes in `s_type, s_value`, spelled as
 //!   the triples' subjects: each shape's focus nodes are then its targets
 //!   among them, and the paths still read all of `triples`. A selection
 //!   scopes validation without hiding the data it depends on.

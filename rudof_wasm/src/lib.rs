@@ -8,7 +8,9 @@ use wasm_bindgen::prelude::*;
 // Every rudof-native type the binding marshals against comes from the façade
 // (`rudof_lib::form`), so this crate depends on `rudof_lib` alone — it never
 // reaches into `shacl`/`rudof_rdf`/`oxrdf` directly.
-use rudof_lib::form::{BlankNode, FormEngine, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm};
+use rudof_lib::form::{
+    BlankNode, FormEngine, FormError, Literal, NamedNode, NamedOrBlankNode, RDFFormat, Term as OxTerm,
+};
 
 mod dto;
 mod index;
@@ -110,6 +112,17 @@ export interface Engine {
   query(sql: string, options: { signal: AbortSignal }): Promise<{ toArray(): Record<string, unknown>[] }>;
 }
 
+/**
+ * What `Shapes.parse` throws. When the RDF parser places the syntax error,
+ * `line` and `column` are where it starts, from 1 as the parser's own message
+ * counts them, `column` in code points; an error it does not place (a SHACL
+ * error in a graph that parsed, an invalid IRI) has neither.
+ */
+export interface ShapesError extends Error {
+  line?: number;
+  column?: number;
+}
+
 /** What `Shapes.validate` reads: a triples relation, on an engine. */
 export interface TableValidation {
   /** A relation of columns `s_type, s_value, p, o_type, o_value, o_datatype, o_lang`, e.g. `"job".triples`. */
@@ -147,15 +160,15 @@ impl Shapes {
     /// `options.base` is the document base relative IRIs resolve against — the
     /// URL the shapes were fetched from, when the caller knows it. Omitted, the
     /// parse falls back to the workspace's synthetic string base; see
-    /// [`FormEngine::parse_graph`].
-    pub fn parse(text: String, options: Option<Ts<ParseOptions>>) -> Result<Shapes, JsError> {
+    /// [`FormEngine::parse_graph`]. Throws a `ShapesError`.
+    pub fn parse(text: String, options: Option<Ts<ParseOptions>>) -> Result<Shapes, JsValue> {
         let ParseOptions { media_type, base } = options.map(from_js).transpose()?.unwrap_or_default();
         let inner = rudof_lib::form::Shapes::parse(
             &text,
             &format_of(media_type.as_deref().unwrap_or("text/turtle")),
             base.as_deref(),
         )
-        .map_err(|e| JsError::new(&e.to_string()))?;
+        .map_err(shapes_error)?;
         Ok(Shapes { inner })
     }
 
@@ -186,11 +199,11 @@ impl Shapes {
     /// statement. Every statement runs through `engine.query`, on its one
     /// connection.
     ///
-    /// Resolves to a `RudofReport`, worded as `FormSession.validate` words it.
+    /// Resolves to a `ValidationReport`, worded as `FormSession.validate` words it.
     /// A shape the engine does not check (outside its profile, recursive, or
     /// depending on such a shape) is listed in `unchecked`; the rest are
     /// checked.
-    #[wasm_bindgen(unchecked_return_type = "Promise<RudofReport>")]
+    #[wasm_bindgen(unchecked_return_type = "Promise<ValidationReport>")]
     pub fn validate(
         &self,
         #[wasm_bindgen(unchecked_param_type = "TableValidation")] options: JsValue,
@@ -236,6 +249,22 @@ impl Shapes {
             .into())
         }))
     }
+}
+
+/// `error` as the `ShapesError` its TypeScript declares: an `Error` carrying,
+/// when the parser places it, the start of `RdfSyntaxError::location` (0-based)
+/// as the 1-based `line` and `column` the parser's message prints.
+fn shapes_error(error: FormError) -> JsValue {
+    let thrown = js_sys::Error::new(&error.to_string());
+    let start = match &error {
+        FormError::Syntax(e) => e.location().map(|at| at.start),
+        _ => None,
+    };
+    for (name, at) in start.into_iter().flat_map(|p| [("line", p.line), ("column", p.column)]) {
+        js_sys::Reflect::set(&thrown, &name.into(), &JsValue::from_f64((at + 1) as f64))
+            .expect("an Error takes properties");
+    }
+    thrown.into()
 }
 
 /// The triples relation, the focus relation and the engine of a
@@ -379,7 +408,7 @@ impl FormSession {
     /// * `shape_id == None`     → validate the whole graph against every shape.
     /// * `shape_id == Some(id)` → validate only that shape (and its nested
     ///   property shapes) against its own targets — shape-scoped.
-    pub fn validate(&self, shape_id: Option<String>) -> Result<Ts<RudofReport>, JsError> {
+    pub fn validate(&self, shape_id: Option<String>) -> Result<Ts<ValidationReport>, JsError> {
         let outcome = match shape_id {
             Some(id) => self.engine.validate_shape(&id),
             None => self.engine.validate(),
@@ -392,7 +421,7 @@ impl FormSession {
     /// per-field / per-keystroke revalidation path used by the React form: it
     /// validates just `focus` against `shape_id`, not the whole graph.
     #[wasm_bindgen(js_name = validateFocus)]
-    pub fn validate_focus(&self, focus: Ts<TermValue>, shape_id: String) -> Result<Ts<RudofReport>, JsError> {
+    pub fn validate_focus(&self, focus: Ts<TermValue>, shape_id: String) -> Result<Ts<ValidationReport>, JsError> {
         let focus: TermValue = from_js(focus)?;
         let focus = validate::focus_object(&focus).map_err(|e| JsError::new(&e))?;
         let outcome = self
@@ -407,6 +436,31 @@ impl FormSession {
 mod tests {
     use super::*;
     use wasm_bindgen_test::wasm_bindgen_test;
+
+    /// A Turtle syntax error throws a `ShapesError` at the parser's line and
+    /// column, counted from 1; a SHACL error in a graph that parsed has none.
+    #[wasm_bindgen_test]
+    fn a_syntax_error_throws_where_the_parser_found_it() {
+        let field = |e: &JsValue, name: &str| js_sys::Reflect::get(e, &name.into()).expect("a property");
+        let Err(e) = Shapes::parse("prefix : <http://example.org/>\n:s a :T ;\n  :p .\n".into(), None) else {
+            panic!("a predicate with no object is not Turtle")
+        };
+        assert!(e.is_instance_of::<js_sys::Error>());
+        assert_eq!(
+            (field(&e, "line").as_f64(), field(&e, "column").as_f64()),
+            (Some(3.0), Some(6.0))
+        );
+        assert!(field(&e, "message")
+            .as_string()
+            .is_some_and(|m| m.starts_with("Parser error at line 3 column 6")));
+
+        let shacl =
+            "prefix sh: <http://www.w3.org/ns/shacl#>\n<http://example.org/S> a sh:NodeShape ; sh:minCount \"x\" .\n";
+        let Err(e) = Shapes::parse(shacl.into(), None) else {
+            panic!("sh:minCount takes an integer")
+        };
+        assert!(field(&e, "line").is_undefined() && field(&e, "column").is_undefined());
+    }
 
     /// A session under no shapes at all: these tests are about reading data.
     fn empty() -> FormSession {

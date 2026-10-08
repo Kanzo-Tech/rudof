@@ -1,7 +1,6 @@
 //! SHACL IR (Internal Representation)
 //! Represents SHACL Internal representation which is used for validation
 
-use crate::ir::error::IRError;
 use crate::types::Value;
 use prefixmap::IriRef;
 use rudof_iri::IriS;
@@ -20,6 +19,7 @@ mod shape_label_idx;
 mod test;
 
 pub use component::IRComponent;
+pub use error::IRError;
 pub use node_shape::IRNodeShape;
 pub use property_shape::IRPropertyShape;
 pub use reifier_info::ReifierInfo;

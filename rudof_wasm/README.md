@@ -8,7 +8,7 @@ all running in WebAssembly, no SPARQL endpoint or threads required.
 
 Values cross the boundary as plain JS objects via `serde-wasm-bindgen`: RDF terms
 as `TermValue` records, shapes as a vocabulary-agnostic `ShapeModelJson`, and
-validation as a `RudofReport`. Each is declared in the `.d.ts`, derived (`tsify`)
+validation as an `sh:ValidationReport` (`ValidationReport`). Each is declared in the `.d.ts`, derived (`tsify`)
 from its struct in `src/dto.rs`.
 
 ## Build
@@ -37,7 +37,7 @@ const session = new FormSession(shapes);
 session.loadData(dataTurtle, "text/turtle");
 session.add(subject, predicate, object);          // live graph editing
 const form = session.projectForm(focus, shapeId);
-const local = session.validate(null);             // the same RudofReport
+const local = session.validate(null);             // the same ValidationReport
 const ttl = session.serialize("text/turtle");
 ```
 

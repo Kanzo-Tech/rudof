@@ -107,9 +107,30 @@ pub(crate) fn object_to_value(o: &OxTerm) -> TermValue {
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_TYPES: &'static str = r#"
-/** The page's SQL engine: `@kanzo-tech/mosaic`'s `engine()` as it is. */
+/**
+ * The page's SQL engine: `@fossil-lang/types`' `Engine`, as far as rudof
+ * reads it, which `@kanzo-tech/mosaic`'s `engine()` is.
+ */
 export interface Engine {
-  query(sql: string, options: { signal: AbortSignal }): Promise<{ toArray(): Record<string, unknown>[] }>;
+  query(sql: string, options: { readonly signal: AbortSignal }): Promise<Table>;
+}
+
+/**
+ * An answer, in columns: `@fossil-lang/types`' `Table`, the part of an Arrow
+ * table a reader reads. rudof reads each column by name with `getChild`.
+ */
+export interface Table {
+  readonly numRows: number;
+  readonly schema: { readonly fields: readonly { readonly name: string }[] };
+  /** One column by name, or `null` when the answer has none of that name. */
+  getChild(name: string): Column | null;
+}
+
+/** One column of a `Table`: `get` answers `null` for a null. */
+export interface Column {
+  readonly length: number;
+  get(index: number): unknown;
+  toArray(): ArrayLike<unknown>;
 }
 
 /**
@@ -134,8 +155,11 @@ export interface TableValidation {
    */
   focus?: string;
   engine: Engine;
-  /** Stops the running statement. */
-  signal?: AbortSignal;
+  /**
+   * Stops the running statement. Every statement carries it, as the engine's
+   * `query` takes one: pass a signal that never aborts when nothing stops it.
+   */
+  signal: AbortSignal;
 }
 
 /** What `Shapes.fragment` reads: a `TableValidation`, and the table it writes. */

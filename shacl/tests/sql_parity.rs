@@ -365,3 +365,49 @@ ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
     assert_eq!(rows.len(), expected.len(), "{rows:?}");
     assert!(!names.contains(&"http://example.org/name"), "{rows:?}");
 }
+
+/// An engine whose teardown never reaches the connection, as a validation
+/// cancelled mid-way leaves it: its `DROP`s are refused and its tables stay.
+struct Cancelled {
+    engine: DuckDbEngine,
+    created: std::cell::Cell<usize>,
+}
+
+impl shacl::validator::sql::SqlEngine for Cancelled {
+    type Error = duckdb::Error;
+
+    async fn execute(&self, sql: &str) -> Result<(), Self::Error> {
+        if sql.starts_with("DROP") {
+            return Ok(());
+        }
+        if sql.starts_with("CREATE TEMPORARY TABLE") {
+            self.created.set(self.created.get() + 1);
+        }
+        shacl::validator::sql::SqlEngine::execute(&self.engine, sql).await
+    }
+
+    async fn rows(&self, sql: &str) -> Result<Vec<shacl::validator::sql::Row>, Self::Error> {
+        shacl::validator::sql::SqlEngine::rows(&self.engine, sql).await
+    }
+}
+
+#[test]
+fn a_validation_whose_tables_were_left_behind_does_not_block_the_next() {
+    let data = graph(&format!(
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n{DATA}"
+    ));
+    let schema = schema(SHAPES);
+    let engine = Cancelled {
+        engine: DuckDbEngine::in_memory().expect("duckdb opens"),
+        created: std::cell::Cell::new(0),
+    };
+    engine.engine.load_triples("triples", &data).expect("triples load");
+
+    let first = block_on(validate(&schema, "triples", None, &engine)).expect("the first validates");
+    assert!(engine.created.get() > 0, "the plan shares a relation as a table");
+    let second =
+        block_on(validate(&schema, "triples", None, &engine)).expect("the second validates beside the first's tables");
+
+    assert_eq!(second, first);
+    assert_eq!(first, in_memory(&data, &schema));
+}

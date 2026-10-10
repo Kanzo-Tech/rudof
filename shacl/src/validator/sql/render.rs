@@ -33,6 +33,7 @@ use crate::validator::sql::triples::{PREDICATE_COLUMN, Triples};
 use rudof_rdf::vocab::RdfVocab;
 use sqlparser::ast::{BinaryOperator, Expr, Query, SelectItem, SetExpr, TableFactor};
 use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The deepest a statement nests the subqueries of inline relations: a
 /// longer chain is cut into tables, as a parser recurses once per level.
@@ -136,7 +137,15 @@ pub(crate) struct Renderer<'a, D: ?Sized> {
     named: Vec<bool>,
     /// The body of each relation read once, until its reader takes it.
     inline: Vec<Cell<Option<Query>>>,
+    /// This script's number, in its tables' names: two scripts on one
+    /// connection (a validation that overlaps another, or one whose teardown
+    /// never ran) never meet on a table.
+    run: u64,
 }
+
+/// The number of the next script; one counter for the process, so every
+/// script on a connection the process holds is named apart.
+static RUNS: AtomicU64 = AtomicU64::new(0);
 
 impl<'a, D> Renderer<'a, D>
 where
@@ -149,7 +158,14 @@ where
             dialect,
             named: vec![false; plan.len()],
             inline: (0..plan.len()).map(|_| Cell::new(None)).collect(),
+            run: RUNS.fetch_add(1, Ordering::Relaxed),
         }
+    }
+
+    /// The table of a shared relation, under a prefix of its own so that it
+    /// does not shadow a host table, and this script's number.
+    fn name(&self, id: RelId) -> String {
+        format!("shacl_{}_{id}", self.run)
     }
 
     /// The tables of the script: every relation `roots` reach that more than
@@ -192,15 +208,15 @@ where
                 // A closure reads itself: the recursive CTE of its own table.
                 let body = match self.plan.op(*id) {
                     Op::Closure { .. } => with(
-                        vec![cte(&name(*id), body)],
+                        vec![cte(&self.name(*id), body)],
                         true,
                         SelectBuilder::new(items(self.plan.sort(*id), "c"))
-                            .from(cte_ref(&name(*id), "c"))
+                            .from(cte_ref(&self.name(*id), "c"))
                             .into_query(),
                     ),
                     _ => body,
                 };
-                tables.push((name(*id), body));
+                tables.push((self.name(*id), body));
             } else {
                 *self.inline[id.index()].get_mut() = Some(body);
             }
@@ -245,7 +261,7 @@ where
     /// body as a subquery, handed to its one reader.
     fn from(&self, id: RelId, alias: &str) -> Result<TableFactor, SqlCompileError> {
         Ok(if self.named[id.index()] {
-            cte_ref(&name(id), alias)
+            cte_ref(&self.name(id), alias)
         } else {
             let body = self.inline[id.index()].take();
             derived(
@@ -601,13 +617,6 @@ impl Scope {
     fn new(row: &'static str) -> Self {
         Self { row, other: None }
     }
-}
-
-/// The CTE name of a relation.
-/// The table of a shared relation, under a prefix of its own so that it
-/// does not shadow a host table.
-fn name(id: RelId) -> String {
-    format!("shacl_{id}")
 }
 
 fn internal(message: &str) -> SqlCompileError {

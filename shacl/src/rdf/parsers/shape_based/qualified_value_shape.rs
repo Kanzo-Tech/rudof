@@ -63,6 +63,9 @@ impl<RDF: NeighsRDF> RDFNodeParse<RDF> for QualifiedValueShapeSiblings<RDF> {
                         _ => { /* TODO - Raise error */ },
                     }
                 }
+                // In the order of the shapes, not of the sets they come from.
+                siblings.sort();
+                siblings.dedup();
                 Ok(siblings)
             },
         }
@@ -122,6 +125,9 @@ fn build_qualified_shape(
     siblings: Vec<Object>,
 ) -> Vec<ASTComponent> {
     let mut result = Vec::new();
+    // In the order of the shapes, not of the set they come in.
+    let mut terms: Vec<Object> = terms.into_iter().collect();
+    terms.sort();
     for term in terms {
         let shape = ASTComponent::QualifiedValueShape {
             shape: term,

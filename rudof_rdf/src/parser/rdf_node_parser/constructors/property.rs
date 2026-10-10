@@ -333,7 +333,7 @@ where
     }
 }
 
-/// Parser for all Object values of a property
+/// Parser for all Object values of a property, in their order.
 #[derive(Debug, Clone)]
 pub struct ObjectsPropertyParser<RDF> {
     property: IriS,
@@ -365,6 +365,11 @@ where
                     .map_err(|_| RDFError::FailedTermToObjectError { term: term_str })
             })
             .collect::<Result<Vec<_>, _>>()
+            .map(|mut objects| {
+                // In the order of the objects, not of the set they come in.
+                objects.sort();
+                objects
+            })
     }
 }
 

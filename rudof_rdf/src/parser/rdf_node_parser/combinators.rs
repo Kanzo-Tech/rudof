@@ -640,7 +640,13 @@ where
     /// Returns errors from the value retrieval or element parsing.
     fn parse_focused(&self, rdf: &mut ParseCtx<'_, RDF>) -> Result<Self::Output, RDFError> {
         let saved_focus = rdf.get_focus().cloned();
-        let values = ValuesPropertyParser::new(self.property.clone()).parse_focused(rdf)?;
+        let mut values: Vec<_> = ValuesPropertyParser::new(self.property.clone())
+            .parse_focused(rdf)?
+            .into_iter()
+            .collect();
+        // In the order of the values, not of the set they come in, which is
+        // another on every run.
+        values.sort_by_cached_key(|v| v.to_string());
         let mut results = Vec::new();
 
         for node in values {
@@ -911,7 +917,7 @@ where
         Opaque::new(f)
     }
 
-    /// Applies this parser to all values of a property.
+    /// Applies this parser to all values of a property, in the order of their terms.
     fn map_property(self, property: IriS) -> MapPropertyValuesParser<RDF, Self>
     where
         Self: RDFNodeParse<RDF>,

@@ -192,6 +192,7 @@ impl OxigraphInMemory {
 
         let mut turtle_reader = turtle_parser.for_reader(reader);
         let graph = &mut self.graph;
+        let mut blank_nodes = DocumentBlankNodes::new(&mut self.bnode_counter);
 
         for triple_result in turtle_reader.by_ref() {
             let triple = match handle_parse_error(triple_result, source_name, reader_mode)? {
@@ -207,7 +208,7 @@ impl OxigraphInMemory {
                 }
                 continue;
             }
-            graph.insert(triple_ref);
+            graph.insert(&blank_nodes.triple(triple_ref.into_owned()));
         }
 
         let prefixes: HashMap<&str, &str> = turtle_reader.prefixes().collect();
@@ -271,14 +272,14 @@ impl OxigraphInMemory {
         let parser = RdfXmlParser::new();
         let mut xml_reader = parser.for_reader(reader);
         let graph = &mut self.graph;
+        let mut blank_nodes = DocumentBlankNodes::new(&mut self.bnode_counter);
 
         for triple_result in xml_reader.by_ref() {
             let triple = match handle_parse_error(triple_result, source_name, reader_mode)? {
                 Some(t) => t,
                 None => continue,
             };
-            let triple_ref = cnv_triple(&triple);
-            graph.insert(triple_ref);
+            graph.insert(&blank_nodes.triple(triple));
         }
 
         Ok(())
@@ -334,13 +335,14 @@ impl OxigraphInMemory {
         let parser = JsonLdParser::new();
         let mut jsonld_reader = parser.for_reader(reader);
         let graph = &mut self.graph;
+        let mut blank_nodes = DocumentBlankNodes::new(&mut self.bnode_counter);
 
         for triple_result in jsonld_reader.by_ref() {
             let triple = match handle_parse_error(triple_result, source_name, reader_mode)? {
                 Some(t) => t,
                 None => continue,
             };
-            graph.insert(triple.as_ref());
+            graph.insert(&blank_nodes.triple(OxTriple::from(triple)));
         }
 
         Ok(())
@@ -1203,12 +1205,66 @@ impl Display for ReaderMode {
 /// # Returns
 ///
 /// A triple reference with the same subject, predicate, and object.
-fn cnv_triple(t: &OxTriple) -> TripleRef<'_> {
-    TripleRef::new(
-        OxSubjectRef::from(&t.subject),
-        NamedNodeRef::from(&t.predicate),
-        TermRef::from(&t.object),
-    )
+/// The blank nodes of one parsed document, numbered in the order the document
+/// first mentions them.
+///
+/// The parsers name an anonymous blank node (`[]`, a collection's cells, a
+/// reifier) by a random id, so one text parsed twice gave two graphs whose
+/// blank nodes compared in different orders, and whatever sorted by them (the
+/// shapes of a shapes graph, and with them the SQL compiled from it) came out
+/// in a different order on every parse. Renumbered here, they compare in the
+/// order the document mentions them, on every parse. The scope of a blank node
+/// label is its document, so no two documents merged into one graph share one.
+struct DocumentBlankNodes<'a> {
+    counter: &'a mut usize,
+    ids: HashMap<OxBlankNode, OxBlankNode>,
+}
+
+impl<'a> DocumentBlankNodes<'a> {
+    /// The high bits of every renumbered id: its hexadecimal form starts with a
+    /// letter, as RDF/XML wants, and keeps one length, so the ids sort as
+    /// strings in the order they were given.
+    const BASE: u128 = 0xb << 124;
+
+    fn new(counter: &'a mut usize) -> Self {
+        Self {
+            counter,
+            ids: HashMap::new(),
+        }
+    }
+
+    fn blank_node(&mut self, bnode: OxBlankNode) -> OxBlankNode {
+        let counter = &mut *self.counter;
+        self.ids
+            .entry(bnode)
+            .or_insert_with(|| {
+                *counter += 1;
+                OxBlankNode::new_from_unique_id(Self::BASE | *counter as u128)
+            })
+            .clone()
+    }
+
+    fn subject(&mut self, subject: OxSubject) -> OxSubject {
+        match subject {
+            OxSubject::BlankNode(b) => OxSubject::BlankNode(self.blank_node(b)),
+            named => named,
+        }
+    }
+
+    fn term(&mut self, term: OxTerm) -> OxTerm {
+        match term {
+            OxTerm::BlankNode(b) => OxTerm::BlankNode(self.blank_node(b)),
+            OxTerm::Triple(t) => OxTerm::Triple(Box::new(self.triple(*t))),
+            other => other,
+        }
+    }
+
+    /// `triple`, its blank nodes renumbered.
+    fn triple(&mut self, triple: OxTriple) -> OxTriple {
+        let subject = self.subject(triple.subject);
+        let object = self.term(triple.object);
+        OxTriple::new(subject, triple.predicate, object)
+    }
 }
 
 #[cfg(feature = "sparql")]

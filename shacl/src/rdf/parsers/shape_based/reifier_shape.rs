@@ -1,4 +1,5 @@
 use crate::ast::ReifierInfo;
+use itertools::Itertools;
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::parser::rdf_node_parser::constructors::{SingleBoolPropertyParser, ValuesPropertyParser};
 use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
@@ -9,7 +10,8 @@ pub(crate) fn reifier_shape<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output =
         SingleBoolPropertyParser::new(ShaclVocab::sh_reification_required())
             .optional()
             .map(move |requires_reifier| {
-                let reifier_shape = vs.iter().filter_map(|v| RDF::term_as_object(v).ok()).collect();
+                // In the order of the shapes, not of the set they come in.
+                let reifier_shape = vs.iter().filter_map(|v| RDF::term_as_object(v).ok()).sorted().collect();
                 if vs.is_empty() {
                     None
                 } else {

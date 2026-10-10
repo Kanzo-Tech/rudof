@@ -185,3 +185,88 @@ fn script<D: Dialect>(
         schema: schema.clone(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rudof_rdf::RDFFormat;
+    use rudof_rdf::backend::ReaderMode;
+
+    /// A shapes graph of many shapes, named and blank, most parameters given
+    /// more than one value, as the order of a set would scramble them.
+    fn shapes() -> String {
+        let mut ttl = String::from(
+            "@prefix sh: <http://www.w3.org/ns/shacl#> .\n\
+             @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n\
+             @prefix ex: <http://example.org/> .\n",
+        );
+        for i in 0..24 {
+            let j = (i + 7) % 24;
+            ttl.push_str(&format!(
+                r#"
+ex:S{i} a sh:NodeShape ;
+  sh:targetClass ex:C{i}, ex:D{i} ;
+  sh:targetSubjectsOf ex:p{i}, ex:q{i} ;
+  sh:class ex:K{i}, ex:L{i} ;
+  sh:node ex:T{i}, ex:T{j} ;
+  sh:property [
+    sh:path ex:p{i} ;
+    sh:minCount 1 ; sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:pattern "^[a-z]+$" ;
+    sh:in ( "a" "b" "c" ) ;
+  ] ;
+  sh:property [ sh:path ex:p{i} ; sh:minLength 2 ; sh:class ex:K{j}, ex:L{j} ] ;
+  sh:property [ sh:path ( ex:q{i} [ sh:inversePath ex:r{i} ] ) ; sh:node ex:T{j}, [ sh:class ex:M{i} ] ] ;
+  sh:property [
+    sh:path ex:r{i} ;
+    sh:qualifiedValueShape [ sh:class ex:K{i} ] ; sh:qualifiedMinCount 1 ;
+    sh:qualifiedValueShapesDisjoint true ;
+  ] ;
+  sh:property [
+    sh:path ex:r{i} ;
+    sh:qualifiedValueShape [ sh:class ex:L{i} ] ; sh:qualifiedMaxCount 2 ;
+    sh:qualifiedValueShapesDisjoint true ;
+  ] ;
+  sh:or ( [ sh:datatype xsd:integer ] [ sh:nodeKind sh:IRI ] ) ;
+  sh:closed true ; sh:ignoredProperties ( ex:x{i} ex:y{i} ex:z{i} ) .
+
+ex:T{i} a sh:NodeShape ; sh:class ex:K{i} ; sh:property [ sh:path ex:t{i} ; sh:maxCount 3 ] .
+"#
+            ));
+        }
+        ttl
+    }
+
+    /// The setup, the query and the teardown `shapes` compile to, its own
+    /// parse and its own maps; the script's number, which names its tables
+    /// apart from another's, left out.
+    fn script(shapes: &str) -> Vec<String> {
+        let schema = IRSchema::from_str(shapes, &RDFFormat::Turtle, None, &ReaderMode::Strict).expect("shapes compile");
+        let plan = compile(&schema, &Triples::new("triples", None).unwrap(), &DuckDb).expect("a plan");
+        assert!(plan.unchecked.is_empty(), "{:?}", plan.unchecked);
+        let run = plan
+            .setup
+            .first()
+            .and_then(|s| s.split("\"shacl_").nth(1))
+            .map(|s| s.split('_').next().unwrap_or_default().to_owned())
+            .expect("a table");
+        let tables = format!("\"shacl_{run}_");
+        plan.setup
+            .iter()
+            .chain([&plan.query])
+            .chain(&plan.teardown)
+            .map(|s| s.replace(&tables, "\"shacl_"))
+            .collect()
+    }
+
+    #[test]
+    fn one_shapes_graph_compiles_to_one_script() {
+        let shapes = shapes();
+        let first = script(&shapes);
+        assert!(first.len() > 3, "{} statements", first.len());
+        for _ in 0..8 {
+            assert!(script(&shapes) == first, "another script for the same shapes graph");
+        }
+    }
+}

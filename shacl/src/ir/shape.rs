@@ -71,6 +71,13 @@ impl IRShape {
         }
     }
 
+    pub(crate) fn clear_targets(&mut self) {
+        match self {
+            IRShape::NodeShape(ns) => ns.clear_targets(),
+            IRShape::PropertyShape(ps) => ps.clear_targets(),
+        }
+    }
+
     pub fn components(&self) -> &Vec<IRComponent> {
         match self {
             IRShape::NodeShape(ns) => ns.components(),

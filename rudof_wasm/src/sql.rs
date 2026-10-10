@@ -222,6 +222,51 @@ mod tests {
         );
     }
 
+    /// The script of `shapes` validated with `shape` as the one shape, and every statement it ran.
+    async fn validate_one(shapes: &Shapes, shape: &str) -> Result<Vec<String>, JsValue> {
+        let engine = engine("[]");
+        let options = options(&engine);
+        Reflect::set(&options, &"shape".into(), &shape.into()).unwrap();
+        JsFuture::from(shapes.validate(options.into()).map_err(JsValue::from)?).await?;
+        let seen = js_sys::Array::from(&Reflect::get(&engine, &"seen".into()).unwrap());
+        Ok(seen.iter().map(|sql| sql.as_string().unwrap()).collect())
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_shape_validates_alone_over_its_own_targets() {
+        let shapes = Shapes::parse(
+            format!("{SHAPES}\n:Q a sh:NodeShape ; sh:targetClass :D ; sh:property [ sh:path :q ; sh:minCount 1 ] ."),
+            None,
+        )
+        .unwrap();
+        let script = validate_one(&shapes, "http://example.org/S")
+            .await
+            .expect("validates")
+            .join("\n");
+        assert!(script.contains("http://example.org/C"), "S's target is read: {script}");
+        assert!(
+            !script.contains("http://example.org/D"),
+            "Q's target is set aside: {script}"
+        );
+        let script = validate_one(&shapes, "http://example.org/Q")
+            .await
+            .expect("validates")
+            .join("\n");
+        assert!(
+            script.contains("http://example.org/D") && !script.contains("http://example.org/C"),
+            "{script}"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn a_shape_the_shapes_do_not_hold_is_refused() {
+        let error = validate_one(&shapes(), "http://example.org/Nope")
+            .await
+            .expect_err("refused");
+        let message = js_sys::Error::from(error).message().as_string().unwrap();
+        assert!(message.contains("http://example.org/Nope"), "{message}");
+    }
+
     #[wasm_bindgen_test]
     async fn a_fragment_is_written_to_its_table() {
         let engine = engine("[]");

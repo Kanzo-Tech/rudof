@@ -134,15 +134,26 @@ impl Shapes {
     /// Validate, through SQL on the host's `engine`, the data in the relation
     /// `triples` (columns `s_type, s_value, p, o_type, o_value, o_datatype, o_lang`), with every shape's
     /// focus nodes among the `s_type, s_value` of the relation `focus` when given.
+    /// `shape`, an id as `model()` names it (an IRI, or `_:label`), validates that
+    /// shape alone, over every target it declares ([`IRSchema::targeting`]); an id
+    /// the shapes do not hold is [`FormError::ShapeNotFound`].
     /// Messages are worded as [`FormEngine::validate`] words them. The shapes are
     /// compiled now; the future owns what it needs, so it outlives this borrow.
     pub fn validate_sql<E: SqlEngine + 'static>(
         &self,
         triples: String,
         focus: Option<String>,
+        shape: Option<&str>,
         engine: E,
     ) -> Result<impl std::future::Future<Output = Result<ValidationOutcome, FormError>> + 'static, FormError> {
         let schema = self.compile()?;
+        let schema = match shape {
+            Some(id) => {
+                let idx = resolve_idx(&schema, id)?;
+                schema.targeting(idx)
+            },
+            None => schema,
+        };
         Ok(async move {
             shacl::validator::sql::validate(&schema, &triples, focus.as_deref(), &engine)
                 .await

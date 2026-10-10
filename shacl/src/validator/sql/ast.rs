@@ -147,15 +147,18 @@ pub fn known_true(expr: Expr) -> Expr {
     function("COALESCE", vec![expr, boolean(false)])
 }
 
-pub fn in_list(expr: Expr, list: Vec<Expr>) -> Expr {
-    if list.is_empty() {
-        return boolean(false);
-    }
-    Expr::InList {
-        expr: Box::new(expr),
-        list,
-        negated: false,
-    }
+/// Whether `expr` is one of `list`, a list of non-`NULL` constants: `expr =
+/// c1 OR expr = c2 OR …`, which, as `expr IN (c1, c2, …)`, is `NULL` when
+/// `expr` is and otherwise true or false.
+///
+/// Never spelled `IN (…)`: on one thread (DuckDB-WASM always), DuckDB 1.5.3
+/// and 1.5.4 deadlock on a streamed `UNION ALL` in which a branch whose
+/// constant `IN` list the `in_clause` optimizer rewrites into a join precedes
+/// a branch with a recursive CTE (a `sh:minExclusive` check, then a
+/// `sh:class` one): the query never returns, at no CPU. The equalities give
+/// that optimizer nothing to rewrite.
+pub fn one_of(expr: Expr, list: Vec<Expr>) -> Expr {
+    or_all(list.into_iter().map(|c| eq(expr.clone(), c)))
 }
 
 pub fn exists(query: Query) -> Expr {

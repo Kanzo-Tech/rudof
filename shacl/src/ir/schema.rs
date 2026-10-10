@@ -171,7 +171,12 @@ impl IRSchema {
     pub fn compile(ast: &ASTSchema) -> Result<Self, IRError> {
         let mut schema_ir = Self::new(ast.prefixmap().clone()).with_base(ast.base().cloned());
 
-        for (id, shape) in ast.iter() {
+        // The shapes take their indexes in the order of their labels, not of
+        // the map they are kept in, which is another on every run: the plans
+        // read them in that order, so one shapes graph compiles to one plan.
+        let mut shapes: Vec<_> = ast.iter().collect();
+        shapes.sort_unstable_by_key(|(id, _)| *id);
+        for (id, shape) in shapes {
             schema_ir.register_shape(id, Some(shape), ast)?;
         }
 
@@ -199,7 +204,9 @@ impl IRSchema {
         let mut dg = DependencyGraph::new();
         let mut cache = HashSet::new();
 
-        for (idx, shape) in self.shapes.iter() {
+        let mut shapes: Vec<_> = self.shapes.iter().collect();
+        shapes.sort_unstable_by_key(|(idx, _)| **idx);
+        for (idx, shape) in shapes {
             // Add edges, we start by positive edges, but the direction can change when there is some negation
             shape.add_edges(*idx, &mut dg, PosNeg::Pos, self, &mut cache);
         }

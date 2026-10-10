@@ -14,7 +14,7 @@
 
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
-    and, and_all, boolean, case, col, compare, eq, function, in_list, item, not_eq, null, number, string,
+    and, and_all, boolean, case, col, compare, eq, function, item, not_eq, null, number, one_of, string,
 };
 use crate::validator::sql::dialect::{CastTarget, Dialect};
 use oxrdf::{BaseDirection, BlankNode, Literal, NamedNode, Term};
@@ -356,13 +356,13 @@ fn checked_datatypes() -> Vec<Expr> {
 
 fn is_numeric_literal<D: Dialect + ?Sized>(dialect: &D, t: &TermExpr) -> Result<Expr, SqlCompileError> {
     Ok(and(
-        in_list(t.datatype.clone(), numeric_datatypes()),
+        one_of(t.datatype.clone(), numeric_datatypes()),
         well_formed_among(dialect, t, is_numeric, false)?,
     ))
 }
 
 fn is_string_literal(t: &TermExpr) -> Expr {
-    in_list(t.datatype.clone(), vec![string(XSD_STRING), string(RDF_LANG_STRING)])
+    one_of(t.datatype.clone(), vec![string(XSD_STRING), string(RDF_LANG_STRING)])
 }
 
 fn has_datatype<D: Dialect + ?Sized>(
@@ -436,7 +436,7 @@ fn rank(t: &TermExpr) -> Expr {
 }
 
 fn boolean_value(t: &TermExpr) -> Expr {
-    in_list(t.lex.clone(), vec![string("true"), string("1")])
+    one_of(t.lex.clone(), vec![string("true"), string("1")])
 }
 
 /// `a op b` under the order the in-memory evaluator uses (`Object::sparql_compare`
@@ -507,8 +507,8 @@ pub(crate) fn compare_terms<D: Dialect + ?Sized>(
         ),
         (
             crate::validator::sql::ast::or(
-                in_list(a.datatype.clone(), checked_datatypes()),
-                in_list(b.datatype.clone(), checked_datatypes()),
+                one_of(a.datatype.clone(), checked_datatypes()),
+                one_of(b.datatype.clone(), checked_datatypes()),
             ),
             null(),
         ),

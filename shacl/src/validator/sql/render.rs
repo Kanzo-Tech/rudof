@@ -24,7 +24,7 @@ use crate::algebra::{Check, CmpOp, Col, Expr as AExpr, Key, Kind, Op, Plan, Pred
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
     SelectBuilder, and, and_all, balanced, boolean, case, col, compare, count_star, cte, cte_ref, derived, eq, exists,
-    function, in_list, is_not_null, item, join, known_true, left_join, not, not_eq, null, number, or, or_all, query,
+    function, is_not_null, item, join, known_true, left_join, not, not_eq, null, number, one_of, or, or_all, query,
     string, union, union_all_of, with,
 };
 use crate::validator::sql::dialect::Dialect;
@@ -460,7 +460,7 @@ where
                 by_type,
             } => {
                 let p = col("t", PREDICATE_COLUMN);
-                let mut permitted = in_list(p.clone(), allowed.iter().map(|a| string(a.as_str())).collect());
+                let mut permitted = one_of(p.clone(), allowed.iter().map(|a| string(a.as_str())).collect());
                 // A property a class of the value node permits: read from the
                 // data's `rdf:type`, so the triples are read once.
                 if !by_type.is_empty() {
@@ -474,7 +474,7 @@ where
                                 String::new(),
                                 String::new(),
                             ])),
-                            in_list(p.clone(), properties.iter().map(|q| string(q.as_str())).collect()),
+                            one_of(p.clone(), properties.iter().map(|q| string(q.as_str())).collect()),
                         )
                     }));
                     permitted = or(
@@ -538,7 +538,7 @@ where
                 let count = balanced(ones, &|a, b| compare(a, BinaryOperator::Plus, b)).unwrap_or_else(|| number(0));
                 eq(count, number(1))
             },
-            Pred::KindIn(e, kinds) => in_list(
+            Pred::KindIn(e, kinds) => one_of(
                 self.expr(e, scope)?.kind,
                 kinds.iter().map(|k| string(kind(*k))).collect(),
             ),
@@ -547,7 +547,7 @@ where
                 let names: Vec<String> = datatypes.iter().map(|d| d.as_str().to_owned()).collect();
                 and_all([
                     t.is_kind(LITERAL),
-                    in_list(t.datatype.clone(), names.iter().map(|d| string(d)).collect()),
+                    one_of(t.datatype.clone(), names.iter().map(|d| string(d)).collect()),
                     well_formed_for(self.dialect, &t, &names)?,
                 ])
             },

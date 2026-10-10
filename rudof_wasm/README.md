@@ -31,6 +31,8 @@ const model = shapes.model();                     // ShapeModelJson
 // SHACL on the page's SQL engine, over a triples relation (s_type, s_value, p, o_type, o_value, o_datatype, o_lang):
 // `@fossil-lang/corpus`'s open() creates "<job>".triples; engine is mosaic's engine().
 const report = await shapes.validate({ table: `"${job}".triples`, engine, signal });
+// The same, as findings grouped by shape, constraint, path and severity (in Rust):
+const { groups } = await shapes.validateGroups({ table, engine, signal, languages: [...navigator.languages], sample: 3 });
 
 // A form: a data graph under the shapes, in memory.
 const session = new FormSession(shapes);
@@ -38,8 +40,15 @@ session.loadData(dataTurtle, "text/turtle");
 session.add(subject, predicate, object);          // live graph editing
 const form = session.projectForm(focus, shapeId);
 const local = session.validate(null);             // the same ValidationReport
+const { findings } = session.validateFindings(null, { languages: ["es"] }); // one Finding<RdfPlace> per result
 const ttl = session.serialize("text/turtle");
 ```
+
+Findings are the neutral model a UI lists — `Finding<Place>` (one result) and
+`FindingGroup<Place>` (results sharing a rule, path and severity: a `count`, the
+focus nodes as `places`, a `sample`) — with `RdfPlace { focus, path?, value? }`
+as the place. `rule.id` is the source shape and constraint component;
+`rule.label` reads `path · Constraint`. They are declared in `src/findings.rs`.
 
 ## Notes
 

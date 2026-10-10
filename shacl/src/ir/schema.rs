@@ -132,6 +132,20 @@ impl IRSchema {
     pub fn iter_with_targets(&self) -> impl Iterator<Item = (&Object, &IRShape)> {
         self.iter().filter(|(_, shape)| !shape.targets().is_empty())
     }
+
+    /// The schema validating `shape` alone: it keeps every target it declares — class, implicit
+    /// class, node, subjects-of, objects-of, where — and every other shape loses its own. Nothing
+    /// else changes, so what `shape` reaches (its property shapes, `sh:node`, `sh:and`, a
+    /// qualified value shape) is checked as before, and a shape the others alone targeted yields
+    /// no check: the report holds the results the whole report holds for `shape`'s targets.
+    pub fn targeting(mut self, shape: ShapeLabelIdx) -> Self {
+        for (idx, ir) in self.shapes.iter_mut() {
+            if *idx != shape {
+                ir.clear_targets();
+            }
+        }
+        self
+    }
 }
 
 impl IRSchema {

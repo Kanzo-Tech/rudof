@@ -176,6 +176,11 @@ impl IRPropertyShape {
         &self.targets
     }
 
+    /// Drops the shape's targets: it is then checked only where another shape reaches it.
+    pub(crate) fn clear_targets(&mut self) {
+        self.targets.clear();
+    }
+
     pub fn property_shapes(&self) -> &Vec<ShapeLabelIdx> {
         &self.property_shapes
     }

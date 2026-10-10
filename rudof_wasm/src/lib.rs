@@ -163,8 +163,22 @@ export interface TableValidation {
   signal: AbortSignal;
 }
 
-/** What `Shapes.validateGroups` reads: a `TableValidation`, and how its findings are worded and sampled. */
-export interface TableFindings extends TableValidation, FindingOptions {}
+/** What `Shapes.validate` reads: a `TableValidation`, and the one shape to validate, when only one. */
+export interface TableCheck extends TableValidation {
+  /**
+   * A shape's id as `model()` gives it — an IRI, or `_:` and a blank node's
+   * label — to validate that shape alone, over every target it declares
+   * (class, implicit class, node, subjects-of, objects-of, where), and what
+   * it reaches through its property shapes and `sh:node`. Every other
+   * shape's targets are set aside, so the answer holds the results the whole
+   * validation holds for this shape's targets. An id the shapes do not hold
+   * is refused. Absent, every shape is validated.
+   */
+  shape?: string;
+}
+
+/** What `Shapes.validateGroups` reads: a `TableCheck`, and how its findings are worded and sampled. */
+export interface TableFindings extends TableCheck, FindingOptions {}
 
 /** What `Shapes.fragment` reads: a `TableValidation`, and the table it writes. */
 export interface TableFragment extends TableValidation {
@@ -234,12 +248,13 @@ impl Shapes {
     #[wasm_bindgen(unchecked_return_type = "Promise<ValidationReport>")]
     pub fn validate(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "TableValidation")] options: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "TableCheck")] options: JsValue,
     ) -> Result<js_sys::Promise, JsError> {
         let (table, focus, engine) = table_options(&options)?;
+        let shape = shape_option(&options)?;
         let validation = self
             .inner
-            .validate_sql(table, focus, engine)
+            .validate_sql(table, focus, shape.as_deref(), engine)
             .map_err(|e| JsError::new(&e.to_string()))?;
         Ok(wasm_bindgen_futures::future_to_promise(async move {
             let outcome = validation.await.map_err(|e| JsError::new(&e.to_string()))?;
@@ -260,9 +275,10 @@ impl Shapes {
     ) -> Result<js_sys::Promise, JsError> {
         let (table, focus, engine) = table_options(&options)?;
         let wording = finding_options(&options)?;
+        let shape = shape_option(&options)?;
         let validation = self
             .inner
-            .validate_sql(table, focus, engine)
+            .validate_sql(table, focus, shape.as_deref(), engine)
             .map_err(|e| JsError::new(&e.to_string()))?;
         Ok(wasm_bindgen_futures::future_to_promise(async move {
             let outcome = validation.await.map_err(|e| JsError::new(&e.to_string()))?;
@@ -336,6 +352,19 @@ fn table_options(options: &JsValue) -> Result<(String, Option<String>, sql::JsEn
     };
     let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
     Ok((table, focus, engine))
+}
+
+/// The `shape` of a `TableValidation`: the one shape to validate, by the id
+/// `model()` gives it; absent, `undefined` or `null` is every shape.
+fn shape_option(options: &JsValue) -> Result<Option<String>, JsError> {
+    let shape = js_sys::Reflect::get(options, &"shape".into()).unwrap_or(JsValue::UNDEFINED);
+    if shape.is_undefined() || shape.is_null() {
+        return Ok(None);
+    }
+    shape
+        .as_string()
+        .map(Some)
+        .ok_or_else(|| JsError::new("shape: expected a shape's id, an IRI or `_:label`"))
 }
 
 /// The `FindingOptions` of an options object (its other fields ignored);

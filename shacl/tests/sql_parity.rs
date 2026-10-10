@@ -308,6 +308,54 @@ ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
     assert!(bobs.iter().all(|r| in_memory_scoped.results().contains(r)));
 }
 
+/// `IRSchema::targeting(P)` validates `P` alone: every target `P` declares, and
+/// what it reaches by `sh:node`, but no other shape's targets — the report of
+/// a shapes graph holding `P` and what it reaches, and nothing else.
+#[test]
+fn targeting_one_shape_validates_it_over_all_its_targets_and_nothing_else() {
+    let data = graph(&format!("{DATA}\nex:x ex:age 5 .\n"));
+    let reached = r#"
+ex:P a sh:NodeShape ; sh:targetClass ex:Person ; sh:targetNode ex:x ;
+    sh:property [ sh:path ex:age ; sh:minInclusive 18 ] ;
+    sh:node ex:N .
+ex:N a sh:NodeShape ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .
+"#;
+    let other = r#"
+ex:Q a sh:NodeShape ; sh:targetClass ex:Person ; sh:property [ sh:path ex:email ; sh:minCount 1 ] .
+ex:R a sh:NodeShape ; sh:targetSubjectsOf ex:knows ; sh:property [ sh:path ex:age ; sh:maxInclusive 35 ] .
+"#;
+    let whole = schema(&format!("{reached}{other}"));
+    let p = *whole
+        .get_idx(&Object::Iri(IriS::new_unchecked("http://example.org/P")))
+        .expect("P is a shape");
+
+    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
+    engine.load_triples("triples", &data).expect("triples load");
+    let alone = block_on(validate(&whole.clone().targeting(p), "triples", None, &engine)).expect("validates");
+    let expected = block_on(validate(&schema(reached), "triples", None, &engine)).expect("validates");
+    assert_eq!(alone, expected, "{alone}\n---\n{expected}");
+
+    // Every target counts: ex:x, a target node and no Person, is under age.
+    let x = Object::Iri(IriS::new_unchecked("http://example.org/x"));
+    assert!(alone.results().iter().any(|r| r.focus_node() == &x), "{alone}");
+    // And what P reaches is checked: dave and erin have no name, through ex:N.
+    assert!(
+        alone
+            .results()
+            .iter()
+            .any(|r| r.focus_node().to_string().contains("dave")),
+        "{alone}"
+    );
+    // No result of Q's or R's: their targets were set aside.
+    let q_or_r = |r: &&shacl::validator::report::ValidationResult| {
+        r.source()
+            .is_some_and(|s| s.to_string().contains("/Q") || s.to_string().contains("/R"))
+    };
+    assert!(!alone.results().iter().any(|r| q_or_r(&r)), "{alone}");
+    let everything = block_on(validate(&whole, "triples", None, &engine)).expect("validates");
+    assert!(everything.results().len() > alone.results().len(), "{everything}");
+}
+
 #[test]
 fn a_fragment_keeps_what_makes_the_conforming_nodes_conform() {
     let data = graph(

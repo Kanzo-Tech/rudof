@@ -35,7 +35,7 @@ pub fn focus_object(focus: &TermValue) -> Result<Object, String> {
     Object::try_from(crate::term_to_object(focus)).map_err(|e| e.to_string())
 }
 
-fn result_to_dto(r: &rudof_lib::form::ValidationResult) -> ValidationResult {
+pub(crate) fn result_to_dto(r: &rudof_lib::form::ValidationResult) -> ValidationResult {
     ValidationResult {
         focus_node: object_to_term(r.focus_node()),
         result_path: r.path().and_then(path_to_term),

@@ -13,6 +13,7 @@ use rudof_lib::form::{
 };
 
 mod dto;
+mod findings;
 mod index;
 mod project;
 mod scoring;
@@ -162,6 +163,9 @@ export interface TableValidation {
   signal: AbortSignal;
 }
 
+/** What `Shapes.validateGroups` reads: a `TableValidation`, and how its findings are worded and sampled. */
+export interface TableFindings extends TableValidation, FindingOptions {}
+
 /** What `Shapes.fragment` reads: a `TableValidation`, and the table it writes. */
 export interface TableFragment extends TableValidation {
   /** The table the fragment is written to, replaced when it exists, e.g. `"job".fragment`. */
@@ -243,6 +247,29 @@ impl Shapes {
         }))
     }
 
+    /// Validate as `validate` does, and resolve to the report's findings
+    /// grouped by source shape, constraint component, path and severity: each
+    /// group with its `count` of results, its focus nodes as `places` and a
+    /// `sample` of findings in full (`options.sample`, 3 by default), worded
+    /// for `options.languages`. The grouping is done in Rust, so a corpus with
+    /// many results crosses to JavaScript as its groups.
+    #[wasm_bindgen(js_name = validateGroups, unchecked_return_type = "Promise<RdfFindingGroups>")]
+    pub fn validate_groups(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "TableFindings")] options: JsValue,
+    ) -> Result<js_sys::Promise, JsError> {
+        let (table, focus, engine) = table_options(&options)?;
+        let wording = finding_options(&options)?;
+        let validation = self
+            .inner
+            .validate_sql(table, focus, engine)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(wasm_bindgen_futures::future_to_promise(async move {
+            let outcome = validation.await.map_err(|e| JsError::new(&e.to_string()))?;
+            Ok(to_js(&findings::groups_of(&outcome, &wording))?.into())
+        }))
+    }
+
     /// Write the Shape Fragment of a triples relation to the table `into`
     /// (replacing it): the rows of `table`, in its seven columns, that make a
     /// conforming focus node conform to its shapes, with the focus nodes among
@@ -309,6 +336,15 @@ fn table_options(options: &JsValue) -> Result<(String, Option<String>, sql::JsEn
     };
     let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
     Ok((table, focus, engine))
+}
+
+/// The `FindingOptions` of an options object (its other fields ignored);
+/// `undefined` or `null` is the defaults.
+fn finding_options(options: &JsValue) -> Result<findings::FindingOptions, JsError> {
+    if options.is_undefined() || options.is_null() {
+        return Ok(Default::default());
+    }
+    serde_wasm_bindgen::from_value(options.clone()).map_err(|e| JsError::new(&e.to_string()))
 }
 
 // ---- The form session --------------------------------------------------------
@@ -453,6 +489,44 @@ impl FormSession {
             .validate_focus(&shape_id, &focus)
             .map_err(|e| JsError::new(&e.to_string()))?;
         to_js(&validate::report_from_outcome(&outcome))
+    }
+
+    /// Validate as `validate` does, and answer one finding per result: its
+    /// focus node, path key (the key the fields are indexed by) and value as
+    /// its `place`, its message worded for `options.languages`, and every
+    /// language's message beside it, so a form re-words without validating.
+    #[wasm_bindgen(js_name = validateFindings)]
+    pub fn validate_findings(
+        &self,
+        shape_id: Option<String>,
+        options: Option<Ts<findings::FindingOptions>>,
+    ) -> Result<Ts<findings::RdfFindings>, JsError> {
+        let options = options.map(from_js).transpose()?.unwrap_or_default();
+        let outcome = match shape_id {
+            Some(id) => self.engine.validate_shape(&id),
+            None => self.engine.validate(),
+        }
+        .map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&findings::findings_of(&outcome, &options))
+    }
+
+    /// Validate one focus node against one shape, as `validateFocus` does, and
+    /// answer one finding per result, as `validateFindings` does.
+    #[wasm_bindgen(js_name = validateFocusFindings)]
+    pub fn validate_focus_findings(
+        &self,
+        focus: Ts<TermValue>,
+        shape_id: String,
+        options: Option<Ts<findings::FindingOptions>>,
+    ) -> Result<Ts<findings::RdfFindings>, JsError> {
+        let options = options.map(from_js).transpose()?.unwrap_or_default();
+        let focus: TermValue = from_js(focus)?;
+        let focus = validate::focus_object(&focus).map_err(|e| JsError::new(&e))?;
+        let outcome = self
+            .engine
+            .validate_focus(&shape_id, &focus)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&findings::findings_of(&outcome, &options))
     }
 }
 

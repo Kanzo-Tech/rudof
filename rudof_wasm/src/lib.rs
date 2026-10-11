@@ -180,10 +180,19 @@ export interface TableCheck extends TableValidation {
 /** What `Shapes.validateGroups` reads: a `TableCheck`, and how its findings are worded and sampled. */
 export interface TableFindings extends TableCheck, FindingOptions {}
 
-/** What `Shapes.fragment` reads: a `TableValidation`, and the table it writes. */
+/** What `Shapes.fragment` reads: a `TableValidation`, and the tables it writes. */
 export interface TableFragment extends TableValidation {
   /** The table the fragment is written to, replaced when it exists, e.g. `"job".fragment`. */
   into: string;
+  /**
+   * A table to write the conforming focus nodes to, replaced when it exists,
+   * e.g. `"job".conforming`: the focus nodes validation reports nothing for,
+   * of any severity, each conforming to every shape that targets it, in
+   * columns `s_type, s_value` as `focus` spells them. Not the fragment's
+   * subjects, which hold the neighbours its shapes reach too (an `sh:class`
+   * value's type, conforming or not). Absent, none is written.
+   */
+  conforming?: string;
 }
 "#;
 
@@ -290,7 +299,9 @@ impl Shapes {
     /// (replacing it): the rows of `table`, in its seven columns, that make a
     /// conforming focus node conform to its shapes, with the focus nodes among
     /// `focus` when given; the subset of the data the shapes describe. Options
-    /// are `validate`'s, plus `into`.
+    /// are `validate`'s, plus `into`, and `conforming`, a table the focus
+    /// nodes that conform to every shape that targets them are written to (in
+    /// `s_type, s_value`) when given.
     ///
     /// Resolves to `{ unchecked }`: the shapes outside the fragments profile,
     /// which the fragment does not cover.
@@ -304,9 +315,10 @@ impl Shapes {
             .ok()
             .and_then(|v| v.as_string())
             .ok_or_else(|| JsError::new("into: expected the name of the table to write"))?;
+        let conforming = string_option(&options, "conforming", "the name of a table to write")?;
         let fragment = self
             .inner
-            .fragment_sql(table, focus, into, engine)
+            .fragment_sql(table, focus, into, conforming, engine)
             .map_err(|e| JsError::new(&e.to_string()))?;
         Ok(wasm_bindgen_futures::future_to_promise(async move {
             let unchecked = fragment.await.map_err(|e| JsError::new(&e.to_string()))?;
@@ -341,15 +353,7 @@ fn table_options(options: &JsValue) -> Result<(String, Option<String>, sql::JsEn
     let table = field("table")
         .as_string()
         .ok_or_else(|| JsError::new("table: expected the name of a triples relation"))?;
-    let focus = field("focus");
-    let focus = match focus.is_undefined() || focus.is_null() {
-        true => None,
-        false => Some(
-            focus
-                .as_string()
-                .ok_or_else(|| JsError::new("focus: expected the name of a relation of nodes"))?,
-        ),
-    };
+    let focus = string_option(options, "focus", "the name of a relation of nodes")?;
     let engine = sql::JsEngine::new(field("engine"), field("signal")).map_err(|e| JsError::new(&e))?;
     Ok((table, focus, engine))
 }
@@ -357,14 +361,20 @@ fn table_options(options: &JsValue) -> Result<(String, Option<String>, sql::JsEn
 /// The `shape` of a `TableValidation`: the one shape to validate, by the id
 /// `model()` gives it; absent, `undefined` or `null` is every shape.
 fn shape_option(options: &JsValue) -> Result<Option<String>, JsError> {
-    let shape = js_sys::Reflect::get(options, &"shape".into()).unwrap_or(JsValue::UNDEFINED);
-    if shape.is_undefined() || shape.is_null() {
+    string_option(options, "shape", "a shape's id, an IRI or `_:label`")
+}
+
+/// The string field `name` of an options object, `expected` to be what it
+/// names; absent, `undefined` or `null` is `None`.
+fn string_option(options: &JsValue, name: &str, expected: &str) -> Result<Option<String>, JsError> {
+    let value = js_sys::Reflect::get(options, &name.into()).unwrap_or(JsValue::UNDEFINED);
+    if value.is_undefined() || value.is_null() {
         return Ok(None);
     }
-    shape
+    value
         .as_string()
         .map(Some)
-        .ok_or_else(|| JsError::new("shape: expected a shape's id, an IRI or `_:label`"))
+        .ok_or_else(|| JsError::new(&format!("{name}: expected {expected}")))
 }
 
 /// The `FindingOptions` of an options object (its other fields ignored);

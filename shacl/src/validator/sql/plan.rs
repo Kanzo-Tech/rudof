@@ -46,16 +46,16 @@ pub enum SqlError<E: Display> {
 
 /// The script of one plan over one triples relation: the setup, a `CREATE
 /// TEMPORARY TABLE` per relation the plan shares, inputs first; then its
-/// statement, the query whose rows are the results (they name their check by
-/// index) or the `CREATE TABLE` of a fragment; then the teardown, which drops
-/// those tables.
+/// statements, the one query whose rows are the results (they name their
+/// check by index) or the `CREATE TABLE`s of a fragment and of the conforming
+/// focus nodes; then the teardown, which drops those tables.
 #[derive(Debug, Clone)]
 pub(crate) struct SqlPlan {
     pub(crate) checks: Vec<Check>,
     pub(crate) unchecked: Vec<Unchecked>,
     pub(crate) schema: IRSchema,
     pub(crate) setup: Vec<String>,
-    pub(crate) query: String,
+    pub(crate) statements: Vec<String>,
     pub(crate) teardown: Vec<String>,
 }
 
@@ -107,14 +107,23 @@ impl SqlPlan {
 
     /// Runs the script on `engine` and builds the report of its rows.
     pub(crate) async fn run<X: SqlEngine>(&self, engine: &X) -> Result<ValidationReport, SqlError<X::Error>> {
-        let rows = self.scripted(engine, engine.rows(&self.query)).await?;
+        let [query] = self.statements.as_slice() else {
+            return Err(SqlCompileError::Internal("a validation is one query".to_owned()).into());
+        };
+        let rows = self.scripted(engine, engine.rows(query)).await?;
         self.report(&rows)
     }
 
-    /// Runs the script on `engine`, its statement one without rows; the
-    /// shapes the plan does not cover.
+    /// Runs the script on `engine`, its statements ones without rows, in
+    /// order; the shapes the plan does not cover.
     pub(crate) async fn create<X: SqlEngine>(&self, engine: &X) -> Result<Vec<Unchecked>, SqlError<X::Error>> {
-        self.scripted(engine, engine.execute(&self.query)).await?;
+        let statements = async {
+            for statement in &self.statements {
+                engine.execute(statement).await?;
+            }
+            Ok(())
+        };
+        self.scripted(engine, statements).await?;
         Ok(self.unchecked.clone())
     }
 

@@ -33,6 +33,9 @@ const model = shapes.model();                     // ShapeModelJson
 const report = await shapes.validate({ table: `"${job}".triples`, engine, signal });
 // The same, as findings grouped by shape, constraint, path and severity (in Rust):
 const { groups } = await shapes.validateGroups({ table, engine, signal, languages: [...navigator.languages], sample: 3 });
+// The Shape Fragment: the rows that make the conforming focus nodes conform, written to `into`;
+// with `conforming`, the focus nodes validation reports nothing for (s_type, s_value), not the fragment's subjects.
+const { unchecked } = await shapes.fragment({ table, engine, signal, into: `"${job}".fragment`, conforming: `"${job}".conforming` });
 
 // A form: a data graph under the shapes, in memory.
 const session = new FormSession(shapes);

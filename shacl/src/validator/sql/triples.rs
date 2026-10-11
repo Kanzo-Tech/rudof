@@ -15,6 +15,7 @@
 //! | [`predicate`](Triples::predicate) (pairs) | `s_type, s_value, s_datatype, s_lang, o_type, o_value, o_datatype, o_lang` |
 //! | [`class_extent`](Triples::class_extent) (nodes) | `n_type, n_value, n_datatype, n_lang` |
 //! | [`all`](Triples::all) | the pair columns plus `p` |
+//! | [`subjects`](Triples::subjects) (nodes) | `s_type, s_value`, a focus relation's |
 //!
 //! The relation may hold a triple twice (a view over several source rows);
 //! the compiler reads it as the set an RDF graph is, making it distinct where
@@ -22,10 +23,10 @@
 
 use crate::validator::sql::SqlCompileError;
 use crate::validator::sql::ast::{
-    SelectBuilder, and_all, col, cte, cte_ref, derived, eq, exists, item, join, number, parse_object_name, query,
-    string, table, union, with,
+    SelectBuilder, and_all, col, cte, cte_ref, derived, eq, exists, item, join, number, one_of, parse_object_name,
+    query, string, table, union, with,
 };
-use crate::validator::sql::term::{IRI, TermExpr};
+use crate::validator::sql::term::{BLANK, IRI, TermExpr};
 use rudof_iri::IriS;
 use rudof_rdf::vocab::{RdfVocab, RdfsVocab};
 use sqlparser::ast::{ObjectName, Query, SelectItem, TableFactor};
@@ -114,6 +115,21 @@ impl Triples {
                     .filter(same)
                     .into_query(),
             ))
+            .into_query()
+    }
+
+    /// The nodes of the nodes relation `among` that a subject can be, IRIs
+    /// and blank nodes, in a focus relation's columns `s_type, s_value`.
+    pub(crate) fn subjects(among: TableFactor) -> Query {
+        let node = TermExpr::columns("m", "f");
+        let items = [node.kind.clone(), node.lex]
+            .into_iter()
+            .zip(["s_type", "s_value"])
+            .map(|(e, c)| item(e, c))
+            .collect();
+        SelectBuilder::new(items)
+            .from(among)
+            .filter(one_of(node.kind, vec![string(IRI), string(BLANK)]))
             .into_query()
     }
 

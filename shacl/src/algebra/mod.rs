@@ -411,6 +411,10 @@ pub struct Plan {
     /// The Shape Fragment of the shapes graph, a relation of sort
     /// [`Sort::Triples`], in a plan [`fragment`] built.
     pub fragment: Option<RelId>,
+    /// The focus nodes that conform to every shape that targets them, a
+    /// relation of sort [`Sort::Nodes`]: those validation reports nothing
+    /// for. In a plan [`fragment`] built.
+    pub conforming: Option<RelId>,
 }
 
 impl Plan {
@@ -496,8 +500,9 @@ impl PlanBuilder {
         self.plan.checks.push(check);
     }
 
-    pub fn fragment(&mut self, fragment: RelId) {
+    pub fn fragment(&mut self, fragment: RelId, conforming: RelId) {
         self.plan.fragment = Some(fragment);
+        self.plan.conforming = Some(conforming);
     }
 
     pub fn finish(self) -> Plan {

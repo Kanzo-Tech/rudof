@@ -192,10 +192,14 @@ where
 }
 
 /// A Shape Fragment: the triples that make the conforming focus nodes conform,
-/// and the shapes it was not computed for.
+/// those nodes, and the shapes it was not computed for.
 #[derive(Debug, Clone)]
 pub struct Fragment {
     pub triples: Vec<Triple>,
+    /// The focus nodes that conform to every shape that targets them
+    /// ([`Plan::conforming`]), those validation reports nothing for. Not the
+    /// fragment's subjects, which hold the neighbours its walks reach too.
+    pub conforming: Vec<Object>,
     pub unchecked: Vec<Unchecked>,
 }
 
@@ -207,15 +211,18 @@ where
 {
     let plan = algebra::fragment(schema, focus.is_some())?;
     let focus: Option<Vec<Term>> = focus.map(|nodes| nodes.iter().map(|n| Term::from(n.clone())).collect());
-    let err = |message: &str| EvalError {
+    let err = |message: String| EvalError {
         relation: "the fragment".to_owned(),
-        message: message.to_owned(),
+        message,
     };
-    let root = plan.fragment.ok_or_else(|| err("a plan without a fragment"))?;
+    let (Some(root), Some(conforming)) = (plan.fragment, plan.conforming) else {
+        return Err(err("a plan without a fragment".to_owned()).into());
+    };
     let mut eval = Evaluator::new(&plan, store, focus.as_deref());
     eval.force(root)?;
+    eval.force(conforming)?;
     let Ok(Rel::Triples(triples)) = eval.rel(root) else {
-        return Err(err("not a triples relation").into());
+        return Err(err("not a triples relation".to_owned()).into());
     };
     let triples = triples
         .iter()
@@ -228,8 +235,16 @@ where
             Some(Triple::new(subject, p.clone(), o.clone()))
         })
         .collect();
+    let Ok(Rel::Nodes(nodes)) = eval.rel(conforming) else {
+        return Err(err("not a nodes relation".to_owned()).into());
+    };
+    let conforming = nodes
+        .iter()
+        .map(|n| Object::try_from(n.clone()).map_err(|e| err(e.to_string())))
+        .collect::<Result<_, _>>()?;
     Ok(Fragment {
         triples,
+        conforming,
         unchecked: plan.unchecked,
     })
 }

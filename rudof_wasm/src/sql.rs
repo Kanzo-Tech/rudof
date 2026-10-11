@@ -287,6 +287,35 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
+    async fn the_conforming_nodes_are_written_to_their_table_when_asked() {
+        /// The tables a fragment writes, with `conforming` among its options.
+        async fn written(conforming: Option<&str>) -> Vec<String> {
+            let engine = engine("[]");
+            let options = options(&engine);
+            Reflect::set(&options, &"into".into(), &"\"job\".fragment".into()).unwrap();
+            if let Some(table) = conforming {
+                Reflect::set(&options, &"conforming".into(), &table.into()).unwrap();
+            }
+            JsFuture::from(shapes().fragment(options.into()).unwrap())
+                .await
+                .expect("a fragment");
+            js_sys::Array::from(&Reflect::get(&engine, &"seen".into()).unwrap())
+                .iter()
+                .map(|sql| sql.as_string().unwrap())
+                .filter(|sql| sql.starts_with("CREATE OR REPLACE TABLE"))
+                .collect()
+        }
+        let both = written(Some("\"job\".conforming")).await;
+        assert_eq!(both.len(), 2, "{both:?}");
+        assert!(both[0].contains("\"job\".\"fragment\""), "{both:?}");
+        assert!(
+            both[1].contains("\"job\".\"conforming\"") && both[1].contains("s_type") && both[1].contains("s_value"),
+            "the conforming nodes, as a focus relation: {both:?}"
+        );
+        assert_eq!(written(None).await.len(), 1, "no conforming table unless asked");
+    }
+
+    #[wasm_bindgen_test]
     async fn a_row_naming_no_check_is_an_error() {
         let engine = engine(
             "[{ check: 7, focus_kind: 'I', focus_value: 'http://example.org/n', focus_datatype: '', \

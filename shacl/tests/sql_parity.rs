@@ -10,6 +10,7 @@ use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 use rudof_rdf::term::Object;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
+use shacl::types::Severity;
 use shacl::validator::report::ValidationReport;
 use shacl::validator::sql::{DuckDbEngine, validate};
 
@@ -396,7 +397,7 @@ ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
     let engine = DuckDbEngine::in_memory().expect("duckdb opens");
     engine.load_triples("triples", &data).expect("triples load");
     let unchecked = block_on(shacl::validator::sql::fragment(
-        &schema, "triples", None, "fragment", &engine,
+        &schema, "triples", None, "fragment", None, &engine,
     ))
     .expect("a fragment");
     assert!(unchecked.is_empty());
@@ -412,6 +413,142 @@ ex:P a sh:NodeShape ; sh:targetClass ex:Person ;
     let names: Vec<&str> = rows.iter().map(|(_, p, _)| p.as_str()).collect();
     assert_eq!(rows.len(), expected.len(), "{rows:?}");
     assert!(!names.contains(&"http://example.org/name"), "{rows:?}");
+}
+
+#[test]
+fn a_fragment_names_the_nodes_that_conform_and_not_its_neighbours() {
+    let data = graph(
+        r#"
+@prefix of: <http://example.org/openflights/> .
+ex:a1 a ex:Airport ; of:altitude 100 ; of:routeTo ex:a2, ex:a3 .
+ex:a2 a ex:Airport ; of:altitude 9000 ; of:routeTo ex:a1, ex:a3 .
+ex:a3 a ex:Airport ; of:altitude "high" ; of:routeTo ex:a1, ex:a2 .
+"#,
+    );
+    let schema = schema(
+        r#"
+@prefix of: <http://example.org/openflights/> .
+ex:AirportShape a sh:NodeShape ; sh:targetClass ex:Airport ;
+    sh:property [ sh:path of:routeTo ; sh:class ex:Airport ] ;
+    sh:property [ sh:path of:altitude ; sh:datatype xsd:integer ] ;
+    sh:property [ sh:path of:altitude ; sh:maxInclusive 5000 ; sh:severity sh:Warning ] .
+"#,
+    );
+    let ex = |local: &str| format!("http://example.org/{local}");
+    // a2 fails only at sh:Warning, a3 with a violation: neither conforms,
+    // as severity has no impact on validation (SHACL §2.1.4).
+    let report = in_memory(&data, &schema);
+    let severities = |node: &str| -> Vec<Severity> {
+        let node = Object::Iri(IriS::new_unchecked(&ex(node)));
+        let of = report.results().iter().filter(|r| r.focus_node() == &node);
+        of.map(|r| r.severity().clone()).collect()
+    };
+    assert_eq!(severities("a1"), vec![], "{report}");
+    assert_eq!(severities("a2"), vec![Severity::Warning], "{report}");
+    assert!(severities("a3").contains(&Severity::Violation), "{report}");
+
+    let fragment = shacl::validator::fragment(&schema, &data, None).expect("a fragment");
+    assert!(fragment.unchecked.is_empty(), "{:?}", fragment.unchecked);
+    assert_eq!(fragment.conforming, vec![Object::Iri(IriS::new_unchecked(&ex("a1")))]);
+    // a1's routes reach a2 and a3 by sh:class: their types are in its fragment.
+    let subjects: std::collections::BTreeSet<String> = fragment.triples.iter().map(|t| t.subject.to_string()).collect();
+    for node in ["a1", "a2", "a3"] {
+        assert!(subjects.contains(&format!("<{}>", ex(node))), "{subjects:?}");
+    }
+
+    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
+    engine.load_triples("triples", &data).expect("triples load");
+    let unchecked = block_on(shacl::validator::sql::fragment(
+        &schema,
+        "triples",
+        None,
+        "fragment",
+        Some("conforming"),
+        &engine,
+    ))
+    .expect("a fragment");
+    assert!(unchecked.is_empty());
+    let column = |sql: &str| -> Vec<String> {
+        let mut statement = engine.connection().prepare(sql).expect("a table");
+        statement
+            .query_map([], |r| r.get(0))
+            .expect("rows")
+            .collect::<Result<_, _>>()
+            .expect("rows")
+    };
+    assert_eq!(
+        column("SELECT s_type || ' ' || s_value FROM conforming"),
+        vec![format!("I {}", ex("a1"))]
+    );
+    assert_eq!(
+        column("SELECT DISTINCT s_value FROM fragment ORDER BY ALL"),
+        vec![ex("a1"), ex("a2"), ex("a3")]
+    );
+    // The conforming table is a focus relation: scoped to it, the fragment is the same.
+    block_on(shacl::validator::sql::fragment(
+        &schema,
+        "triples",
+        Some("conforming"),
+        "again",
+        None,
+        &engine,
+    ))
+    .expect("a fragment");
+    assert_eq!(
+        column(
+            "SELECT count(*)::VARCHAR FROM ((SELECT * FROM fragment EXCEPT SELECT * FROM again) \
+             UNION ALL (SELECT * FROM again EXCEPT SELECT * FROM fragment))"
+        ),
+        vec!["0".to_owned()]
+    );
+}
+
+#[test]
+fn a_node_conforms_only_when_every_shape_that_targets_it_passes_it() {
+    let data = graph(
+        r#"
+ex:n1 a ex:A, ex:B ; ex:name "one" .
+ex:n2 a ex:A ; ex:name "two" .
+"#,
+    );
+    // n1 passes A and fails B; n2 is targeted by A alone, and passes it.
+    let schema = schema(
+        r#"
+ex:A a sh:NodeShape ; sh:targetClass ex:A ; sh:property [ sh:path ex:name ; sh:minCount 1 ] .
+ex:B a sh:NodeShape ; sh:targetClass ex:B ; sh:property [ sh:path ex:age ; sh:minCount 1 ] .
+"#,
+    );
+    let n2 = "http://example.org/n2";
+    let fragment = shacl::validator::fragment(&schema, &data, None).expect("a fragment");
+    assert!(fragment.unchecked.is_empty(), "{:?}", fragment.unchecked);
+    assert_eq!(fragment.conforming, vec![Object::Iri(IriS::new_unchecked(n2))]);
+    // n1's neighbourhood for A is still in the fragment.
+    assert!(
+        fragment.triples.iter().any(|t| t.subject.to_string().contains("n1")),
+        "{:?}",
+        fragment.triples
+    );
+
+    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
+    engine.load_triples("triples", &data).expect("triples load");
+    block_on(shacl::validator::sql::fragment(
+        &schema,
+        "triples",
+        None,
+        "fragment",
+        Some("conforming"),
+        &engine,
+    ))
+    .expect("a fragment");
+    let rows: Vec<String> = engine
+        .connection()
+        .prepare("SELECT s_type || ' ' || s_value FROM conforming")
+        .expect("a table")
+        .query_map([], |r| r.get(0))
+        .expect("rows")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    assert_eq!(rows, vec![format!("I {n2}")]);
 }
 
 /// An engine whose teardown never reaches the connection, as a validation

@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! validate(&IRSchema, triples: &str, focus: Option<&str>, &impl SqlEngine).await -> ValidationReport
-//! fragment(&IRSchema, triples: &str, focus: Option<&str>, into: &str, &impl SqlEngine).await -> Vec<Unchecked>
+//! fragment(&IRSchema, triples: &str, focus: Option<&str>, into: &str, conforming: Option<&str>, &impl SqlEngine).await -> Vec<Unchecked>
 //! ```
 //!
 //! - `triples` names the relation the data is read from, columns
@@ -18,6 +18,10 @@
 //!   the triples' subjects: each shape's focus nodes are then its targets
 //!   among them, and the paths still read all of `triples`. A selection
 //!   scopes validation without hiding the data it depends on.
+//! - `into` and `conforming` name the tables a fragment is written to: its
+//!   rows of `triples`, in the seven columns, and, when asked, the focus
+//!   nodes that conform to every shape that targets them, in `s_type,
+//!   s_value`, a focus relation of their own.
 //! - [`SqlEngine`] is implemented by the host: rudof links no engine. A
 //!   DuckDB one, [`DuckDbEngine`], exists behind the native-only `duckdb`
 //!   feature, for the tests.
@@ -103,7 +107,7 @@ fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Res
     let mut renderer = Renderer::new(&plan, triples, dialect);
     let tables = renderer.tables(&roots)?;
     let query = Statement::Query(Box::new(renderer.checks(&plan.checks)?));
-    Ok(script(schema, plan, &tables, &query, dialect))
+    Ok(script(schema, plan, &tables, &[query], dialect))
 }
 
 /// Writes the Shape Fragment of the data in the relation `triples` under
@@ -112,14 +116,22 @@ fn compile<D: Dialect>(schema: &IRSchema, triples: &Triples, dialect: &D) -> Res
 /// conforming focus node conform. `focus` restricts the focus nodes as
 /// [`validate`] does. Resolves to the shapes that have no fragment, because
 /// they are outside the fragments profile.
+///
+/// When `conforming` is given, the focus nodes that conform to every shape
+/// that targets them ([`crate::algebra::Plan::conforming`]: validation
+/// reports nothing for them, of any severity) are written to that table too,
+/// replacing it, in `s_type, s_value` as a focus relation spells them; a
+/// literal focus node, which a subject cannot be, has no row. They are not
+/// the fragment's subjects, which hold the neighbours its walks reach.
 pub async fn fragment<E: SqlEngine>(
     schema: &IRSchema,
     triples: &str,
     focus: Option<&str>,
     into: &str,
+    conforming: Option<&str>,
     engine: &E,
 ) -> Result<Vec<Unchecked>, SqlError<E::Error>> {
-    compile_fragment(schema, &Triples::new(triples, focus)?, into, &DuckDb)?
+    compile_fragment(schema, &Triples::new(triples, focus)?, into, conforming, &DuckDb)?
         .create(engine)
         .await
 }
@@ -128,27 +140,40 @@ fn compile_fragment<D: Dialect>(
     schema: &IRSchema,
     triples: &Triples,
     into: &str,
+    conforming: Option<&str>,
     dialect: &D,
 ) -> Result<SqlPlan, SqlCompileError> {
     let plan = algebra::fragment(schema, triples.scope().is_some())?;
-    let root = plan
-        .fragment
-        .ok_or_else(|| SqlCompileError::Internal("a plan without a fragment".to_owned()))?;
+    let (Some(root), Some(nodes)) = (plan.fragment, plan.conforming) else {
+        return Err(SqlCompileError::Internal("a plan without a fragment".to_owned()));
+    };
     let mut renderer = Renderer::new(&plan, triples, dialect);
-    let tables = renderer.tables(&[root])?;
-    let create = CreateTableBuilder::new(ast::delimited(&relation(into)?))
-        .or_replace(true)
-        .query(Some(Box::new(renderer.fragment(root)?)))
-        .build();
-    Ok(script(schema, plan, &tables, &Statement::CreateTable(create), dialect))
+    let roots = match conforming {
+        Some(_) => vec![root, nodes],
+        None => vec![root],
+    };
+    let tables = renderer.tables(&roots)?;
+    let create = |name: &str, body: Query| -> Result<Statement, SqlCompileError> {
+        Ok(Statement::CreateTable(
+            CreateTableBuilder::new(ast::delimited(&relation(name)?))
+                .or_replace(true)
+                .query(Some(Box::new(body)))
+                .build(),
+        ))
+    };
+    let mut statements = vec![create(into, renderer.fragment(root)?)?];
+    if let Some(conforming) = conforming {
+        statements.push(create(conforming, renderer.subjects(nodes)?)?);
+    }
+    Ok(script(schema, plan, &tables, &statements, dialect))
 }
 
-/// The script of `plan`: its tables, then `statement`, then their teardown.
+/// The script of `plan`: its tables, then `statements`, then their teardown.
 fn script<D: Dialect>(
     schema: &IRSchema,
     mut plan: Plan,
     tables: &[(String, Query)],
-    statement: &Statement,
+    statements: &[Statement],
     dialect: &D,
 ) -> SqlPlan {
     let table = |name: &str| ObjectName::from(vec![Ident::with_quote('"', name)]);
@@ -163,7 +188,7 @@ fn script<D: Dialect>(
                 dialect.render(&Statement::CreateTable(create))
             })
             .collect(),
-        query: dialect.render(statement),
+        statements: statements.iter().map(|s| dialect.render(s)).collect(),
         teardown: tables
             .iter()
             .rev()
@@ -254,7 +279,7 @@ ex:T{i} a sh:NodeShape ; sh:class ex:K{i} ; sh:property [ sh:path ex:t{i} ; sh:m
         let tables = format!("\"shacl_{run}_");
         plan.setup
             .iter()
-            .chain([&plan.query])
+            .chain(&plan.statements)
             .chain(&plan.teardown)
             .map(|s| s.replace(&tables, "\"shacl_"))
             .collect()

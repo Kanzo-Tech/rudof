@@ -504,7 +504,12 @@ mod differential {
         engine.load_triples("triples", graph).map_err(|e| e.to_string())?;
         engine.load_triples("expected", &sub).map_err(|e| e.to_string())?;
         futures::executor::block_on(shacl::validator::sql::fragment(
-            schema, "triples", None, "fragment", &engine,
+            schema,
+            "triples",
+            None,
+            "fragment",
+            Some("conforming"),
+            &engine,
         ))
         .map_err(|e| e.to_string())?;
         let differ: i64 = engine
@@ -519,6 +524,30 @@ mod differential {
         if differ != 0 {
             return Err(format!(
                 "sql and eval fragments differ in {differ} triples\neval\n{text}"
+            ));
+        }
+        // The same conforming nodes, those a subject can be in SQL.
+        let mut eval: Vec<(String, String)> = fragment
+            .conforming
+            .iter()
+            .filter_map(|node| match node {
+                Object::Iri(iri) => Some(("I".to_owned(), iri.as_str().to_owned())),
+                Object::BlankNode(label) => Some(("B".to_owned(), label.clone())),
+                _ => None,
+            })
+            .collect();
+        eval.sort();
+        let mut statement = engine
+            .connection()
+            .prepare("SELECT s_type, s_value FROM conforming ORDER BY ALL")
+            .map_err(|e| e.to_string())?;
+        let sql: Vec<(String, String)> = statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .and_then(|rows| rows.collect())
+            .map_err(|e| e.to_string())?;
+        if eval != sql {
+            return Err(format!(
+                "sql and eval conforming nodes differ\neval {eval:?}\nsql {sql:?}"
             ));
         }
         Ok(())

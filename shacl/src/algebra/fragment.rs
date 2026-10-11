@@ -34,6 +34,17 @@
 //! `rdf:type/rdfs:subClassOf*` walk to the class, or its triples with the
 //! predicate of `sh:targetSubjectsOf` or `sh:targetObjectsOf`.
 //!
+//! The plan holds, beside the fragment, the focus nodes validation reports
+//! nothing for ([`Plan::conforming`]): those with `G, v ⊨ φ` for every shape
+//! `φ` that targets them, since a focus node conforms when validation yields
+//! no result for it, of any severity (SHACL §3.4, and §2.1.4: `sh:severity`
+//! has no impact on validation). Each is in the fragment as a node of some
+//! shape; a node one shape passes and another fails has its neighbourhood
+//! for the first in the fragment, and is not among them. Nor are the
+//! fragment's subjects, which hold the neighbours a walk reaches too (the
+//! `rdf:type` triple of an `sh:class` value, conforming or not). A shape
+//! outside the profile is not checked, so it neither keeps nor drops a node.
+//!
 //! What a fragment is defined for is a profile ([`profile::FRAGMENTS`]): a
 //! shape outside it has no fragment, and the plan lists it as unchecked.
 
@@ -48,9 +59,10 @@ use rudof_rdf::term::Object;
 use rudof_rdf::vocab::{RdfVocab, RdfsVocab, ShaclVocab};
 use std::collections::HashMap;
 
-/// The plan of the fragment of `schema`: no checks, and the
-/// [`Plan::fragment`] relation. When `scoped`, the focus nodes are those among
-/// [`Op::Scope`], as [`denote`](super::denote) restricts them.
+/// The plan of the fragment of `schema`: no checks, the [`Plan::fragment`]
+/// relation, and the [`Plan::conforming`] focus nodes. When
+/// `scoped`, the focus nodes are those among [`Op::Scope`], as
+/// [`denote`](super::denote) restricts them.
 pub fn fragment(schema: &IRSchema, scoped: bool) -> Result<Plan, DenoteError> {
     let mut d = Denoter::new(schema, profile::fragment_members(), true)?;
     if scoped {
@@ -66,6 +78,8 @@ pub fn fragment(schema: &IRSchema, scoped: bool) -> Result<Plan, DenoteError> {
         memo: HashMap::new(),
     };
     let mut parts = Vec::new();
+    let mut targeted = Vec::new();
+    let mut failing = Vec::new();
     for idx in shapes {
         let shape = f.d.shape(idx)?;
         if shape.deactivated() || f.d.unchecked.contains_key(&idx) {
@@ -76,13 +90,23 @@ pub fn fragment(schema: &IRSchema, scoped: bool) -> Result<Plan, DenoteError> {
         };
         let fails = f.d.fails(idx, focus)?;
         let conforming = f.keep(focus, fails)?;
+        targeted.push(focus);
+        failing.extend(fails);
         for target in shape.targets() {
             parts.extend(f.target(target, conforming)?);
         }
         parts.extend(f.shape(idx, conforming, false)?);
     }
     let fragment = f.d.distinct_union(parts, Sort::Triples)?;
-    d.b.fragment(fragment);
+    // The focus nodes no shape that targets them fails: a node one shape
+    // passes and another fails does not conform (SHACL §3.4).
+    let targeted = f.d.distinct_union(targeted, Sort::Nodes)?;
+    let failing = match failing.is_empty() {
+        true => None,
+        false => Some(f.d.union(failing, Sort::Nodes)?),
+    };
+    let conforming = f.keep(targeted, failing)?;
+    d.b.fragment(fragment, conforming);
     Ok(d.finish())
 }
 

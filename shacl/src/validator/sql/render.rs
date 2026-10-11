@@ -172,7 +172,7 @@ where
     /// one consumer reads (or that reads itself, a closure) as a temporary
     /// table, inputs first, each with its name. Every other relation is
     /// inline, as the one subquery that reads it; a root is read once, by the
-    /// query of [`Self::checks`] or [`Self::fragment`].
+    /// query of [`Self::checks`], [`Self::fragment`] or [`Self::subjects`].
     pub(crate) fn tables(&mut self, roots: &[RelId]) -> Result<Vec<(String, Query)>, SqlCompileError> {
         let reached = self.plan.reached(roots);
         let mut readers = vec![0usize; self.plan.len()];
@@ -255,6 +255,11 @@ where
     /// The rows of the triples relation that are triples of `fragment`.
     pub(crate) fn fragment(&self, fragment: RelId) -> Result<Query, SqlCompileError> {
         Ok(self.triples.among(self.from(fragment, "m")?))
+    }
+
+    /// The nodes of `nodes` a subject can be, as a focus relation spells them.
+    pub(crate) fn subjects(&self, nodes: RelId) -> Result<Query, SqlCompileError> {
+        Ok(Triples::subjects(self.from(nodes, "m")?))
     }
 
     /// The relation `id` read under `alias`: its table when it has one, else its

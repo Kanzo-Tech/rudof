@@ -10,6 +10,7 @@ members = [
     "rbe",
     "rbe_testsuite",
     "rdf_config",
+    "rml",
     "rudof_rdf",
     "rudof_rdf_qlever",
     "rudof_rdf_viz",
@@ -327,6 +328,7 @@ rmcp = { version = "=1.3.0", features = [
 rmcp-macros = "1.3.0"
 rudof_cli = { version = "0.3.4", path = "./rudof_cli" }
 rudof_iri = { version = "0.3.4", path = "./rudof_iri" }
+rml = { version = "0.3.4", path = "./rml" }
 rudof_rdf = { version = "0.3.4", path = "./rudof_rdf", default-features = false }
 rudof_rdf_qlever = { version = "0.3.4", path = "./rudof_rdf_qlever" }
 rudof_rdf_viz = { version = "0.3.4", path = "./rudof_rdf_viz" }

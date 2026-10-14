@@ -1,0 +1,17 @@
+[package]
+name = "rml"
+version.workspace = true
+authors.workspace = true
+description = "An RML-Core mapping (SQL logical sources): its AST, its RDF reading and writing."
+documentation = "https://docs.rs/rml"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+[dependencies]
+prefixmap.workspace = true
+rudof_iri.workspace = true
+rudof_rdf.workspace = true
+thiserror.workspace = true

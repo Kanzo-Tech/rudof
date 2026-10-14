@@ -3909,6 +3909,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rml"
+version = "0.3.4"
+dependencies = [
+ "prefixmap",
+ "rudof_iri",
+ "rudof_rdf",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "rudof_cli"
 version = "0.3.4"
 dependencies = [

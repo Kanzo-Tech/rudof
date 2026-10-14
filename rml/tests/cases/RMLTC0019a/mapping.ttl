@@ -1,0 +1,17 @@
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix rml: <http://w3id.org/rml/> .
+<http://example.com/base/TriplesMap1> a rml:TriplesMap;
+  rml:logicalSource [ a rml:LogicalSource;
+      rml:source [ a rml:Source ];
+      rml:referenceFormulation rml:SQL2008Table;
+      rml:iterator "persons"
+    ];
+  rml:predicateObjectMap [
+      rml:objectMap [
+          rml:reference "FirstName"
+        ];
+      rml:predicate foaf:name
+    ];
+  rml:subjectMap [
+      rml:reference "FirstName"
+    ] .

@@ -1,0 +1,22 @@
+# Held equal to the view shacl/tests/sql_parity.rs writes by hand over the same tables (output.nt is that view's rows).
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex:  <http://example.org/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<#Person> rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "person" ] ;
+    rml:subjectMap [ rml:reference "iri" ; rml:termType rml:IRI ; rml:class ex:Person ] ;
+    rml:predicateObjectMap
+        [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ,
+        [ rml:predicate ex:age ; rml:objectMap [ rml:reference "age" ] ] ,
+        [ rml:predicate ex:email ; rml:objectMap [ rml:reference "email" ] ] .
+<#Student> rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "student" ] ;
+    rml:subjectMap [ rml:reference "iri" ; rml:termType rml:IRI ; rml:class ex:Student ] ;
+    rml:predicateObjectMap
+        [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ,
+        [ rml:predicate ex:age ; rml:objectMap [ rml:reference "age" ] ] .
+<#knows> rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Query ;
+        rml:iterator "SELECT s.iri AS source, d.iri AS target FROM knows AS k JOIN node AS s ON k.src = s.id JOIN node AS d ON k.dst = d.id" ] ;
+    rml:subjectMap [ rml:reference "source" ; rml:termType rml:IRI ] ;
+    rml:predicateObjectMap [ rml:predicate ex:knows ; rml:objectMap [ rml:reference "target" ; rml:termType rml:IRI ] ] .
+<#subClassOf> rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Query ; rml:iterator "SELECT 1 AS one" ] ;
+    rml:subject ex:Student ;
+    rml:predicateObjectMap [ rml:predicate rdfs:subClassOf ; rml:object ex:Person ] .

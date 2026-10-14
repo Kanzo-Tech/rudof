@@ -491,3 +491,39 @@ fn rml_core_4_1_1_a_triples_map_may_state_its_base_iri() {
     let again = parse_turtle(&write_turtle(&m).unwrap(), None).unwrap();
     assert_eq!(again, m);
 }
+
+/// The error cases of the KG-Construct suite (RMLTC0023a-e, RMLTC0024a, RMLTC0004b, RMLTC0012c-d) that are about
+/// the mapping and not about JSON.
+#[test]
+fn the_suites_invalid_templates_and_constants_are_errors() {
+    let with_template = |template: &str| {
+        parse_turtle(
+            &format!(
+                "{PREFIXES}<#T> {} ; rml:subjectMap [ rml:template \"{template}\" ] .",
+                source()
+            ),
+            None,
+        )
+    };
+    // 0023a: `{{Name}}` encloses a reference that opens a brace.
+    assert!(matches!(
+        with_template("http://example.com/{{Name}}"),
+        Err(Error::Invalid { .. })
+    ));
+    // 0023b, c, e: `\a` and `\}` are not escapes of Turtle, so the document is not Turtle.
+    for template in [
+        "http://example.com/{N\\ame}",
+        "http://example.com/{Name\\}",
+        "http://example.com/{N\\\\\\ame}",
+    ] {
+        assert!(matches!(with_template(template), Err(Error::Graph(_))), "{template}");
+    }
+    // 0023f: the escaped braces of a reference are part of it.
+    assert!(with_template("http://example.com/{\\\\{Name\\\\}}").is_ok());
+    // 0024a: a constant term map with an explicit term type.
+    let r = parse(&format!(
+        "<#T> {} ; rml:subjectMap [ rml:constant \"School\" ; rml:termType rml:BlankNode ] .",
+        source()
+    ));
+    assert!(matches!(r, Err(Error::Invalid { .. })), "{r:?}");
+}

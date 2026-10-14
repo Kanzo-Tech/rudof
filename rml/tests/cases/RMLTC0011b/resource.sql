@@ -1,0 +1,13 @@
+CREATE TABLE "student_sport" ("ID_Student" INTEGER, "ID_Sport" INTEGER);
+INSERT INTO "student_sport" VALUES (10, 110);
+INSERT INTO "student_sport" VALUES (11, 111);
+INSERT INTO "student_sport" VALUES (11, 112);
+INSERT INTO "student_sport" VALUES (12, 111);
+CREATE TABLE "student" ("ID" INTEGER, "FirstName" VARCHAR, "LastName" VARCHAR);
+INSERT INTO "student" VALUES (10, 'Venus', 'Williams');
+INSERT INTO "student" VALUES (11, 'Fernando', 'Alonso');
+INSERT INTO "student" VALUES (12, 'David', 'Villa');
+CREATE TABLE "sport" ("ID" INTEGER, "Description" VARCHAR);
+INSERT INTO "sport" VALUES (110, 'Tennis');
+INSERT INTO "sport" VALUES (111, 'Football');
+INSERT INTO "sport" VALUES (112, 'Formula1');

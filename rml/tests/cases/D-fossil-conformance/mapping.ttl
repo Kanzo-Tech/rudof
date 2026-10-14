@@ -1,0 +1,40 @@
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex: <https://example.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+# The mapping fossil's `triplesOf` hard-wires for packages/corpus/conformance/corpus/fossil.json, written as RML-Core.
+<#Person> a rml:TriplesMap ;
+  rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "Person" ] ;
+  rml:subjectMap [ rml:reference "subject" ; rml:termType rml:IRI ; rml:class ex:Person ] ;
+  rml:predicateObjectMap
+    [ rml:predicate ex:birthYear ; rml:objectMap [ rml:reference "birth_year" ; rml:datatype xsd:gYear ] ] ,
+    [ rml:predicate ex:postcode ; rml:objectMap [ rml:reference "postcode" ] ] .
+<#Order> a rml:TriplesMap ;
+  rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "Order" ] ;
+  rml:subjectMap [ rml:reference "subject" ; rml:termType rml:IRI ; rml:class ex:Order ] ;
+  rml:predicateObjectMap [ rml:predicate ex:amount ; rml:objectMap [ rml:reference "amount" ; rml:datatype xsd:decimal ] ] .
+<#Tag> a rml:TriplesMap ;
+  rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "Tag" ] ;
+  rml:subjectMap [ rml:reference "subject" ; rml:termType rml:IRI ; rml:class ex:Tag ] ;
+  rml:predicateObjectMap [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] .
+# An edge table holds the dense ids of its endpoints; the vertex tables say which subject each is.
+<#knows> a rml:TriplesMap ;
+  rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Query ;
+    rml:iterator "SELECT s.subject AS source, d.subject AS target FROM Person_knows_Person AS e JOIN Person AS s ON e.src = s.dense_id JOIN Person AS d ON e.dst = d.dense_id" ] ;
+  rml:subjectMap [ rml:reference "source" ; rml:termType rml:IRI ] ;
+  rml:predicateObjectMap [ rml:predicate ex:knows ; rml:objectMap [ rml:reference "target" ; rml:termType rml:IRI ] ] .
+<#placedBy> a rml:TriplesMap ;
+  rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Query ;
+    rml:iterator "SELECT s.subject AS source, d.subject AS target FROM Order_placedBy_Person AS e JOIN \"Order\" AS s ON e.src = s.dense_id JOIN Person AS d ON e.dst = d.dense_id" ] ;
+  rml:subjectMap [ rml:reference "source" ; rml:termType rml:IRI ] ;
+  rml:predicateObjectMap [ rml:predicate ex:placedBy ; rml:objectMap [ rml:reference "target" ; rml:termType rml:IRI ] ] .
+<#tagged> a rml:TriplesMap ;
+  rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Query ;
+    rml:iterator "SELECT s.subject AS source, d.subject AS target FROM Person_tagged_Tag AS e JOIN Person AS s ON e.src = s.dense_id JOIN Tag AS d ON e.dst = d.dense_id" ] ;
+  rml:subjectMap [ rml:reference "source" ; rml:termType rml:IRI ] ;
+  rml:predicateObjectMap [ rml:predicate ex:tagged ; rml:objectMap [ rml:reference "target" ; rml:termType rml:IRI ] ] .
+# A multi-valued property is a table of its own: one row per value.
+<#nickname> a rml:TriplesMap ;
+  rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Query ;
+    rml:iterator "SELECT s.subject AS subject, e.nickname AS nickname FROM Person_nickname AS e JOIN Person AS s ON e.src = s.dense_id" ] ;
+  rml:subjectMap [ rml:reference "subject" ; rml:termType rml:IRI ] ;
+  rml:predicateObjectMap [ rml:predicate ex:nickname ; rml:objectMap [ rml:reference "nickname" ; rml:datatype xsd:string ] ] .

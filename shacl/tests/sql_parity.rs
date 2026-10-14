@@ -596,3 +596,58 @@ fn a_validation_whose_tables_were_left_behind_does_not_block_the_next() {
     assert_eq!(second, first);
     assert_eq!(first, in_memory(&data, &schema));
 }
+
+/// The tables of [`TABLES`], as an RML-Core mapping: what their rows mean as RDF. The edge table is joined to
+/// its vertices by a query, and the subclass triple is the one row of a query with no table.
+const MAPPING: &str = r#"
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex:  <http://example.org/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<#Person> rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "person" ] ;
+    rml:subjectMap [ rml:reference "iri" ; rml:termType rml:IRI ; rml:class ex:Person ] ;
+    rml:predicateObjectMap
+        [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ,
+        [ rml:predicate ex:age ; rml:objectMap [ rml:reference "age" ] ] ,
+        [ rml:predicate ex:email ; rml:objectMap [ rml:reference "email" ] ] .
+<#Student> rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "student" ] ;
+    rml:subjectMap [ rml:reference "iri" ; rml:termType rml:IRI ; rml:class ex:Student ] ;
+    rml:predicateObjectMap
+        [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ,
+        [ rml:predicate ex:age ; rml:objectMap [ rml:reference "age" ] ] .
+<#knows> rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Query ;
+        rml:iterator "SELECT s.iri AS source, d.iri AS target FROM knows AS k JOIN node AS s ON k.src = s.id JOIN node AS d ON k.dst = d.id" ] ;
+    rml:subjectMap [ rml:reference "source" ; rml:termType rml:IRI ] ;
+    rml:predicateObjectMap [ rml:predicate ex:knows ; rml:objectMap [ rml:reference "target" ; rml:termType rml:IRI ] ] .
+<#subClassOf> rml:logicalSource [ rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Query ; rml:iterator "SELECT 1 AS one" ] ;
+    rml:subject ex:Student ;
+    rml:predicateObjectMap [ rml:predicate rdfs:subClassOf ; rml:object ex:Person ] .
+"#;
+
+/// The view [`MAPPING`] renders, over the same tables, is the relation the engine reads: the report is the
+/// evaluator's, as it is for the view written by hand.
+#[test]
+fn an_rml_mapping_over_the_tables_yields_the_evaluators_report() {
+    use sqlparser::ast::{Ident, ObjectName};
+
+    let mapping = rml::rdf::parse_turtle(MAPPING, None).expect("the mapping parses");
+    let query = rml::sql::triples(&mapping, None, |table| {
+        ObjectName::from(vec![Ident::with_quote('"', table)])
+    })
+    .expect("the mapping renders");
+
+    let engine = DuckDbEngine::in_memory().expect("duckdb opens");
+    engine.connection().execute_batch(TABLES).expect("tables load");
+    engine
+        .connection()
+        .execute_batch(&format!("CREATE VIEW triples AS {query}"))
+        .expect("the view is created");
+
+    let data = graph(&format!(
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n{DATA}"
+    ));
+    let schema = schema(SHAPES);
+    let in_memory = in_memory(&data, &schema);
+    let mapped = block_on(validate(&schema, "triples", None, &engine)).expect("validates");
+    assert!(in_memory.results().len() > 15, "the dataset violates many components");
+    assert_eq!(mapped, in_memory, "mapping vs in memory\n{mapped}\n---\n{in_memory}");
+}

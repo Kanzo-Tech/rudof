@@ -1,0 +1,14 @@
+@prefix rml: <http://w3id.org/rml/> .
+<http://example.com/base/TriplesMap1> a rml:TriplesMap;
+    rml:logicalSource [ a rml:LogicalSource;
+      rml:source [ a rml:Source ];
+      rml:referenceFormulation rml:SQL2008Table;
+      rml:iterator "data"
+    ];
+    rml:subjectMap [
+      rml:template "https://example.org/instances/{id}";
+    ];
+    rml:predicateObjectMap [
+      rml:predicate <http://example.org/ns/p> ;
+      rml:object "train"@en ;
+    ] .

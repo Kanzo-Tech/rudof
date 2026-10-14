@@ -1,0 +1,7 @@
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex: <http://example.com/> .
+# RML-Core 8.4.2 and 12.2: a blank node whose identifier is determined by the expression evaluation result.
+<#T> a rml:TriplesMap ;
+  rml:logicalSource [ a rml:LogicalSource ; rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "t" ] ;
+  rml:subjectMap [ rml:reference "k" ; rml:termType rml:BlankNode ] ;
+  rml:predicateObjectMap [ rml:predicate ex:v ; rml:objectMap [ rml:reference "v" ] ] .

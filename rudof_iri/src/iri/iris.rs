@@ -331,6 +331,31 @@ impl Default for IriS {
     }
 }
 
+/// GET `url` and return the body as text: the one place `rudof_iri` reaches the network.
+#[cfg(all(feature = "fetch", not(target_family = "wasm")))]
+fn fetch(url: Url) -> Result<String, IriSError> {
+    use reqwest::blocking::Client;
+    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+
+    let mut headers = HeaderMap::new();
+    headers.insert(USER_AGENT, HeaderValue::from_static("rudof"));
+    let client = Client::builder()
+        .default_headers(headers)
+        .build()
+        .map_err(|e| IriSError::ReqwestClientCreation { error: e.to_string() })?;
+    client
+        .get(url)
+        .send()
+        .map_err(|e| IriSError::ReqwestError { error: e.to_string() })?
+        .text()
+        .map_err(|e| IriSError::ReqwestTextError { error: e.to_string() })
+}
+
+#[cfg(all(not(feature = "fetch"), not(target_family = "wasm")))]
+fn fetch(url: Url) -> Result<String, IriSError> {
+    Err(IriSError::FetchNotEnabled { url: url.to_string() })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,29 +402,4 @@ mod tests {
         let result = iri.relative_from(&base);
         assert_eq!(result, relative);
     }
-}
-
-/// GET `url` and return the body as text: the one place `rudof_iri` reaches the network.
-#[cfg(all(feature = "fetch", not(target_family = "wasm")))]
-fn fetch(url: Url) -> Result<String, IriSError> {
-    use reqwest::blocking::Client;
-    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
-
-    let mut headers = HeaderMap::new();
-    headers.insert(USER_AGENT, HeaderValue::from_static("rudof"));
-    let client = Client::builder()
-        .default_headers(headers)
-        .build()
-        .map_err(|e| IriSError::ReqwestClientCreation { error: e.to_string() })?;
-    client
-        .get(url)
-        .send()
-        .map_err(|e| IriSError::ReqwestError { error: e.to_string() })?
-        .text()
-        .map_err(|e| IriSError::ReqwestTextError { error: e.to_string() })
-}
-
-#[cfg(all(not(feature = "fetch"), not(target_family = "wasm")))]
-fn fetch(url: Url) -> Result<String, IriSError> {
-    Err(IriSError::FetchNotEnabled { url: url.to_string() })
 }

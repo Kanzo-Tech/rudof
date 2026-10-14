@@ -1,0 +1,4 @@
+<http://example.com/child/1> <http://example.com/in> <http://example.com/parent/10> .
+<http://example.com/child/1> <http://example.com/in> <http://example.com/parent/13> .
+<http://example.com/child/4> <http://example.com/in> <http://example.com/parent/10> .
+<http://example.com/child/4> <http://example.com/in> <http://example.com/parent/13> .

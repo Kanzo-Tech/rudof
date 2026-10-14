@@ -1,0 +1,1 @@
+An element whose tag is NULL or empty generates no triple (RML-Core 8.5 asks for non-empty tags; a query cannot raise the data error). p/2 (empty list) and p/3 (NULL list) have no nickname.

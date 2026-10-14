@@ -1,0 +1,21 @@
+@prefix ex: <http://example.com/> .
+@prefix rml: <http://w3id.org/rml/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+<http://example.com/base/TriplesMap1> a rml:TriplesMap;
+  rml:logicalSource [ a rml:LogicalSource;
+      rml:source [ a rml:Source ];
+      rml:referenceFormulation rml:SQL2008Table;
+      rml:iterator "data"
+    ];
+  rml:predicateObjectMap [
+      rml:objectMap [
+          rml:datatypeMap [
+              rml:constant xsd:integer
+            ];
+          rml:reference "FOO"
+        ];
+      rml:predicate ex:x
+    ];
+  rml:subjectMap [
+      rml:template "http://example.com/{FOO}"
+    ] .

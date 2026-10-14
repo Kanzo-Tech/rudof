@@ -1,0 +1,12 @@
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex: <http://example.com/> .
+# A multi-valued, language-tagged property: a column of LIST<STRUCT<value, lang>>. The query unnests it once,
+# so a value and its tag are one element and cannot be misaligned (RML-Core 8.5 would otherwise form
+# the Cartesian product of the values and the tags).
+<#Person_nickname> a rml:TriplesMap ;
+  rml:logicalSource [ a rml:LogicalSource ; rml:source [ a rml:Source ] ;
+    rml:referenceFormulation rml:SQL2008Query ;
+    rml:iterator "SELECT subject, n.value AS value, n.lang AS lang FROM (SELECT subject, unnest(nickname) AS n FROM Person)" ] ;
+  rml:subjectMap [ rml:reference "subject" ; rml:termType rml:IRI ] ;
+  rml:predicateObjectMap [ rml:predicate ex:nickname ;
+    rml:objectMap [ rml:reference "value" ; rml:languageMap [ rml:reference "lang" ] ] ] .

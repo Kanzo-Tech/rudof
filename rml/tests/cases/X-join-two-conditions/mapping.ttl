@@ -1,0 +1,11 @@
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex: <http://example.com/> .
+# RML-Core 9.2: all join conditions must be satisfied; a NULL key joins nothing.
+<#Child> a rml:TriplesMap ;
+  rml:logicalSource [ a rml:LogicalSource ; rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "child" ] ;
+  rml:subjectMap [ rml:template "http://example.com/child/{id}" ] ;
+  rml:predicateObjectMap [ rml:predicate ex:in ; rml:objectMap [ rml:parentTriplesMap <#Parent> ;
+    rml:joinCondition [ rml:child "a" ; rml:parent "a" ] , [ rml:child "b" ; rml:parent "b" ] ] ] .
+<#Parent> a rml:TriplesMap ;
+  rml:logicalSource [ a rml:LogicalSource ; rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "parent" ] ;
+  rml:subjectMap [ rml:template "http://example.com/parent/{id}" ] .

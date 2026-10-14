@@ -1,0 +1,21 @@
+@prefix ex: <http://example.com/> .
+@prefix rml: <http://w3id.org/rml/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<http://example.com/base/TriplesMap1> a rml:TriplesMap;
+  rml:logicalSource [ a rml:LogicalSource;
+      rml:source [ a rml:Source ];
+      rml:referenceFormulation rml:SQL2008Table;
+      rml:iterator "data"
+    ];
+  rml:predicateObjectMap [
+      rml:objectMap [
+          rml:languageMap [
+              rml:constant "en"
+            ];
+          rml:reference "label"
+        ];
+      rml:predicate rdfs:label
+    ];
+  rml:subjectMap [
+      rml:template "http://example.com/{ID}"
+    ] .

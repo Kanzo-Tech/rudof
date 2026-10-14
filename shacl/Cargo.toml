@@ -37,6 +37,9 @@ duckdb = { workspace = true, optional = true }
 [dev-dependencies]
 # The SQL interpretation runs on DuckDB in the tests, natively.
 shacl = { path = ".", features = ["duckdb"] }
+# `rml::sql::triples` produces the relation the SQL interpretation reads: the tests hold the two to the
+# same seven columns, and run a mapping's view through the engine.
+rml = { workspace = true, features = ["sql"] }
 oxrdf = { workspace = true, features = [ "oxsdatatypes" ] }
 serde_json.workspace = true
 # The W3C suites are embedded in the test binary, so they run on wasm32 too.

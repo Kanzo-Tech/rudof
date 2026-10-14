@@ -1,0 +1,9 @@
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex: <http://example.com/> .
+# RML-Core 12.2: a null value generates no term, and a triple with an empty term is not added (12.1.1).
+<#T> a rml:TriplesMap ;
+  rml:logicalSource [ a rml:LogicalSource ; rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "t" ] ;
+  rml:subjectMap [ rml:reference "id" ; rml:termType rml:IRI ; rml:class ex:C ] ;
+  rml:predicateObjectMap
+    [ rml:predicate ex:name ; rml:objectMap [ rml:reference "name" ] ] ,
+    [ rml:predicate ex:link ; rml:objectMap [ rml:template "http://example.com/{a}/{b}" ] ] .

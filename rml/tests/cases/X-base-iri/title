@@ -1,0 +1,1 @@
+Relative values take the base IRI; absolute ones (any scheme) do not; template values are percent-encoded first.

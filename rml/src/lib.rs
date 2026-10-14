@@ -3,7 +3,8 @@
 //!
 //! A mapping says what the rows of some tables mean as RDF. This crate holds
 //! it as a value ([`ast`]), reads and writes it as a mapping graph
-//! ([`rdf`]) and tells a host what it says about its tables ([`model`]).
+//! ([`rdf`]), tells a host what it says about its tables ([`model`]) and, with the
+//! feature `sql`, renders it as a query over those tables (`sql`).
 //!
 //! **The reference** is RML-Core, "Draft Community Group Report, 16 March
 //! 2026" (<https://w3id.org/rml/core/spec>), which "is not a W3C Standard nor
@@ -15,13 +16,16 @@
 //!
 //! **What is not here.** A logical source is a SQL table name or a SQL query,
 //! which the host resolves; the crate knows no storage layout and no product
-//! vocabulary. Nothing in it reads data.
+//! vocabulary. Nothing in it reads data: `sql` produces the query and the
+//! host runs it.
 //!
 //! The crate builds for `wasm32-unknown-unknown`.
 
 pub mod ast;
 pub mod model;
 pub mod rdf;
+#[cfg(feature = "sql")]
+pub mod sql;
 pub mod vocab;
 
 pub use ast::{
@@ -40,6 +44,12 @@ pub enum Error {
     /// It is refused: dropping it would change what the mapping means.
     #[error("{at}: {what} is not supported")]
     Unsupported { at: String, what: String },
+    /// A logical source query that is not SQL the DuckDB dialect reads.
+    #[error("{at}: the query is not SQL: {reason}")]
+    Query { at: String, reason: String },
+    /// A name the host gave for a table or a view is not a SQL object name, or the host could not resolve one.
+    #[error("the table {name}: {reason}")]
+    Table { name: String, reason: String },
     /// The RDF graph could not be read or written.
     #[error("the mapping graph: {0}")]
     Graph(String),

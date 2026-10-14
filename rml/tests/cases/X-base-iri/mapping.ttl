@@ -1,0 +1,10 @@
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex: <http://example.com/> .
+# RML-Core 12.2: a value that is not an absolute IRI is prepended with the base IRI.
+<#T> a rml:TriplesMap ;
+  rml:logicalSource [ a rml:LogicalSource ; rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "t" ] ;
+  rml:subjectMap [ rml:reference "id" ] ;
+  rml:predicateObjectMap
+    [ rml:predicate ex:home ; rml:objectMap [ rml:reference "home" ; rml:termType rml:IRI ] ] ,
+    [ rml:predicate ex:page ; rml:objectMap [ rml:template "pages/{slug}" ] ] ,
+    [ rml:predicate ex:abs  ; rml:objectMap [ rml:template "https://other.example/{slug}" ] ] .

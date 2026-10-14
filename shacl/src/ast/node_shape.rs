@@ -22,6 +22,10 @@ pub struct ASTNodeShape {
     annotations: Annotations,
     name: MessageMap,
     description: MessageMap,
+    /// Every triple of the shape outside the `sh:` namespace other than `rdf:type`
+    /// (annotations such as `rdfs:label`), as a set sorted by predicate then value.
+    #[serde(default)]
+    extra: Vec<(IriS, Object)>,
     group: Option<Object>,
     // source_iri: Option<IriRef>,
     // SHACL-UI presentation hints (shui:editor/viewer). Empty by default.
@@ -41,6 +45,7 @@ impl ASTNodeShape {
             annotations: Annotations::new(),
             name: MessageMap::new(),
             description: MessageMap::new(),
+            extra: Vec::new(),
             group: None,
             presentation: Presentation::default(),
         }
@@ -49,6 +54,22 @@ impl ASTNodeShape {
     pub fn with_targets(mut self, targets: Vec<Target>) -> Self {
         self.targets = targets;
         self
+    }
+
+    /// Sets the non-SHACL triples. They are a set: sorted by predicate then value,
+    /// without duplicates, so the result does not depend on the order they were read in.
+    pub fn with_extra(mut self, mut extra: Vec<(IriS, Object)>) -> Self {
+        extra.sort();
+        extra.dedup();
+        self.extra = extra;
+        self
+    }
+
+    /// The `(predicate, value)` pairs of the shape whose predicate is outside the
+    /// `sh:` namespace and is not `rdf:type`. Literals keep language tag and datatype.
+    /// A set, sorted by predicate then value.
+    pub fn extra(&self) -> &[(IriS, Object)] {
+        &self.extra
     }
 
     pub fn with_annotations(mut self, annotations: Annotations) -> Self {
@@ -64,6 +85,16 @@ impl ASTNodeShape {
     /// Whether a reifier deactivates the triple `(self, predicate, object)`.
     pub fn deactivates(&self, predicate: &IriS, object: &Object) -> bool {
         Annotation::deactivates(&self.annotations, predicate, object)
+    }
+
+    pub fn with_name(mut self, name: MessageMap) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn with_description(mut self, description: MessageMap) -> Self {
+        self.description = description;
+        self
     }
 
     pub fn with_severity(mut self, severity: Option<Severity>) -> Self {

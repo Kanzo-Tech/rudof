@@ -19,3 +19,15 @@ pub(crate) fn message<RDF: NeighsRDF>() -> impl RDFNodeParse<RDF, Output = Messa
         Ok(map)
     })
 }
+
+/// The literals of `predicate` (`sh:name`, `sh:description`) by language tag; an empty
+/// map when there are none. Of two values in one language the greater lexical form is
+/// kept, so the answer does not depend on the order they were read in.
+pub(crate) fn texts<RDF: NeighsRDF>(predicate: rudof_iri::IriS) -> impl RDFNodeParse<RDF, Output = MessageMap> {
+    LiteralsPropertyParser::new(predicate).map(|lits| {
+        let mut lits: Vec<_> = lits.iter().map(|l| (l.lang(), l.lexical_form().to_string())).collect();
+        lits.sort();
+        lits.into_iter()
+            .fold(MessageMap::new(), |acc, (lang, text)| acc.with_message(lang, text))
+    })
+}

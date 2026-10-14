@@ -13,6 +13,9 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 - wasm: `Shapes.parse(text, { mediaType?, base? })` and `shapes.validate({ table, engine, signal? })`, which validates a triples relation on the page's engine (`{ query(sql, { signal }) }`, `@kanzo-tech/mosaic`'s `engine()`) and resolves to the same `ValidationReport` as `FormSession.validate()`; validation results carry `sourceShape`
 - wasm: every argument and result is typed in the `.d.ts` (`TermValue`, `ShapeModelJson`, `ProjectedForm`, `ValidationReport`, …), derived from the Rust DTOs, where they were `any`
 - A shapes graph that is not in the syntax of its format says where. `OxigraphInMemoryError::Syntax` and `form::FormError::Syntax` carry the parser's own `oxrdfio::RdfSyntaxError`, whose `location()` places it; wasm `Shapes.parse` throws a `ShapesError`, an `Error` with the 1-based `line` and `column` the parser's message prints, and neither when the error has no place in the text (a SHACL error in a graph that parsed)
+- SHACL AST: `ASTNodeShape::extra()` and `ASTPropertyShape::extra()` are the `(predicate, value)` pairs of a shape whose predicate is outside the `sh:` namespace and is not `rdf:type` (`rdfs:label`, `skos:note`, ...), literals keeping their language tag and datatype. A set, sorted by predicate then value
+- SHACL parser: `sh:name` and `sh:description` are read into `name()` / `description()` of node and property shapes, by language tag. `MessageMap` iterates in the order of its language tags (untagged first), where it followed the hash seed
+- SHACL parser: `sh:order` is read into `ASTPropertyShape::order()` (the field was never filled)
 ### Fixed
 - SHACL `sh:minLength` / `sh:maxLength` count characters (SPARQL `STRLEN`), not UTF-8 bytes
 - SHACL value ranges compare numerics by value across every XSD numeric type (e.g. `xsd:long` against `xsd:integer`); `xsd:int` literals are checked for well-formedness; `xsd:short` values keep their datatype in reports
@@ -20,6 +23,7 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 - SQL engine: dateTimes with and without a timezone follow the XSD 1.1 partial order (determinate beyond 14 hours)
 - CI: clippy 1.99 findings; the wasm-bindgen CLI version is read from Cargo.lock
 ### Changed
+- `ASTSchema` holds its shapes in a `BTreeMap`, so `iter()` and `into_iter()` go in the order of the shape terms on every run, where a `HashMap` made it follow the hash seed; `ASTSchema::with_shapes` takes a `BTreeMap`. A shapes graph is a set: this is determinism, not document order
 - SQL engine: the triples relation's columns are named as SPARQL 1.1 Query Results JSON names a term's parts (§3.2.2), `s_type, s_value, p, o_type, o_value, o_datatype, o_lang`, where they were `s_k, s_v, p, o_k, o_v, o_d, o_l`; a focus relation is `s_type, s_value`. `@fossil-lang/corpus`'s `triples` view has the same names
 - SHACL validation is one denotation of the shapes graph into a relational algebra (`shacl::algebra`), with two interpretations: `shacl::validator::validate` evaluates it over any `NeighsRDF` (in memory or a SPARQL endpoint), and `shacl::validator::sql::validate` runs it as SQL
 - wasm: `Session` is two classes. `Shapes` is a parsed shapes graph (`model()`, `loadMessages()`, `validate()`); `new FormSession(shapes)` edits, projects and validates a data graph under it. `Session.loadShapes` is `Shapes.parse(...).model()`, and `loadMessages` moved to `Shapes`

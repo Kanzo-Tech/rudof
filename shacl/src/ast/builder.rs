@@ -12,7 +12,7 @@ use rudof_iri::IriS;
 use rudof_rdf::SHACLPath;
 use rudof_rdf::term::Object;
 use rudof_rdf::term::literal::NumericLiteral;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Errors raised when finalising a builder.
@@ -209,7 +209,7 @@ impl SchemaBuilder {
     }
 
     pub fn build(self) -> Result<ASTSchema, BuildError> {
-        let mut shapes: HashMap<Object, ASTShape> = HashMap::with_capacity(self.shapes.len());
+        let mut shapes: BTreeMap<Object, ASTShape> = BTreeMap::new();
         for shape in self.shapes {
             let id = match &shape {
                 ASTShape::NodeShape(ns) => ns.id().clone(),

@@ -3,15 +3,17 @@ use prefixmap::PrefixMap;
 use rudof_iri::IriS;
 use rudof_rdf::term::Object;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::collections::hash_map::IntoIter;
+use std::collections::BTreeMap;
+use std::collections::btree_map::IntoIter;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ASTSchema {
     // imports: Vec<IriS>
     // entailments: Vec<IriS>
-    shapes: HashMap<Object, ASTShape>,
+    /// The shapes, keyed by their term. A set: a shapes graph has no order, so
+    /// iteration is by the term's `Ord`, the same on every run.
+    shapes: BTreeMap<Object, ASTShape>,
     prefixmap: PrefixMap,
     base: Option<IriS>,
 }
@@ -19,7 +21,7 @@ pub struct ASTSchema {
 impl ASTSchema {
     pub fn new() -> Self {
         ASTSchema {
-            shapes: HashMap::new(),
+            shapes: BTreeMap::new(),
             prefixmap: PrefixMap::new(),
             base: None,
         }
@@ -34,7 +36,7 @@ impl ASTSchema {
         self
     }
 
-    pub fn with_shapes(mut self, shapes: HashMap<Object, ASTShape>) -> Self {
+    pub fn with_shapes(mut self, shapes: BTreeMap<Object, ASTShape>) -> Self {
         self.shapes = shapes;
         self
     }
@@ -47,6 +49,7 @@ impl ASTSchema {
         self.base.as_ref()
     }
 
+    /// The shapes in the order of their terms (`Object`'s `Ord`), not the graph's.
     pub fn iter(&self) -> impl Iterator<Item = (&Object, &ASTShape)> {
         self.shapes.iter()
     }

@@ -1,7 +1,7 @@
 use crate::ast::ASTNodeShape;
 use crate::rdf::parsers::components::components;
 use crate::rdf::parsers::non_shape::message;
-use crate::rdf::parsers::{property, severity, targets};
+use crate::rdf::parsers::{property, severity, targets, texts};
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::parser::rdf_node_parser::constructors::{NonEmptyValuesPropertyParser, ObjectParser, SuccessParser};
 use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
@@ -20,6 +20,11 @@ pub(crate) fn node_shape<RDF: NeighsRDF + 'static>() -> impl RDFNodeParse<RDF, O
                 message()
                     .optional()
                     .flat_map(move |msg| Ok(ns.clone().with_message(msg)))
+            })
+            .then(|ns| texts(ShaclVocab::sh_name()).flat_map(move |name| Ok(ns.clone().with_name(name))))
+            .then(|ns| {
+                texts(ShaclVocab::sh_description())
+                    .flat_map(move |description| Ok(ns.clone().with_description(description)))
             })
             .then(|ns| targets().flat_map(move |ts| Ok(ns.clone().with_targets(ts))))
             .then(|ns| {

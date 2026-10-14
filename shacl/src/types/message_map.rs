@@ -1,17 +1,17 @@
 use itertools::Itertools;
 use rudof_rdf::term::literal::{ConcreteLiteral, Lang};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::collections::hash_map::IntoIter;
+use std::collections::BTreeMap;
+use std::collections::btree_map::IntoIter;
 use std::fmt::{Display, Formatter};
 
-// `HashMap<Option<Lang>, String>` does not serialize to JSON (non-string map
+// `BTreeMap<Option<Lang>, String>` does not serialize to JSON (non-string map
 // key). Round-trip through an order-independent `Vec<LangString>` instead so the
 // public API keeps the map while the wire form is a plain list.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Vec<LangString>", into = "Vec<LangString>")]
 pub struct MessageMap {
-    messages: HashMap<Option<Lang>, String>,
+    messages: BTreeMap<Option<Lang>, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ impl MessageMap {
         self
     }
 
-    pub fn messages(&self) -> &HashMap<Option<Lang>, String> {
+    pub fn messages(&self) -> &BTreeMap<Option<Lang>, String> {
         &self.messages
     }
 
@@ -89,7 +89,7 @@ impl IntoIterator for MessageMap {
 impl From<&str> for MessageMap {
     fn from(value: &str) -> Self {
         Self {
-            messages: HashMap::from([(None, value.to_string())]),
+            messages: BTreeMap::from([(None, value.to_string())]),
         }
     }
 }
@@ -97,7 +97,7 @@ impl From<&str> for MessageMap {
 impl From<String> for MessageMap {
     fn from(value: String) -> Self {
         Self {
-            messages: HashMap::from([(None, value)]),
+            messages: BTreeMap::from([(None, value)]),
         }
     }
 }

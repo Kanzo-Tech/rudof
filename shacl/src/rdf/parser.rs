@@ -10,20 +10,20 @@ use rudof_rdf::parser::rdf_node_parser::constructors::{ListParser, SuccessParser
 use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
 use rudof_rdf::term::Triple;
 use rudof_rdf::term::{IriOrBlankNode, Object};
-use rudof_rdf::vocab::{RdfVocab, RdfsVocab, ShaclVocab};
+use rudof_rdf::vocab::{RdfVocab, RdfVocabulary, RdfsVocab, ShaclVocab};
 use rudof_rdf::{Any, Matcher, NeighsRDF};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub struct ShaclParser<RDF: NeighsRDF> {
     rdf_parser: RDFParse<RDF>,
-    shapes: HashMap<Object, ASTShape>,
+    shapes: BTreeMap<Object, ASTShape>,
 }
 
 impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
     pub fn new(rdf: RDF) -> Self {
         Self {
             rdf_parser: RDFParse::new(rdf),
-            shapes: HashMap::new(),
+            shapes: BTreeMap::new(),
         }
     }
 
@@ -41,6 +41,7 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
                 if let Some(a) = annotations.remove(&node) {
                     shape = shape.with_annotations(a);
                 }
+                shape = shape.with_extra(self.extra(&node)?);
                 if shape.closed_by_types() {
                     let map = match &by_types {
                         Some(map) => map,
@@ -55,6 +56,31 @@ impl<RDF: NeighsRDF + 'static> ShaclParser<RDF> {
         Ok(
             ASTSchema::new().with_prefixmap(pm).with_shapes(self.shapes.clone()), // TODO - Maybe avoid the shapes clone
         )
+    }
+
+    /// The triples of `node` outside the `sh:` namespace, other than `rdf:type`:
+    /// what a shape says that SHACL does not define (`rdfs:label`, `skos:note`...).
+    /// Literals keep their language tag and datatype. The caller sorts them.
+    fn extra(&self, node: &Object) -> Result<Vec<(IriS, Object)>, ShaclParserError> {
+        let rdf = self.rdf_parser.rdf();
+        let term: RDF::Term = node.clone().into();
+        let Ok(subject) = RDF::term_as_subject(&term) else {
+            return Ok(Vec::new());
+        };
+        let rdf_type = RdfVocab::rdf_type();
+        let mut out = Vec::new();
+        for triple in rdf
+            .triples_with_subject(&subject)
+            .map_err(|e| ShaclParserError::TriplesLookupError(e.to_string()))?
+        {
+            let (_, p, o) = triple.into_components();
+            let p: IriS = p.into();
+            if p == rdf_type || p.as_str().starts_with(ShaclVocab::BASE) {
+                continue;
+            }
+            out.push((p, RDF::term_as_object(&o)?));
+        }
+        Ok(out)
     }
 
     /// The pairs of `predicate`, as objects.

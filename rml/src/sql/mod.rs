@@ -18,6 +18,26 @@
 //! function, a CTE it declares, or a name with a schema) goes through `tables`
 //! too.
 //!
+//! **A multi-valued, language-tagged property** is a column of a list of `(value, lang)` structs. Its logical
+//! source is a query that unnests the list once, so each row is one element, and the object map reads the value
+//! and the tag from that row:
+//!
+//! ```text
+//! rml:iterator "SELECT subject, n.value AS value, n.lang AS lang FROM (SELECT subject, unnest(nickname) AS n FROM Person)" ;
+//! rml:objectMap [ rml:reference "value" ; rml:languageMap [ rml:reference "lang" ] ]
+//! ```
+//!
+//! This is RML-Core as written. §8.5 makes the terms of a language map "the n-ary Cartesian product combination of
+//! T × L" of the values and the tags of one iteration, and sends "correlated or non-trivial iteration patterns
+//! (e.g., alignment of multiple references or nested structures)" to RML-LV; it has no construct that aligns two
+//! lists. A struct needs none: the value and its tag are one element, so there is no alignment to get wrong, and
+//! the product of one value and one tag is one term. Two parallel lists would: DuckDB unnests two lists of
+//! different lengths side by side and pads the shorter with NULL (`SELECT unnest(['a','b','c']), unnest(['en','es'])`
+//! has the row `('c', NULL)`), and a NULL tag generates no term, so a mismatch would delete triples without an error.
+//! What is still silent is an element whose tag is NULL or empty: §8.5 asks for "non-empty language tags" and §12.2
+//! makes a tag that is not valid BCP 47 a data error, which a query cannot raise. The writer of the list is where
+//! that is refused.
+//!
 //! **Which RML-Core semantics are exact.** One row is one logical iteration, and
 //! the algorithm of §12.1 is followed: a branch per `<predicate, object>`, a
 //! referencing object map as a join of the child and the parent iterations over

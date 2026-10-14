@@ -31,7 +31,7 @@ serde.workspace = true
 serde_json.workspace = true
 shacl.workspace = true
 shex_ast.workspace = true 
-rudof_rdf.workspace = true
+rudof_rdf = { workspace = true, features = ["turtle", "ntriples"] }
 tokio.workspace = true
 thiserror.workspace = true
 

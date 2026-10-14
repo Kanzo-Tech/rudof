@@ -34,4 +34,5 @@ toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+rudof_rdf = { workspace = true, features = ["turtle"] }
 oxrdf.workspace = true

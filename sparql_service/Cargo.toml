@@ -32,3 +32,6 @@ sparesults = { workspace = true, optional = true }
 thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+rudof_rdf = { workspace = true, features = ["ntriples"] }

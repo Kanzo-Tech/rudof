@@ -35,6 +35,8 @@ tracing.workspace = true
 duckdb = { workspace = true, optional = true }
 
 [dev-dependencies]
+# The tests read their graphs as Turtle, and the W3C suites' data as N-Triples.
+rudof_rdf = { workspace = true, features = ["turtle", "ntriples"] }
 # The SQL interpretation runs on DuckDB in the tests, natively.
 shacl = { path = ".", features = ["duckdb"] }
 oxrdf = { workspace = true, features = [ "oxsdatatypes" ] }

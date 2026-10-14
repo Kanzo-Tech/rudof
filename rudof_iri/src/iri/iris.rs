@@ -169,12 +169,11 @@ impl IriS {
 
     /// [Dereference](https://www.w3.org/wiki/DereferenceURI) the IRI and get the content available from it.
     /// It handles also IRIs with the `file` scheme as local file names. For example: `file:///person.txt`
+    ///
+    /// Any other scheme is fetched over HTTP, which needs the `fetch` feature; without it, such an
+    /// IRI is refused with [`IriSError::FetchNotEnabled`].
     #[cfg(not(target_family = "wasm"))]
     pub fn dereference(&self, base: Option<&IriS>) -> Result<String, IriSError> {
-        use reqwest::blocking::Client;
-        use reqwest::header;
-        use reqwest::header::HeaderMap;
-        use reqwest::header::USER_AGENT;
         use std::fs;
 
         let url = match base {
@@ -211,33 +210,14 @@ impl IriS {
                 })?;
                 Ok(body)
             },
-            _ => {
-                let mut headers = HeaderMap::new();
-                /* TODO: Add a parameter with the Accept header ?
-                headers.insert(
-                    ACCEPT,
-                    header::HeaderValue::from_static(""),
-                );*/
-                headers.insert(USER_AGENT, header::HeaderValue::from_static("rudof"));
-                let client = Client::builder()
-                    .default_headers(headers)
-                    .build()
-                    .map_err(|e| IriSError::ReqwestClientCreation { error: e.to_string() })?;
-                let res = client
-                    .get(url)
-                    .send()
-                    .map_err(|e| IriSError::ReqwestError { error: e.to_string() })?
-                    .text()
-                    .map_err(|e| IriSError::ReqwestTextError { error: e.to_string() })?;
-                Ok(res)
-            },
+            _ => fetch(url),
         }
     }
 
     #[cfg(target_family = "wasm")]
     pub fn dereference(&self, _base: Option<&IriS>) -> Result<String, IriSError> {
-        Err(IriSError::ReqwestClientCreation {
-            error: String::from("rewquest is not enabled"),
+        Err(IriSError::FetchNotEnabled {
+            url: self.iri.as_str().to_string(),
         })
     }
 
@@ -397,4 +377,29 @@ mod tests {
         let result = iri.relative_from(&base);
         assert_eq!(result, relative);
     }
+}
+
+/// GET `url` and return the body as text: the one place `rudof_iri` reaches the network.
+#[cfg(all(feature = "fetch", not(target_family = "wasm")))]
+fn fetch(url: Url) -> Result<String, IriSError> {
+    use reqwest::blocking::Client;
+    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+
+    let mut headers = HeaderMap::new();
+    headers.insert(USER_AGENT, HeaderValue::from_static("rudof"));
+    let client = Client::builder()
+        .default_headers(headers)
+        .build()
+        .map_err(|e| IriSError::ReqwestClientCreation { error: e.to_string() })?;
+    client
+        .get(url)
+        .send()
+        .map_err(|e| IriSError::ReqwestError { error: e.to_string() })?
+        .text()
+        .map_err(|e| IriSError::ReqwestTextError { error: e.to_string() })
+}
+
+#[cfg(all(not(feature = "fetch"), not(target_family = "wasm")))]
+fn fetch(url: Url) -> Result<String, IriSError> {
+    Err(IriSError::FetchNotEnabled { url: url.to_string() })
 }

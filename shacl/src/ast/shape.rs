@@ -3,6 +3,7 @@ use crate::ast::node_shape::ASTNodeShape;
 use crate::ast::property_shape::ASTPropertyShape;
 use crate::types::Annotations;
 use rudof_iri::IriS;
+use rudof_rdf::term::Object;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -73,6 +74,14 @@ impl ASTShape {
         match self {
             Self::NodeShape(ns) => Self::node_shape(ns.with_annotations(annotations)),
             Self::PropertyShape(ps) => Self::property_shape(ps.with_annotations(annotations)),
+        }
+    }
+
+    /// See [`ASTNodeShape::with_extra`].
+    pub fn with_extra(self, extra: Vec<(IriS, Object)>) -> Self {
+        match self {
+            Self::NodeShape(ns) => Self::node_shape(ns.with_extra(extra)),
+            Self::PropertyShape(ps) => Self::property_shape(ps.with_extra(extra)),
         }
     }
 }

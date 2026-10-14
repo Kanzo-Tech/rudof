@@ -4,9 +4,10 @@ use crate::rdf::parsers::non_shape::message;
 use crate::rdf::parsers::{path, property, reifier_shape, severity, targets};
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::parser::rdf_node_parser::constructors::{
-    FocusParser, HasTypeParser, ObjectParser, SetFocusParser, SuccessParser,
+    FocusParser, HasTypeParser, LiteralsPropertyParser, ObjectParser, SetFocusParser, SuccessParser,
 };
 use rudof_rdf::parser::rdf_node_parser::{ParserExt, RDFNodeParse};
+use rudof_rdf::term::literal::ConcreteLiteral;
 use rudof_rdf::vocab::ShaclVocab;
 
 pub(crate) fn property_shape<RDF: NeighsRDF + 'static>() -> impl RDFNodeParse<RDF, Output = ASTPropertyShape> {
@@ -28,6 +29,17 @@ pub(crate) fn property_shape<RDF: NeighsRDF + 'static>() -> impl RDFNodeParse<RD
                 message()
                     .optional()
                     .flat_map(move |msg| Ok(ps.clone().with_message(msg)))
+            })
+            .then(|ps| {
+                // `sh:order` is a single decimal; were there several, the least is
+                // taken so that the answer does not depend on the read order.
+                LiteralsPropertyParser::new(ShaclVocab::sh_order()).flat_map(move |lits| {
+                    let order = lits
+                        .iter()
+                        .filter_map(ConcreteLiteral::numeric_operand)
+                        .reduce(|a, b| if b < a { b } else { a });
+                    Ok(ps.clone().with_order(order))
+                })
             })
             .then(|ps| reifier_shape().flat_map(move |r_shape| Ok(ps.clone().with_reifier_shape(r_shape))))
             .then(|ps| targets().flat_map(move |ts| Ok(ps.clone().with_targets(ts))))

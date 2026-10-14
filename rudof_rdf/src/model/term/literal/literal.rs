@@ -976,7 +976,7 @@ impl ConcreteLiteral {
     /// The value of a well-formed literal of an XSD numeric type, whichever
     /// variant holds it: a typed numeric, or a numeric kept as a
     /// `DatatypeLiteral` to preserve its lexical form. `None` otherwise.
-    fn numeric_operand(&self) -> Option<NumericLiteral> {
+    pub fn numeric_operand(&self) -> Option<NumericLiteral> {
         match self {
             Self::NumericLiteral(n) => Some(n.clone()),
             Self::DatatypeLiteral { lexical_form, datatype } => match check_literal_datatype(lexical_form, datatype) {

@@ -27,6 +27,10 @@ pub struct ASTPropertyShape {
     annotations: Annotations,
     name: MessageMap,
     description: MessageMap,
+    /// Every triple of the shape outside the `sh:` namespace other than `rdf:type`
+    /// (annotations such as `rdfs:label`), as a set sorted by predicate then value.
+    #[serde(default)]
+    extra: Vec<(IriS, Object)>,
     order: Option<NumericLiteral>,
     group: Option<Object>,
     // source_iri: Option<IriRef>,
@@ -56,6 +60,7 @@ impl ASTPropertyShape {
             annotations: Annotations::new(),
             name: MessageMap::new(),
             description: MessageMap::new(),
+            extra: Vec::new(),
             order: None,
             group: None,
             reifier_info: None,
@@ -91,6 +96,22 @@ impl ASTPropertyShape {
     pub fn with_reifier_shape(mut self, reifier_info: Option<ReifierInfo>) -> Self {
         self.reifier_info = reifier_info;
         self
+    }
+
+    /// Sets the non-SHACL triples. They are a set: sorted by predicate then value,
+    /// without duplicates, so the result does not depend on the order they were read in.
+    pub fn with_extra(mut self, mut extra: Vec<(IriS, Object)>) -> Self {
+        extra.sort();
+        extra.dedup();
+        self.extra = extra;
+        self
+    }
+
+    /// The `(predicate, value)` pairs of the shape whose predicate is outside the
+    /// `sh:` namespace and is not `rdf:type`. Literals keep language tag and datatype.
+    /// A set, sorted by predicate then value.
+    pub fn extra(&self) -> &[(IriS, Object)] {
+        &self.extra
     }
 
     pub fn with_annotations(mut self, annotations: Annotations) -> Self {

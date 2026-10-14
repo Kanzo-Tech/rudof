@@ -25,6 +25,8 @@
 // ---- façade prelude: rudof-native types the binding marshals against ---------
 pub use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 pub use prefixmap::IriRef;
+/// The RML-Core mapping crate: [`Mapping`] holds one, and its model is read through these types.
+pub use rml;
 pub use rudof_iri::IriS;
 pub use rudof_rdf::backend::{OxigraphInMemory, ReaderMode};
 pub use rudof_rdf::term::Object;
@@ -65,6 +67,9 @@ pub enum FormError {
     ShapeNotFound(String),
     #[error("{0}")]
     Validation(String),
+    /// A mapping that is not RML-Core this stack reads, or that does not render.
+    #[error("{0}")]
+    Mapping(String),
 }
 
 /// A validation outcome flattened to the shape the form ABI needs: a conformance
@@ -199,6 +204,47 @@ impl Shapes {
             Some(catalog) => ir.with_messages(catalog.clone()),
             None => ir,
         })
+    }
+}
+
+/// A parsed RML-Core mapping (SQL logical sources): what the rows of some tables mean as RDF. It is rendered, through
+/// SQL on the host's engine, as the `(s, p, o)` relation [`Shapes`] validates, and read as a [`rml::model::Model`]
+/// by a host that wants the meaning and not the rules.
+#[derive(Clone)]
+pub struct Mapping {
+    inner: rml::Mapping,
+    /// The base IRI of the host: the document's, when it gave one.
+    base: Option<String>,
+}
+
+impl Mapping {
+    /// Parse `text` as a mapping graph. `base` resolves the document's relative IRIs (see
+    /// [`FormEngine::parse_graph`]) and is the base IRI generated relative IRIs take (RML-Core §4.1.1) unless a
+    /// triples map states its own; without one, they take the specification's default, `http://example.org/`.
+    pub fn parse(text: &str, format: &RDFFormat, base: Option<&str>) -> Result<Self, FormError> {
+        let graph = FormEngine::parse_graph(text, format, base)?;
+        let inner = rml::rdf::parse(&graph).map_err(|e| FormError::Mapping(e.to_string()))?;
+        Ok(Mapping {
+            inner,
+            base: base.map(str::to_owned),
+        })
+    }
+
+    /// The mapping, per table.
+    pub fn model(&self) -> rml::model::Model {
+        self.inner.model()
+    }
+
+    /// The statement that creates, or replaces, the view `into` as the mapping's relation: seven columns
+    /// `s_type, s_value, p, o_type, o_value, o_datatype, o_lang`. `tables` resolves each table the mapping names
+    /// to the SQL name of the relation that holds it.
+    pub fn create_view(
+        &self,
+        into: &str,
+        tables: impl Fn(&str) -> Result<String, String>,
+    ) -> Result<String, FormError> {
+        rml::sql::create_view(&self.inner, self.base.as_deref(), into, tables)
+            .map_err(|e| FormError::Mapping(e.to_string()))
     }
 }
 

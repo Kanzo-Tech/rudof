@@ -87,6 +87,16 @@ impl ASTNodeShape {
         Annotation::deactivates(&self.annotations, predicate, object)
     }
 
+    pub fn with_name(mut self, name: MessageMap) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn with_description(mut self, description: MessageMap) -> Self {
+        self.description = description;
+        self
+    }
+
     pub fn with_severity(mut self, severity: Option<Severity>) -> Self {
         self.severity = severity;
         self

@@ -11,7 +11,7 @@ mod targets;
 mod utils;
 
 pub(crate) use logical::if_;
-pub(crate) use non_shape::severity;
+pub(crate) use non_shape::{severity, texts};
 pub(crate) use other::{closed, has_value, in_component};
 pub(crate) use shape_based::{property, qualified_value_shape, reifier_shape};
 pub(crate) use shape_type::{node_shape, path, property_shape};

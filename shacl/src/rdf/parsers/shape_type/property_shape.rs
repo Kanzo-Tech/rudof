@@ -1,7 +1,7 @@
 use crate::ast::ASTPropertyShape;
 use crate::rdf::parsers::components::components;
 use crate::rdf::parsers::non_shape::message;
-use crate::rdf::parsers::{path, property, reifier_shape, severity, targets};
+use crate::rdf::parsers::{path, property, reifier_shape, severity, targets, texts};
 use rudof_rdf::NeighsRDF;
 use rudof_rdf::parser::rdf_node_parser::constructors::{
     FocusParser, HasTypeParser, LiteralsPropertyParser, ObjectParser, SetFocusParser, SuccessParser,
@@ -29,6 +29,11 @@ pub(crate) fn property_shape<RDF: NeighsRDF + 'static>() -> impl RDFNodeParse<RD
                 message()
                     .optional()
                     .flat_map(move |msg| Ok(ps.clone().with_message(msg)))
+            })
+            .then(|ps| texts(ShaclVocab::sh_name()).flat_map(move |name| Ok(ps.clone().with_name(name))))
+            .then(|ps| {
+                texts(ShaclVocab::sh_description())
+                    .flat_map(move |description| Ok(ps.clone().with_description(description)))
             })
             .then(|ps| {
                 // `sh:order` is a single decimal; were there several, the least is

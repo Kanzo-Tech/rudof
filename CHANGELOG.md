@@ -14,6 +14,7 @@ This ChangeLog follows the Keep a ChangeLog guidelines](https://keepachangelog.c
 - wasm: every argument and result is typed in the `.d.ts` (`TermValue`, `ShapeModelJson`, `ProjectedForm`, `ValidationReport`, …), derived from the Rust DTOs, where they were `any`
 - A shapes graph that is not in the syntax of its format says where. `OxigraphInMemoryError::Syntax` and `form::FormError::Syntax` carry the parser's own `oxrdfio::RdfSyntaxError`, whose `location()` places it; wasm `Shapes.parse` throws a `ShapesError`, an `Error` with the 1-based `line` and `column` the parser's message prints, and neither when the error has no place in the text (a SHACL error in a graph that parsed)
 - SHACL AST: `ASTNodeShape::extra()` and `ASTPropertyShape::extra()` are the `(predicate, value)` pairs of a shape whose predicate is outside the `sh:` namespace and is not `rdf:type` (`rdfs:label`, `skos:note`, ...), literals keeping their language tag and datatype. A set, sorted by predicate then value
+- SHACL parser: `sh:name` and `sh:description` are read into `name()` / `description()` of node and property shapes, by language tag. `MessageMap` iterates in the order of its language tags (untagged first), where it followed the hash seed
 - SHACL parser: `sh:order` is read into `ASTPropertyShape::order()` (the field was never filled)
 ### Fixed
 - SHACL `sh:minLength` / `sh:maxLength` count characters (SPARQL `STRLEN`), not UTF-8 bytes

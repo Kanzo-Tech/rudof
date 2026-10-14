@@ -174,4 +174,50 @@ mod tests {
             assert_eq!(first, got, "order {order:?}");
         }
     }
+
+    #[test]
+    fn sh_name_and_description_are_read_by_language() {
+        use rudof_rdf::term::literal::Lang;
+        let ast = parse(&[r#":S a sh:NodeShape ; sh:targetClass :C ;
+                sh:name "persona"@es , "person"@en , "plain" ;
+                sh:description "una persona"@es .
+               :P a sh:PropertyShape ; sh:path :p ;
+                sh:name "nombre"@es , "name"@en ;
+                sh:description "how they are called" .
+               :Q a sh:PropertyShape ; sh:path :q ."#]);
+        let lang = |l: &str| Some(Lang::new(l).unwrap());
+        let ASTShape::NodeShape(ns) = ast.get_shape(&ex("S")).unwrap() else {
+            panic!("node shape")
+        };
+        assert_eq!(ns.name().messages().len(), 3);
+        assert_eq!(ns.name().get(lang("es").as_ref()).map(String::as_str), Some("persona"));
+        assert_eq!(ns.name().get(lang("en").as_ref()).map(String::as_str), Some("person"));
+        assert_eq!(ns.name().get(None).map(String::as_str), Some("plain"));
+        assert_eq!(
+            ns.description().get(lang("es").as_ref()).map(String::as_str),
+            Some("una persona")
+        );
+        // Deterministic order: untagged first, then by language tag.
+        let order: Vec<_> = ns
+            .name()
+            .iter()
+            .map(|(l, _)| l.as_ref().map(|l| l.to_string()))
+            .collect();
+        assert_eq!(order, [None, Some("en".to_string()), Some("es".to_string())]);
+
+        let ASTShape::PropertyShape(ps) = ast.get_shape(&ex("P")).unwrap() else {
+            panic!("property shape")
+        };
+        assert_eq!(ps.name().messages().len(), 2);
+        assert_eq!(
+            ps.description().get(None).map(String::as_str),
+            Some("how they are called")
+        );
+        assert!(ps.extra().is_empty(), "sh:name is not extra");
+
+        let ASTShape::PropertyShape(q) = ast.get_shape(&ex("Q")).unwrap() else {
+            panic!("property shape")
+        };
+        assert!(q.name().messages().is_empty() && q.description().messages().is_empty());
+    }
 }

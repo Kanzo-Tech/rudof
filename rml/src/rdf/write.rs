@@ -121,6 +121,9 @@ impl<R: BuildRDF> Writer<R> {
     fn triples_map(&mut self, m: &crate::ast::TriplesMap) -> Result<(), Error> {
         let s = self.subject(&m.id)?;
         self.typed(&s, t::TRIPLES_MAP)?;
+        if let Some(base) = &m.base_iri {
+            self.iri(&s, t::P_BASE_IRI, base)?;
+        }
 
         let source = self.child(&s, t::P_LOGICAL_SOURCE)?;
         self.typed(&source, t::LOGICAL_SOURCE)?;

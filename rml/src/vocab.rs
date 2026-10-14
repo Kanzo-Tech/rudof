@@ -38,6 +38,7 @@ pub(crate) mod term {
     pub const SQL2008_TABLE: &str = "SQL2008Table";
     pub const SQL2008_QUERY: &str = "SQL2008Query";
 
+    pub const P_BASE_IRI: &str = "baseIRI";
     pub const P_LOGICAL_SOURCE: &str = "logicalSource";
     pub const P_SOURCE: &str = "source";
     pub const P_REFERENCE_FORMULATION: &str = "referenceFormulation";

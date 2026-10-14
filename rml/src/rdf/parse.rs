@@ -263,6 +263,10 @@ fn triples_map(graph: &Graph, id: &Node) -> Result<TriplesMap, Error> {
         Node::Blank(b) => Object::bnode(b.clone()),
     };
     let mut props = Props::of(graph, &subject, at.clone())?;
+    let base_iri = props
+        .one(t::P_BASE_IRI)?
+        .map(|o| iri(o, &format!("{at} rml:baseIRI")))
+        .transpose()?;
     let logical_source = logical_source(
         graph,
         props.required(t::P_LOGICAL_SOURCE).map_err(|_| {
@@ -297,6 +301,7 @@ fn triples_map(graph: &Graph, id: &Node) -> Result<TriplesMap, Error> {
     props.finish()?;
     Ok(TriplesMap {
         id: id.clone(),
+        base_iri,
         logical_source,
         subject_map,
         predicate_object_maps,

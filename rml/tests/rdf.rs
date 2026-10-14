@@ -34,6 +34,7 @@ fn table(name: &str) -> LogicalSource {
 fn tm(id: &str, source: LogicalSource, subject: TermMap, poms: Vec<PredicateObjectMap>) -> TriplesMap {
     TriplesMap {
         id: Node::Iri(iri(id)),
+        base_iri: None,
         logical_source: source,
         subject_map: SubjectMap {
             term: subject,
@@ -138,6 +139,7 @@ fn rich() -> Mapping {
         ],
     );
     let mut person = person;
+    person.base_iri = Some(iri("http://example.com/people/"));
     person.subject_map.classes = vec![iri("http://example.com/Person"), iri("http://example.com/Agent")];
     let friend = tm(
         "http://example.com/base/Friend",
@@ -465,4 +467,27 @@ fn an_invalid_mapping_is_not_written() {
     let mut m = rich();
     m.triples_maps[0].subject_map.term.language = Some(LanguageMap::Constant("en".into()));
     assert!(matches!(write_turtle(&m), Err(Error::Invalid { .. })));
+}
+
+#[test]
+fn rml_core_4_1_1_a_triples_map_may_state_its_base_iri() {
+    let m = parse(&format!(
+        "<#T> rml:baseIRI <http://example.com/baseIRI/> ; {} ; rml:subjectMap [ rml:template \"{{ID}}\" ] .
+         <#U> {} ; rml:subjectMap [ rml:template \"{{ID}}\" ] .",
+        source(),
+        source()
+    ))
+    .unwrap();
+    let base = |name: &str| {
+        m.triples_maps
+            .iter()
+            .find(|t| t.id == Node::Iri(iri(&format!("http://example.com/base/#{name}"))))
+            .unwrap()
+            .base_iri
+            .clone()
+    };
+    assert_eq!(base("T"), Some(iri("http://example.com/baseIRI/")));
+    assert_eq!(base("U"), None);
+    let again = parse_turtle(&write_turtle(&m).unwrap(), None).unwrap();
+    assert_eq!(again, m);
 }

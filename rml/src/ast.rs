@@ -67,6 +67,12 @@ pub struct Annotation {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TriplesMap {
     pub id: Node,
+    /// The base IRI of this triples map (RML-Core §4.1.1: "The base IRI MUST be defined within the mapping
+    /// document for each Triples Map or as execution environment for the mapping document"): `rml:baseIRI`.
+    /// `None` leaves it to the execution environment, whose default, if it gives none, is `http://example.org/`
+    /// ("the default base IRI to be used by the RML Processor MUST be http://example.org/"). It is prepended,
+    /// as a string, to a generated IRI that is not absolute (§12.2).
+    pub base_iri: Option<IriS>,
     pub logical_source: LogicalSource,
     pub subject_map: SubjectMap,
     pub predicate_object_maps: Vec<PredicateObjectMap>,

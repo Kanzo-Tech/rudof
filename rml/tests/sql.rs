@@ -174,3 +174,40 @@ fn a_query_that_is_not_sql_is_refused_by_name() {
         assert!(matches!(r, Err(Error::Query { .. })), "{query}: {r:?}");
     }
 }
+
+#[test]
+fn a_view_is_created_over_the_tables_the_host_resolves_and_its_names_are_read_as_sql() {
+    let mapping = parse_turtle(
+        &format!(
+            "{PREFIXES}<#T> rml:logicalSource [ rml:source [] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator \"Person\" ] ;
+               rml:subject ex:s ; rml:predicateObjectMap [ rml:predicate ex:p ; rml:object ex:o ] ."
+        ),
+        None,
+    )
+    .unwrap();
+    let job = |t: &str| Ok(format!("\"job.1\".\"{t}\""));
+    let sql = rml::sql::create_view(&mapping, None, "\"job.1\".triples", job).unwrap();
+    assert!(
+        sql.starts_with("CREATE OR REPLACE VIEW \"job.1\".triples AS SELECT 'I' AS \"s_type\""),
+        "{sql}"
+    );
+    assert!(sql.contains("FROM \"job.1\".\"Person\" AS \"t\""), "{sql}");
+
+    // What the host gives that is not a SQL name is refused, whether it is the view's or a table's.
+    for into in ["triples; DROP TABLE t", "a b", ""] {
+        assert!(
+            matches!(
+                rml::sql::create_view(&mapping, None, into, job),
+                Err(Error::Table { .. })
+            ),
+            "{into:?}"
+        );
+    }
+    let r = rml::sql::create_view(&mapping, None, "triples", |_| Ok("Person) --".to_owned()));
+    assert!(matches!(r, Err(Error::Table { .. })), "{r:?}");
+    let r = rml::sql::create_view(&mapping, None, "triples", |t| Err(format!("no such table {t}")));
+    assert!(
+        matches!(&r, Err(Error::Table { name, reason }) if name == "Person" && reason.contains("no such table")),
+        "{r:?}"
+    );
+}

@@ -78,6 +78,54 @@ pub fn triples(mapping: &Mapping, base: Option<&str>, tables: impl Fn(&str) -> O
     }))
 }
 
+/// A SQL object name as a host writes it: `"job".triples`, `Person`, `"My Table"`. The name is read by the SQL
+/// grammar and is never split on a dot by hand, so a delimited identifier keeps its case and its dots.
+pub fn object_name(text: &str) -> Result<ObjectName, Error> {
+    let table = |reason: String| Error::Table {
+        name: text.to_owned(),
+        reason,
+    };
+    let mut parser = Parser::new(&DuckDbDialect {})
+        .try_with_sql(text)
+        .map_err(|e| table(e.to_string()))?;
+    let name = parser.parse_object_name(false).map_err(|e| table(e.to_string()))?;
+    parser
+        .expect_token(&sqlparser::tokenizer::Token::EOF)
+        .map_err(|_| table("not a SQL object name".to_owned()))?;
+    Ok(name)
+}
+
+/// The statement that creates, or replaces, the view `into` as the relation of `mapping`. The host runs it.
+///
+/// `tables` resolves a table the mapping names to the SQL name of the relation that holds it (`"job"."Person"`);
+/// a name it cannot resolve is its `Err`, and fails the call. `into` and every resolved name are read as SQL object
+/// names ([`object_name`]), so no text of the host's reaches the statement unparsed.
+pub fn create_view(
+    mapping: &Mapping,
+    base: Option<&str>,
+    into: &str,
+    tables: impl Fn(&str) -> Result<String, String>,
+) -> Result<String, Error> {
+    let into = object_name(into)?;
+    let failure = std::cell::RefCell::new(None);
+    let query = triples(mapping, base, |name| {
+        match tables(name).and_then(|resolved| object_name(&resolved).map_err(|e| e.to_string())) {
+            Ok(resolved) => resolved,
+            Err(reason) => {
+                failure.borrow_mut().get_or_insert(Error::Table {
+                    name: name.to_owned(),
+                    reason,
+                });
+                ObjectName::from(vec![sqlparser::ast::Ident::new(name)])
+            },
+        }
+    })?;
+    match failure.into_inner() {
+        Some(e) => Err(e),
+        None => Ok(format!("CREATE OR REPLACE VIEW {into} AS {query}")),
+    }
+}
+
 /// A branch of the relation: the subject, the predicate and the object terms.
 fn row(subject: &Term, predicate: &Expr, object: &Term) -> Vec<SelectItem> {
     let values = [

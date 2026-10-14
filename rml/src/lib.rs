@@ -47,6 +47,9 @@ pub enum Error {
     /// A logical source query that is not SQL the DuckDB dialect reads.
     #[error("{at}: the query is not SQL: {reason}")]
     Query { at: String, reason: String },
+    /// A name the host gave for a table or a view is not a SQL object name, or the host could not resolve one.
+    #[error("the table {name}: {reason}")]
+    Table { name: String, reason: String },
     /// The RDF graph could not be read or written.
     #[error("the mapping graph: {0}")]
     Graph(String),

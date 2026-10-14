@@ -53,10 +53,10 @@ tokio = { workspace = true, optional = true }
 toml.workspace = true
 url.workspace = true
 
+# The SPARQL backends' native half: what `sparql` turns on outside wasm, and nothing without it.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-oxigraph = { workspace = true, features = ["http-client-rustls-native"] }
-tempfile.workspace = true
-tokio = { workspace = true, features = ["full"] }
+oxigraph = { workspace = true, optional = true, features = ["http-client-rustls-native"] }
+tokio = { workspace = true, optional = true, features = ["full"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 proptest.workspace = true

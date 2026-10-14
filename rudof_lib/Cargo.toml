@@ -25,7 +25,7 @@ crossterm.workspace = true
 dctap.workspace = true
 either.workspace = true
 oxrdf = { workspace = true, features = ["oxsdatatypes"] }
-rudof_iri.workspace = true
+rudof_iri = { workspace = true, features = ["fetch"] }
 prefixmap.workspace = true
 pgschema.workspace = true
 rdf_config.workspace = true

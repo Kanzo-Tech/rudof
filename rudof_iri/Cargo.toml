@@ -9,6 +9,13 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+# Dereferencing an `http(s)` IRI (`IriS::dereference`), over a blocking `reqwest`
+# client, which brings a tokio runtime with it. Off by default: without it a
+# `file:` IRI still dereferences and any other scheme is `FetchNotEnabled`.
+# Native only; on wasm the feature compiles to nothing.
+fetch = ["dep:reqwest"]
+
 [dependencies]
 getrandom.workspace = true
 indexmap.workspace = true
@@ -20,10 +27,7 @@ url.workspace = true
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 proptest.workspace = true
-reqwest = { workspace = true, features = ["blocking"] }
-
-[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
-reqwest.workspace = true
+reqwest = { workspace = true, optional = true, features = ["blocking"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }

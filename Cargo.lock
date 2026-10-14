@@ -4093,7 +4093,6 @@ dependencies = [
  "sparesults",
  "spargebra",
  "tabled",
- "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "toml",

@@ -33,6 +33,11 @@ pub enum IriSError {
         str: String,
     },
 
+    /// The IRI needs an HTTP fetch, and this build has no network client
+    /// (`rudof_iri` without the `fetch` feature, or a wasm target)
+    #[error("Cannot fetch {url}: rudof_iri was built without the `fetch` feature")]
+    FetchNotEnabled { url: String },
+
     /// Error creating a [`reqwest`] HTTP client
     #[error("Creating reqwest http client: {error}")]
     ReqwestClientCreation { error: String },

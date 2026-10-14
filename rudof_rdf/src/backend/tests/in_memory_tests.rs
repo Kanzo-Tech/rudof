@@ -372,3 +372,41 @@ fn a_syntax_error_keeps_the_parsers_location() {
         "{error}"
     );
 }
+
+/// A labelled blank node keeps its label, which ShEx reads as the node's lexical
+/// form (shexTest's `LexicalBNode` cases), unless an earlier document merged into
+/// the graph already holds it: a label's scope is its document. An anonymous one
+/// is renumbered in document order.
+#[test]
+fn a_blank_node_label_is_kept_within_its_document() {
+    let ex = |local: &str| OxNamedNode::new_unchecked(format!("http://example.org/{local}"));
+    let only_object = |graph: &OxigraphInMemory, subject: &str, predicate: &str| {
+        let objects = graph
+            .objects_for(&OxTerm::NamedNode(ex(subject)), &ex(predicate))
+            .unwrap();
+        assert_eq!(objects.len(), 1, "{subject} {predicate}: {objects:?}");
+        match objects.into_iter().next().unwrap() {
+            OxTerm::BlankNode(b) => b.as_str().to_string(),
+            other => panic!("{subject} {predicate} is {other}, not a blank node"),
+        }
+    };
+    let mut graph = OxigraphInMemory::from_str(
+        "prefix : <http://example.org/>\n:x :p _:abc ; :q [ :r 1 ] .",
+        &RDFFormat::Turtle,
+        None,
+        &ReaderMode::Strict,
+    )
+    .unwrap();
+    graph
+        .merge_from_reader(
+            &mut "prefix : <http://example.org/>\n:y :p _:abc .".as_bytes(),
+            "second",
+            &RDFFormat::Turtle,
+            None,
+            &ReaderMode::Strict,
+        )
+        .unwrap();
+    assert_eq!(only_object(&graph, "x", "p"), "abc");
+    assert_eq!(only_object(&graph, "x", "q"), format!("{:x}", (0xb_u128 << 124) | 1));
+    assert_eq!(only_object(&graph, "y", "p"), format!("{:x}", (0xb_u128 << 124) | 2));
+}

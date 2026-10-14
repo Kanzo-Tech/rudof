@@ -208,7 +208,8 @@ impl OxigraphInMemory {
                 }
                 continue;
             }
-            graph.insert(&blank_nodes.triple(triple_ref.into_owned()));
+            let triple = blank_nodes.triple(triple_ref.into_owned(), graph);
+            graph.insert(&triple);
         }
 
         let prefixes: HashMap<&str, &str> = turtle_reader.prefixes().collect();
@@ -279,7 +280,8 @@ impl OxigraphInMemory {
                 Some(t) => t,
                 None => continue,
             };
-            graph.insert(&blank_nodes.triple(triple));
+            let triple = blank_nodes.triple(triple, graph);
+            graph.insert(&triple);
         }
 
         Ok(())
@@ -342,7 +344,8 @@ impl OxigraphInMemory {
                 Some(t) => t,
                 None => continue,
             };
-            graph.insert(&blank_nodes.triple(OxTriple::from(triple)));
+            let triple = blank_nodes.triple(OxTriple::from(triple), graph);
+            graph.insert(&triple);
         }
 
         Ok(())
@@ -1196,25 +1199,21 @@ impl Display for ReaderMode {
     }
 }
 
-/// Converts an owned triple to a triple reference.
-///
-/// # Parameters
-///
-/// * `t` - The owned triple to convert
-///
-/// # Returns
-///
-/// A triple reference with the same subject, predicate, and object.
-/// The blank nodes of one parsed document, numbered in the order the document
-/// first mentions them.
+/// The blank nodes of one parsed document: the anonymous ones numbered in the
+/// order the document first mentions them, the labelled ones under their label.
 ///
 /// The parsers name an anonymous blank node (`[]`, a collection's cells, a
 /// reifier) by a random id, so one text parsed twice gave two graphs whose
 /// blank nodes compared in different orders, and whatever sorted by them (the
 /// shapes of a shapes graph, and with them the SQL compiled from it) came out
 /// in a different order on every parse. Renumbered here, they compare in the
-/// order the document mentions them, on every parse. The scope of a blank node
-/// label is its document, so no two documents merged into one graph share one.
+/// order the document mentions them, on every parse.
+///
+/// A labelled blank node (`_:abc`, `rdf:nodeID`, a JSON-LD `@id` of `_:`) keeps
+/// its label, which is already the same on every parse: ShEx reads it as the
+/// node's lexical form (`LENGTH`, `PATTERN`, shexTest's `LexicalBNode` trait).
+/// The scope of a label is its document, so a label an earlier document already
+/// put in the graph is renumbered instead, and no two documents share a node.
 struct DocumentBlankNodes<'a> {
     counter: &'a mut usize,
     ids: HashMap<OxBlankNode, OxBlankNode>,
@@ -1233,36 +1232,52 @@ impl<'a> DocumentBlankNodes<'a> {
         }
     }
 
-    fn blank_node(&mut self, bnode: OxBlankNode) -> OxBlankNode {
+    /// Whether the parser made `bnode` up. An anonymous node's id is a random
+    /// `u128` (`BlankNode::default`); a label reads as a number only when it is
+    /// all lowercase hex digits, and no label short of 17 of them exceeds
+    /// `u64::MAX`, which a random id does but once in 2^64.
+    fn is_anonymous(bnode: &OxBlankNode) -> bool {
+        bnode.as_ref().unique_id().is_some_and(|id| id > u128::from(u64::MAX))
+    }
+
+    /// Whether an earlier document already put `bnode` in `graph`.
+    fn is_taken(bnode: &OxBlankNode, graph: &Graph) -> bool {
+        graph.triples_for_subject(bnode).next().is_some() || graph.triples_for_object(bnode).next().is_some()
+    }
+
+    fn blank_node(&mut self, bnode: OxBlankNode, graph: &Graph) -> OxBlankNode {
         let counter = &mut *self.counter;
         self.ids
             .entry(bnode)
-            .or_insert_with(|| {
+            .or_insert_with_key(|bnode| {
+                if !Self::is_anonymous(bnode) && !Self::is_taken(bnode, graph) {
+                    return bnode.clone();
+                }
                 *counter += 1;
                 OxBlankNode::new_from_unique_id(Self::BASE | *counter as u128)
             })
             .clone()
     }
 
-    fn subject(&mut self, subject: OxSubject) -> OxSubject {
+    fn subject(&mut self, subject: OxSubject, graph: &Graph) -> OxSubject {
         match subject {
-            OxSubject::BlankNode(b) => OxSubject::BlankNode(self.blank_node(b)),
+            OxSubject::BlankNode(b) => OxSubject::BlankNode(self.blank_node(b, graph)),
             named => named,
         }
     }
 
-    fn term(&mut self, term: OxTerm) -> OxTerm {
+    fn term(&mut self, term: OxTerm, graph: &Graph) -> OxTerm {
         match term {
-            OxTerm::BlankNode(b) => OxTerm::BlankNode(self.blank_node(b)),
-            OxTerm::Triple(t) => OxTerm::Triple(Box::new(self.triple(*t))),
+            OxTerm::BlankNode(b) => OxTerm::BlankNode(self.blank_node(b, graph)),
+            OxTerm::Triple(t) => OxTerm::Triple(Box::new(self.triple(*t, graph))),
             other => other,
         }
     }
 
-    /// `triple`, its blank nodes renumbered.
-    fn triple(&mut self, triple: OxTriple) -> OxTriple {
-        let subject = self.subject(triple.subject);
-        let object = self.term(triple.object);
+    /// `triple`, its blank nodes renumbered against what `graph` already holds.
+    fn triple(&mut self, triple: OxTriple, graph: &Graph) -> OxTriple {
+        let subject = self.subject(triple.subject, graph);
+        let object = self.term(triple.object, graph);
         OxTriple::new(subject, triple.predicate, object)
     }
 }

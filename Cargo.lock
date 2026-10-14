@@ -4025,6 +4025,7 @@ dependencies = [
  "rdf_config",
  "regex",
  "reqwest",
+ "rml",
  "rudof_generate",
  "rudof_iri",
  "rudof_rdf",

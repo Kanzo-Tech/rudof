@@ -15,6 +15,7 @@ use rudof_lib::form::{
 mod dto;
 mod findings;
 mod index;
+mod mapping;
 mod project;
 mod scoring;
 mod shapes;
@@ -132,6 +133,17 @@ export interface Column {
   readonly length: number;
   get(index: number): unknown;
   toArray(): ArrayLike<unknown>;
+}
+
+/** What `Mapping.triples` reads: the view to create, and how to reach the tables the mapping names. */
+export interface MappingTriples {
+  /** The view to create or replace, as a SQL object name, e.g. `"job".triples`. */
+  into: string;
+  /** The SQL name of the relation that holds a table the mapping names, e.g. `"job"."Person"`. */
+  tables(table: string): string;
+  engine: Engine;
+  /** Stops the running statement. */
+  signal: AbortSignal;
 }
 
 /**

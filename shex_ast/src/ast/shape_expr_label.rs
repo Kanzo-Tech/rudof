@@ -1,6 +1,5 @@
 use std::{fmt::Display, str::FromStr};
 
-use regex::Regex;
 use rudof_iri::IriS;
 use rudof_iri::error::IriSError;
 use serde::{Deserialize, Serialize};
@@ -73,24 +72,91 @@ impl TryFrom<&str> for ShapeExprLabel {
     type Error = RefError;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        let re_iri = Regex::new(r"<(.*)>").unwrap();
-        if let Some(iri_str) = re_iri.captures(s) {
-            let iri_s = IriS::from_str(&iri_str[1])?;
+        if let Some(iri_str) = angle_bracketed(s) {
+            let iri_s = IriS::from_str(iri_str)?;
             Ok(ShapeExprLabel::IriRef {
                 value: IriRef::iri(iri_s),
             })
+        } else if let Some(bnode_s) = bnode_label(s) {
+            Ok(ShapeExprLabel::BNode {
+                value: BNode::new(bnode_s),
+            })
         } else {
-            let re_bnode = Regex::new(r"_:(.*)").unwrap();
-            if let Some(bnode_s) = re_bnode.captures(s) {
-                Ok(ShapeExprLabel::BNode {
-                    value: BNode::new(&bnode_s[1]),
-                })
-            } else {
-                let iri_s = IriS::from_str(s)?;
-                Ok(ShapeExprLabel::IriRef {
-                    value: IriRef::iri(iri_s),
-                })
-            }
+            let iri_s = IriS::from_str(s)?;
+            Ok(ShapeExprLabel::IriRef {
+                value: IriRef::iri(iri_s),
+            })
+        }
+    }
+}
+
+/// What the regex `<(.*)>` captured: from the first `<` that has a `>` after it on its line, up to
+/// the last `>` of that line (`.` does not cross `\n`, `*` is greedy, the search is unanchored).
+/// Written out because this is the only thing that kept `regex` (its automata, its Unicode tables)
+/// in a wasm build that only decodes a shape document.
+fn angle_bracketed(s: &str) -> Option<&str> {
+    s.match_indices('<').find_map(|(i, _)| {
+        let rest = &s[i + 1..];
+        let line = rest.split('\n').next().unwrap_or(rest);
+        line.rfind('>').map(|j| &line[..j])
+    })
+}
+
+/// What the regex `_:(.*)` captured: the rest of the line after the first `_:`.
+fn bnode_label(s: &str) -> Option<&str> {
+    let rest = &s[s.find("_:")? + 2..];
+    Some(rest.split('\n').next().unwrap_or(rest))
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::{angle_bracketed, bnode_label};
+    use regex::Regex;
+
+    /// The two helpers answer exactly what the regexes they replaced answered, on the shapes of
+    /// string a label comes in and on the edges (several brackets, newlines, nothing to capture).
+    #[test]
+    fn helpers_agree_with_the_regexes_they_replaced() {
+        let re_iri = Regex::new(r"<(.*)>").unwrap();
+        let re_bnode = Regex::new(r"_:(.*)").unwrap();
+        for s in [
+            "",
+            "<",
+            ">",
+            "<>",
+            "<a>",
+            "<http://a/b>",
+            "http://a/b",
+            "_:b0",
+            "_:",
+            "x_:y",
+            "<<a>>",
+            "<a><b>",
+            "<a> <b>",
+            "a>b<c",
+            "a<b\n>c",
+            "<a\n>",
+            "<a>\n<b>",
+            "x\n<b>",
+            "<a\n<b>",
+            "_:a\nb",
+            "\n_:a",
+            "<_:a>",
+            "_:<a>",
+            "é<ü>é",
+            "<a>>",
+            ">< <a",
+        ] {
+            assert_eq!(
+                angle_bracketed(s),
+                re_iri.captures(s).map(|c| c.get(1).unwrap().as_str()),
+                "iri {s:?}"
+            );
+            assert_eq!(
+                bnode_label(s),
+                re_bnode.captures(s).map(|c| c.get(1).unwrap().as_str()),
+                "bnode {s:?}"
+            );
         }
     }
 }

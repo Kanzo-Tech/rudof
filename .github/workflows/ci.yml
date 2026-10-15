@@ -44,6 +44,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run cargo check
         run: cargo check --workspace --exclude rudof_wasm
+      # Each RDF syntax of rudof_rdf is a feature of its own: each must build alone, with
+      # no syntax at all, and refuse (or read) its format as the feature says.
+      - name: rudof_rdf, one syntax feature at a time
+        run: |
+          cargo clippy -p rudof_rdf --no-default-features --all-targets -- -D warnings
+          for f in turtle ntriples nquads rdfxml jsonld; do
+            cargo clippy -p rudof_rdf --no-default-features --features "$f" --all-targets -- -D warnings
+            cargo test -p rudof_rdf --no-default-features --features "$f" -- syntax_feature
+          done
 
   check-wasm:
     name: Check wasm

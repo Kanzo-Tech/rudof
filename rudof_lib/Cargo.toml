@@ -32,7 +32,7 @@ rdf_config.workspace = true
 reqwest.workspace = true
 regex.workspace = true
 rudof_generate.workspace = true
-rudof_rdf = { workspace = true, features = ["sparql"] }
+rudof_rdf = { workspace = true, features = ["sparql", "turtle", "ntriples", "nquads", "rdfxml", "jsonld"] }
 rudof_rdf_viz.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -57,6 +57,6 @@ oxrdfio = { workspace = true }
 prefixmap = { workspace = true }
 rudof_iri = { workspace = true }
 rml = { workspace = true, features = ["sql"] }
-rudof_rdf = { workspace = true }
+rudof_rdf = { workspace = true, features = ["turtle", "ntriples", "nquads", "rdfxml", "jsonld"] }
 shacl = { workspace = true, features = ["sql"] }
 thiserror = { workspace = true }

@@ -5,21 +5,39 @@ use crate::{AsyncRDF, BuildRDF, Matcher, NeighsRDF, RDFFormat, Rdf};
 
 use crate::vocab::RdfVocab;
 use colored::*;
+#[cfg(feature = "turtle")]
 use oxiri::IriParseError;
+#[cfg(feature = "jsonld")]
 use oxjsonld::JsonLdParser;
 use oxrdf::{
     BlankNode as OxBlankNode, Graph, GraphName, Literal as OxLiteral, NamedNode as OxNamedNode, NamedNodeRef,
     NamedOrBlankNode as OxSubject, NamedOrBlankNodeRef as OxSubjectRef, Quad, Term as OxTerm, TermRef,
     Triple as OxTriple, TripleRef,
 };
-use oxrdfio::{JsonLdProfileSet, RdfFormat, RdfParseError, RdfSerializer};
+#[cfg(any(
+    feature = "turtle",
+    feature = "ntriples",
+    feature = "nquads",
+    feature = "rdfxml",
+    feature = "jsonld"
+))]
+use oxrdfio::RdfParseError;
+use oxrdfio::{JsonLdProfileSet, RdfFormat, RdfSerializer};
+#[cfg(feature = "rdfxml")]
 use oxrdfxml::RdfXmlParser;
-use oxttl::{NQuadsParser, NTriplesParser, TurtleParser};
+#[cfg(feature = "nquads")]
+use oxttl::NQuadsParser;
+#[cfg(feature = "ntriples")]
+use oxttl::NTriplesParser;
+#[cfg(feature = "turtle")]
+use oxttl::TurtleParser;
 use prefixmap::{PrefixMapError, prefix_map::*};
 use rudof_iri::IriS;
 use serde::{Serialize, ser::SerializeStruct};
+#[cfg(any(feature = "turtle", feature = "rdfxml", feature = "jsonld"))]
+use std::collections::HashMap;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fmt::{Debug, Display, Formatter},
     io::{self, Cursor, Write},
     str::FromStr,
@@ -124,6 +142,16 @@ impl OxigraphInMemory {
     /// # Errors
     ///
     /// Returns an error if parsing fails in strict mode or if I/O errors occur.
+    #[cfg_attr(
+        not(any(
+            feature = "turtle",
+            feature = "ntriples",
+            feature = "nquads",
+            feature = "rdfxml",
+            feature = "jsonld"
+        )),
+        expect(unused_variables, unreachable_code)
+    )]
     pub fn merge_from_reader<R: io::Read>(
         &mut self,
         reader: &mut R,
@@ -133,15 +161,24 @@ impl OxigraphInMemory {
         reader_mode: &ReaderMode,
     ) -> Result<(), OxigraphInMemoryError> {
         match format {
+            #[cfg(feature = "turtle")]
             RDFFormat::Turtle => {
                 self.parse_turtle(reader, source_name, base, reader_mode)?;
             },
+            #[cfg(not(feature = "turtle"))]
+            RDFFormat::Turtle => return Err(unsupported_format(format, "turtle")),
+            #[cfg(feature = "ntriples")]
             RDFFormat::NTriples => {
                 self.parse_ntriples(reader, source_name, reader_mode)?;
             },
+            #[cfg(not(feature = "ntriples"))]
+            RDFFormat::NTriples => return Err(unsupported_format(format, "ntriples")),
+            #[cfg(feature = "rdfxml")]
             RDFFormat::Rdfxml => {
                 self.parse_rdfxml(reader, source_name, reader_mode)?;
             },
+            #[cfg(not(feature = "rdfxml"))]
+            RDFFormat::Rdfxml => return Err(unsupported_format(format, "rdfxml")),
             RDFFormat::TriG => {
                 return Err(OxigraphInMemoryError::UnsupportedFormat {
                     format: "TriG".to_string(),
@@ -152,12 +189,18 @@ impl OxigraphInMemory {
                     format: "N3".to_string(),
                 });
             },
+            #[cfg(feature = "nquads")]
             RDFFormat::NQuads => {
                 self.parse_nquads(reader, source_name, reader_mode)?;
             },
+            #[cfg(not(feature = "nquads"))]
+            RDFFormat::NQuads => return Err(unsupported_format(format, "nquads")),
+            #[cfg(feature = "jsonld")]
             RDFFormat::JsonLd => {
                 self.parse_jsonld(reader, source_name, reader_mode)?;
             },
+            #[cfg(not(feature = "jsonld"))]
+            RDFFormat::JsonLd => return Err(unsupported_format(format, "jsonld")),
         }
         if let Some(base) = base {
             let default_base = Some(IriS::new_unchecked(base));
@@ -178,6 +221,7 @@ impl OxigraphInMemory {
     /// # Errors
     ///
     /// Returns an error if parsing fails in strict mode.
+    #[cfg(feature = "turtle")]
     fn parse_turtle<R: io::Read>(
         &mut self,
         reader: &mut R,
@@ -233,6 +277,7 @@ impl OxigraphInMemory {
     /// # Errors
     ///
     /// Returns an error if parsing fails in strict mode.
+    #[cfg(feature = "ntriples")]
     fn parse_ntriples<R: io::Read>(
         &mut self,
         reader: &mut R,
@@ -264,6 +309,7 @@ impl OxigraphInMemory {
     /// # Errors
     ///
     /// Returns an error if parsing fails in strict mode.
+    #[cfg(feature = "rdfxml")]
     fn parse_rdfxml<R: io::Read>(
         &mut self,
         reader: &mut R,
@@ -297,6 +343,7 @@ impl OxigraphInMemory {
     /// # Errors
     ///
     /// Returns an error if parsing fails in strict mode.
+    #[cfg(feature = "nquads")]
     fn parse_nquads<R: io::Read>(
         &mut self,
         reader: &mut R,
@@ -328,6 +375,7 @@ impl OxigraphInMemory {
     /// # Errors
     ///
     /// Returns an error if parsing fails in strict mode.
+    #[cfg(feature = "jsonld")]
     fn parse_jsonld<R: io::Read>(
         &mut self,
         reader: &mut R,
@@ -1058,6 +1106,20 @@ impl BuildRDF for OxigraphInMemory {
     }
 }
 
+/// The error for a format whose parser this build leaves out (its cargo feature is off).
+#[cfg(not(all(
+    feature = "turtle",
+    feature = "ntriples",
+    feature = "nquads",
+    feature = "rdfxml",
+    feature = "jsonld"
+)))]
+fn unsupported_format(format: &RDFFormat, feature: &str) -> OxigraphInMemoryError {
+    OxigraphInMemoryError::UnsupportedFormat {
+        format: format!("{format} (build rudof_rdf with the `{feature}` feature to read it)"),
+    }
+}
+
 /// Converts an RDF format enum to the Oxigraph RdfFormat type.
 ///
 /// # Parameters
@@ -1107,6 +1169,7 @@ fn triple_to_quad(t: TripleRef, graph_name: GraphName) -> Quad {
     Quad::new(subj, pred, obj, graph_name)
 }
 
+#[cfg(feature = "turtle")]
 fn validate_triple_iris(triple: TripleRef) -> Result<(), IriParseError> {
     if let oxrdf::NamedOrBlankNodeRef::NamedNode(n) = triple.subject {
         OxNamedNode::new(n.as_str())?;
@@ -1135,6 +1198,13 @@ fn validate_triple_iris(triple: TripleRef) -> Result<(), IriParseError> {
 /// * `Ok(None)` - Parsing failed in lax mode (skip this item)
 /// * `Err(error)` - Parsing failed in strict mode: the parser's own error, as
 ///   [`OxigraphInMemoryError::Syntax`] or, for a failed read, `IOError`
+#[cfg(any(
+    feature = "turtle",
+    feature = "ntriples",
+    feature = "nquads",
+    feature = "rdfxml",
+    feature = "jsonld"
+))]
 fn handle_parse_error<T>(
     result: Result<T, impl Into<RdfParseError>>,
     source_name: &str,
@@ -1214,11 +1284,13 @@ impl Display for ReaderMode {
 /// node's lexical form (`LENGTH`, `PATTERN`, shexTest's `LexicalBNode` trait).
 /// The scope of a label is its document, so a label an earlier document already
 /// put in the graph is renumbered instead, and no two documents share a node.
+#[cfg(any(feature = "turtle", feature = "rdfxml", feature = "jsonld"))]
 struct DocumentBlankNodes<'a> {
     counter: &'a mut usize,
     ids: HashMap<OxBlankNode, OxBlankNode>,
 }
 
+#[cfg(any(feature = "turtle", feature = "rdfxml", feature = "jsonld"))]
 impl<'a> DocumentBlankNodes<'a> {
     /// The high bits of every renumbered id: its hexadecimal form starts with a
     /// letter, as RDF/XML wants, and keeps one length, so the ids sort as

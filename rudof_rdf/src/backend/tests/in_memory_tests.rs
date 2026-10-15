@@ -410,3 +410,59 @@ fn a_blank_node_label_is_kept_within_its_document() {
     assert_eq!(only_object(&graph, "x", "q"), format!("{:x}", (0xb_u128 << 124) | 1));
     assert_eq!(only_object(&graph, "y", "p"), format!("{:x}", (0xb_u128 << 124) | 2));
 }
+
+// One test per syntax feature: with the feature on, a small document of that syntax
+// parses to its one triple; with it off, the format is refused and the error names
+// the feature. `cargo test -p rudof_rdf --no-default-features --features <one>
+// syntax_feature` runs the half that applies.
+fn read(text: &str, format: RDFFormat) -> Result<OxigraphInMemory, OxigraphInMemoryError> {
+    OxigraphInMemory::from_str(text, &format, None, &ReaderMode::Strict)
+}
+
+macro_rules! syntax_feature_test {
+    ($name:ident, $feature:literal, $format:expr, $text:expr) => {
+        #[test]
+        fn $name() {
+            let result = read($text, $format);
+            if cfg!(feature = $feature) {
+                assert_eq!(result.unwrap().len(), 1);
+            } else {
+                match result {
+                    Err(OxigraphInMemoryError::UnsupportedFormat { format }) => assert!(format.contains($feature)),
+                    other => panic!("expected UnsupportedFormat, got {other:?}"),
+                }
+            }
+        }
+    };
+}
+
+syntax_feature_test!(
+    syntax_feature_turtle,
+    "turtle",
+    RDFFormat::Turtle,
+    "<http://e/s> <http://e/p> <http://e/o> ."
+);
+syntax_feature_test!(
+    syntax_feature_ntriples,
+    "ntriples",
+    RDFFormat::NTriples,
+    "<http://e/s> <http://e/p> <http://e/o> ."
+);
+syntax_feature_test!(
+    syntax_feature_nquads,
+    "nquads",
+    RDFFormat::NQuads,
+    "<http://e/s> <http://e/p> <http://e/o> <http://e/g> ."
+);
+syntax_feature_test!(
+    syntax_feature_rdfxml,
+    "rdfxml",
+    RDFFormat::Rdfxml,
+    r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="http://e/s"><rdf:type rdf:resource="http://e/o"/></rdf:Description></rdf:RDF>"#
+);
+syntax_feature_test!(
+    syntax_feature_jsonld,
+    "jsonld",
+    RDFFormat::JsonLd,
+    r#"{"@id":"http://e/s","http://e/p":{"@id":"http://e/o"}}"#
+);

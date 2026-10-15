@@ -2,7 +2,9 @@
 
 `wasm-bindgen` bindings that expose rudof's SHACL stack to JavaScript. `Shapes` is
 a parsed shapes graph: it validates a triples relation through SQL on the page's
-engine. A `FormSession` holds a live RDF data graph under one `Shapes`, and offers
+engine. `Mapping` is a parsed RML-Core mapping (SQL logical sources): it creates the triples
+relation `Shapes` validates, as a view over the tables a host holds, and says per
+table what the rows mean. A `FormSession` holds a live RDF data graph under one `Shapes`, and offers
 parsing, graph editing, serialization, projection and in-memory SHACL validation —
 all running in WebAssembly, no SPARQL endpoint or threads required.
 
@@ -37,6 +39,15 @@ const { groups } = await shapes.validateGroups({ table, engine, signal, language
 // with `conforming`, the focus nodes validation reports nothing for (s_type, s_value), not the fragment's subjects.
 const { unchecked } = await shapes.fragment({ table, engine, signal, into: `"${job}".fragment`, conforming: `"${job}".conforming` });
 
+// A mapping says what tables mean as RDF (RML-Core; rml:SQL2008Table and rml:SQL2008Query sources).
+// `triples` creates or replaces the view the validation above reads; `tables` maps a table the mapping
+// names to the SQL name of the relation that holds it. Nothing is read until the view is.
+const mapping = Mapping.parse(mappingTurtle, { base: "https://example.org/" });
+await mapping.triples({ engine, signal, into: `"${job}".triples`, tables: (t) => `"${job}"."${t}"` });
+// Per table (per triples map): the classes, and per column the predicate, term type, datatype, language
+// and the annotations (rdfs:label, ...) the mapping graph carries about the class and the predicate.
+const { tables } = mapping.model();
+
 // A form: a data graph under the shapes, in memory.
 const session = new FormSession(shapes);
 session.loadData(dataTurtle, "text/turtle");
@@ -54,6 +65,11 @@ as the place. `rule.id` is the source shape and constraint component;
 `rule.label` reads `path · Constraint`. They are declared in `src/findings.rs`.
 
 ## Notes
+
+- `Mapping` is `rml` (the crate beside `shacl`): `parse` reads the mapping graph and refuses what it does not
+  model (graph maps, other reference formulations) by name; a generated relative IRI takes the base IRI of its
+  triples map, else `options.base`, else `http://example.org/` (RML-Core §4.1.1). The view is a query, so
+  the data errors RML-Core §4.3 raises (an invalid IRI, an ill-typed literal) are not raised.
 
 - SHACL validation evaluates the shapes' algebra over the in-memory graph; the
   SQL script is the same algebra, rendered.

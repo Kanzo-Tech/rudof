@@ -3909,6 +3909,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rml"
+version = "0.3.4"
+dependencies = [
+ "duckdb",
+ "prefixmap",
+ "rudof_iri",
+ "rudof_rdf",
+ "sqlparser",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "rudof_cli"
 version = "0.3.4"
 dependencies = [
@@ -4013,6 +4025,7 @@ dependencies = [
  "rdf_config",
  "regex",
  "reqwest",
+ "rml",
  "rudof_generate",
  "rudof_iri",
  "rudof_rdf",
@@ -4639,6 +4652,7 @@ dependencies = [
  "petgraph 0.8.3",
  "prefixmap",
  "proptest",
+ "rml",
  "rudof_iri",
  "rudof_rdf",
  "serde",
@@ -4953,6 +4967,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3679862809bd1f92e563cf6fd820e28f39135303668001c10331d5027183e8b4"
 dependencies = [
  "log",
+ "sqlparser_derive",
+]
+
+[[package]]
+name = "sqlparser_derive"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2905ae8e8148d8f7f5748ea95d1e949fa4fc1d7f5161547b758ad118b2e4b0aa"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -5061,6 +5087,17 @@ name = "syn"
 version = "2.0.114"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4d107df263a3013ef9b1879b0df87d706ff80f65a86ea879bd9c31f9b307c2a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote",

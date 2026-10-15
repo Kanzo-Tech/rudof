@@ -70,15 +70,15 @@ jobs:
       # The crates linked into other wasm modules on their own, not only through
       # rudof_wasm: each must build for wasm32 with what a consumer turns on.
       - name: Run cargo check on the wasm-linked crates
-        run: cargo check -p shex_ast -p shacl --features shacl/sql --target wasm32-unknown-unknown
+        run: cargo check -p shex_ast -p shacl -p rml --features shacl/sql,rml/sql --target wasm32-unknown-unknown
       # tokio does not run on wasm32-unknown-unknown, and a dependency that drags
       # it in fails a consumer's build, not this one. `-i tokio` errors when tokio
       # is absent from the whole lockfile, so the check lists the graph instead.
       - name: No tokio in the wasm-linked crates
         run: |
-          if cargo tree -p shex_ast -p shacl --features shacl/sql --target wasm32-unknown-unknown \
+          if cargo tree -p shex_ast -p shacl -p rml --features shacl/sql,rml/sql --target wasm32-unknown-unknown \
               -e normal --prefix none --format '{p}' | grep '^tokio '; then
-            echo "::error::tokio reaches shex_ast or shacl on wasm32"
+            echo "::error::tokio reaches shex_ast, shacl or rml on wasm32"
             exit 1
           fi
 
@@ -125,6 +125,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run cargo test
         run: cargo test --workspace --exclude rudof_wasm
+      # `rml::sql` is run over DuckDB: the cases, and the round-trip property of a mapping over a graph.
+      - name: Run the rml tests on DuckDB
+        run: cargo test -p rml --features duckdb
 
   wasm-test:
     name: Test Suite on Wasm

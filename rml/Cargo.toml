@@ -1,0 +1,29 @@
+[package]
+name = "rml"
+version.workspace = true
+authors.workspace = true
+description = "An RML-Core mapping (SQL logical sources): its AST, its RDF reading and writing, and its rendering to a SQL (s, p, o) relation."
+documentation = "https://docs.rs/rml"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+[features]
+# `rml::sql`: the mapping rendered as a query over the logical tables, in the
+# DuckDB dialect. Wasm-clean; off by default so that a build that only reads
+# and writes mappings does not pull the SQL AST.
+sql = ["dep:sqlparser"]
+# An in-process DuckDB for the tests of `rml::sql`. Native only, never default.
+duckdb = ["sql", "dep:duckdb"]
+
+[dependencies]
+prefixmap.workspace = true
+rudof_iri.workspace = true
+rudof_rdf = { workspace = true, features = ["turtle"] }
+sqlparser = { workspace = true, features = ["visitor"], optional = true }
+thiserror.workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+duckdb = { workspace = true, optional = true }

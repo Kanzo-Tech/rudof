@@ -1,0 +1,542 @@
+//! The mapping as a value: the subset of RML-Core whose logical sources are
+//! relational (`rml:SQL2008Table`, `rml:SQL2008Query`).
+//!
+//! The AST states what a mapping graph states, once. The constant shortcut
+//! properties (RML-Core §8.1.1: `rml:predicate` is `rml:predicateMap [
+//! rml:constant … ]`, and so on) and their long forms are one value here, so
+//! the parser reads both and the writer writes the short one.
+//!
+//! **Not modelled**, and refused by the parser rather than dropped: graph maps
+//! (§10), `rml:URI` and `rml:UnsafeURI` term types, blank node maps without an
+//! expression (§8.4.2: a fresh node per iteration), non-constant datatype maps
+//! (§8.6), template-valued language maps, join conditions whose child or
+//! parent map is not a reference, and every other reference formulation.
+//!
+//! Where the specification says "MUST", [`Mapping::validate`] checks it; the
+//! parser runs it, and so does the writer.
+
+use crate::Error;
+use crate::vocab::xsd;
+use rudof_iri::IriS;
+use std::fmt;
+
+/// A resource of the mapping graph that is named: by an IRI, or by a blank
+/// node, whose label is only an identity inside one value.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Node {
+    Iri(IriS),
+    Blank(String),
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Node::Iri(iri) => write!(f, "<{}>", iri.as_str()),
+            Node::Blank(label) => write!(f, "_:{label}"),
+        }
+    }
+}
+
+/// An RML mapping (RML-Core §3.1): triples maps, and the annotations the
+/// mapping graph carries about the IRIs it names.
+///
+/// `annotations` are the triples of the mapping graph whose subject is a class
+/// or a constant predicate IRI the mapping names and whose predicate is not in
+/// the RML vocabulary, `rdfs:label` for one (RML-Core §3.2: a mapping graph
+/// "MAY contain arbitrary additional triples whose terms are not from the RML
+/// vocabulary", "documentation in the form of rdfs:label, rdfs:comment and
+/// similar properties"). They are not part of the output dataset (§12: it
+/// "MUST NOT contain any other RDF triples"); they are read by
+/// [`Mapping::model`](crate::model).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Mapping {
+    pub triples_maps: Vec<TriplesMap>,
+    pub annotations: Vec<Annotation>,
+}
+
+/// A triple of the mapping graph about an IRI the mapping names.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Annotation {
+    pub subject: IriS,
+    pub predicate: IriS,
+    pub object: Constant,
+}
+
+/// A triples map (RML-Core §6): the rules for translating each iteration of a
+/// logical source to zero or more triples sharing one subject.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TriplesMap {
+    pub id: Node,
+    /// The base IRI of this triples map (RML-Core §4.1.1: "The base IRI MUST be defined within the mapping
+    /// document for each Triples Map or as execution environment for the mapping document"): `rml:baseIRI`.
+    /// `None` leaves it to the execution environment, whose default, if it gives none, is `http://example.org/`
+    /// ("the default base IRI to be used by the RML Processor MUST be http://example.org/"). It is prepended,
+    /// as a string, to a generated IRI that is not absolute (§12.2).
+    pub base_iri: Option<IriS>,
+    pub logical_source: LogicalSource,
+    pub subject_map: SubjectMap,
+    pub predicate_object_maps: Vec<PredicateObjectMap>,
+}
+
+/// A logical source (RML-Core §5, RML-IO §3.1).
+///
+/// RML-IO §3.1 gives a logical source "exactly one source (`rml:source`)". For
+/// a relational one the source is the database, which the host reaches and the
+/// mapping does not describe: `source` is the IRI naming it, or `None` for an
+/// anonymous `rml:Source` (a blank node with no description; RML-IO §3.2 makes
+/// every property of a source optional). The properties of a named source are
+/// the host's and are not read.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LogicalSource {
+    pub source: Option<IriS>,
+    pub iterable: Iterable,
+}
+
+/// What a logical source iterates (RML-IO §3.1: "in the case of relational
+/// databases the value of `rml:iterator` is either a SQL query
+/// (`rml:referenceFormulation rml:SQL2008Query`) or the SQL table name
+/// (`rml:referenceFormulation rml:SQL2008Table`)"). One logical iteration is
+/// one row.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Iterable {
+    /// A table, by the name the host resolves. RML-IO §3.1 defines it as
+    /// `SELECT * FROM {table}`.
+    Sql2008Table(String),
+    /// A query. The tables it names are resolved by the host as a table's are.
+    Sql2008Query(String),
+}
+
+/// A subject map (RML-Core §6.1) and the classes its subjects are typed with
+/// (§6.2: "for each RDF term generated by the subject map, RDF triples with
+/// predicate `rdf:type` and the class IRI as object").
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SubjectMap {
+    pub term: TermMap,
+    pub classes: Vec<IriS>,
+}
+
+/// A predicate-object map (RML-Core §6.3). The triples it generates are the
+/// product of its predicates and its objects (§12.1: "for each possible
+/// combination `<predicate, object>`").
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PredicateObjectMap {
+    /// One or more predicate maps.
+    pub predicates: Vec<TermMap>,
+    /// One or more object maps or referencing object maps.
+    pub objects: Vec<ObjectMap>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ObjectMap {
+    Term(TermMap),
+    Reference(RefObjectMap),
+}
+
+/// A referencing object map (RML-Core §9.1): the subject of the parent triples
+/// map as the object. With no join condition the two logical sources must be
+/// effectively equal (§9.2), which [`Mapping::validate`] takes to mean equal
+/// as values.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RefObjectMap {
+    pub parent: Node,
+    pub join_conditions: Vec<JoinCondition>,
+}
+
+/// A join condition (RML-Core §9.2): satisfied when the child map's value on
+/// the child iteration equals the parent map's on the parent iteration. Both
+/// are references (§9.2.1 `rml:child`, `rml:parent`), to columns.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct JoinCondition {
+    pub child: String,
+    pub parent: String,
+}
+
+/// A term map (RML-Core §8): how one RDF term is generated from a logical
+/// iteration.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TermMap {
+    pub expression: Expression,
+    /// As written. `None` is the default of §8.4.1, which depends on the
+    /// position and on the map: see [`TermMap::term_type`].
+    pub term_type: Option<TermType>,
+    /// The datatype of a datatype-override literal (§8.6, §11.2), a constant.
+    pub datatype: Option<IriS>,
+    /// The language tags of a language-tagged literal (§8.5).
+    pub language: Option<LanguageMap>,
+}
+
+/// An expression map (RML-Core §7.1).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Expression {
+    /// §7.1.1 and §8.1: always the same term.
+    Constant(Constant),
+    /// §7.1.2 and §8.2: a column of the logical source (RML-IO: for
+    /// `rml:SQL2008Table` and `rml:SQL2008Query` a reference is a column
+    /// name). A name wholly enclosed in double quotes is a SQL delimited
+    /// identifier.
+    Reference(String),
+    /// §7.1.3 and §8.3.
+    Template(Template),
+}
+
+/// A constant RDF term: an IRI or a literal. Blank nodes are not allowed
+/// (RML-Core §8.4.2: "Constant-valued term maps are only allowed to be IRIs
+/// and literals").
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Constant {
+    Iri(IriS),
+    Literal(Literal),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Literal {
+    pub lexical_form: String,
+    pub kind: LiteralKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LiteralKind {
+    Datatype(IriS),
+    /// A language-tagged string, the tag as written.
+    Language(String),
+}
+
+impl Literal {
+    /// A simple literal, `xsd:string`.
+    pub fn string(lexical_form: impl Into<String>) -> Self {
+        Self {
+            lexical_form: lexical_form.into(),
+            kind: LiteralKind::Datatype(xsd("string")),
+        }
+    }
+}
+
+/// A term type (RML-Core §8.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TermType {
+    /// `rml:IRI`: the value is percent-encoded when it comes from a template
+    /// (§8.3.1), and is an IRI after the base IRI is prepended if it is not
+    /// absolute (§12.2).
+    Iri,
+    /// `rml:UnsafeIRI`: as [`TermType::Iri`], without the percent-encoding.
+    UnsafeIri,
+    BlankNode,
+    Literal,
+}
+
+/// The position of a term map in a triples map, which decides its default
+/// term type and what it may generate (RML-Core §8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Position {
+    Subject,
+    Predicate,
+    Object,
+}
+
+/// A language map (RML-Core §8.5): an expression map for the language tags.
+/// The specification makes the generated terms "the n-ary Cartesian product
+/// combination of T × L"; with one value per iteration on each side that is
+/// one term, which is the only case SQL logical iterations present (§8.5 sends
+/// "correlated or non-trivial iteration patterns" to RML-LV).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LanguageMap {
+    /// `rml:language`, the shortcut of §8.1.1.
+    Constant(String),
+    /// `rml:languageMap [ rml:reference … ]`: a column.
+    Reference(String),
+}
+
+/// A string template (RML-Core §7.1.3).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Template(pub Vec<TemplatePart>);
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TemplatePart {
+    Text(String),
+    /// A reference expression enclosed in unescaped curly braces.
+    Reference(String),
+}
+
+impl Template {
+    /// Reads a template by §7.1.3's rules: "pairs of unescaped curly braces
+    /// MUST enclose valid reference expressions"; "curly braces that do not
+    /// enclose reference expressions MUST be escaped by a backslash"; "backslash
+    /// characters MUST be escaped by preceding them with another backslash".
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        let mut in_reference = false;
+        let mut chars = text.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => match chars.next() {
+                    Some(e @ ('\\' | '{' | '}')) => current.push(e),
+                    Some(other) => return Err(format!("'\\{other}' is not an escape; a backslash is written '\\\\'")),
+                    None => return Err("the template ends in a lone backslash".to_owned()),
+                },
+                '{' if in_reference => return Err("an unescaped '{' inside a reference".to_owned()),
+                '{' => {
+                    if !current.is_empty() {
+                        parts.push(TemplatePart::Text(std::mem::take(&mut current)));
+                    }
+                    in_reference = true;
+                },
+                '}' if in_reference => {
+                    if current.is_empty() {
+                        return Err("an empty reference '{}'".to_owned());
+                    }
+                    parts.push(TemplatePart::Reference(std::mem::take(&mut current)));
+                    in_reference = false;
+                },
+                '}' => return Err("an unescaped '}' outside a reference".to_owned()),
+                c => current.push(c),
+            }
+        }
+        if in_reference {
+            return Err("an unclosed '{'".to_owned());
+        }
+        if !current.is_empty() {
+            parts.push(TemplatePart::Text(current));
+        }
+        Ok(Template(parts))
+    }
+
+    /// The references, in order of appearance.
+    pub fn references(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().filter_map(|p| match p {
+            TemplatePart::Reference(r) => Some(r.as_str()),
+            TemplatePart::Text(_) => None,
+        })
+    }
+}
+
+impl fmt::Display for Template {
+    /// The template as [`Template::parse`] reads it.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn escaped(f: &mut fmt::Formatter<'_>, s: &str) -> fmt::Result {
+            for c in s.chars() {
+                if matches!(c, '\\' | '{' | '}') {
+                    f.write_str("\\")?;
+                }
+                write!(f, "{c}")?;
+            }
+            Ok(())
+        }
+        for part in &self.0 {
+            match part {
+                TemplatePart::Text(t) => escaped(f, t)?,
+                TemplatePart::Reference(r) => {
+                    f.write_str("{")?;
+                    escaped(f, r)?;
+                    f.write_str("}")?;
+                },
+            }
+        }
+        Ok(())
+    }
+}
+
+impl TermMap {
+    /// A reference-valued term map with nothing else said.
+    pub fn reference(column: impl Into<String>) -> Self {
+        Self::of(Expression::Reference(column.into()))
+    }
+
+    /// A constant-valued IRI term map.
+    pub fn iri(iri: IriS) -> Self {
+        Self::of(Expression::Constant(Constant::Iri(iri)))
+    }
+
+    /// A template-valued term map.
+    pub fn template(template: Template) -> Self {
+        Self::of(Expression::Template(template))
+    }
+
+    fn of(expression: Expression) -> Self {
+        Self {
+            expression,
+            term_type: None,
+            datatype: None,
+            language: None,
+        }
+    }
+
+    pub fn with_term_type(mut self, term_type: TermType) -> Self {
+        self.term_type = Some(term_type);
+        self
+    }
+
+    pub fn with_datatype(mut self, datatype: IriS) -> Self {
+        self.datatype = Some(datatype);
+        self
+    }
+
+    pub fn with_language(mut self, language: LanguageMap) -> Self {
+        self.language = Some(language);
+        self
+    }
+
+    /// The term type this map generates at `position`.
+    ///
+    /// A constant-valued map "is not considered as having a term type": its
+    /// constant decides (§8.4.2). Otherwise it is the explicit one, or the
+    /// default of §8.4.1: `rml:IRI` for a subject or predicate map; for an
+    /// object map `rml:Literal` if it is reference-valued, has a language map
+    /// or has a datatype map, and `rml:IRI` otherwise.
+    pub fn term_type(&self, position: Position) -> TermType {
+        match &self.expression {
+            Expression::Constant(Constant::Iri(_)) => return TermType::Iri,
+            Expression::Constant(Constant::Literal(_)) => return TermType::Literal,
+            _ => {},
+        }
+        if let Some(explicit) = self.term_type {
+            return explicit;
+        }
+        let literal = position == Position::Object
+            && (matches!(self.expression, Expression::Reference(_))
+                || self.language.is_some()
+                || self.datatype.is_some());
+        if literal { TermType::Literal } else { TermType::Iri }
+    }
+
+    /// Every column this map reads.
+    pub fn references(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = match &self.expression {
+            Expression::Constant(_) => Vec::new(),
+            Expression::Reference(r) => vec![r.as_str()],
+            Expression::Template(t) => t.references().collect(),
+        };
+        if let Some(LanguageMap::Reference(r)) = &self.language {
+            out.push(r);
+        }
+        out
+    }
+
+    fn check(&self, position: Position, at: &str) -> Result<(), Error> {
+        let invalid = |reason: &str| Err(Error::invalid(at, reason));
+        if self.datatype.is_some() && self.language.is_some() {
+            // §8: "a term map MUST have 0 or 1 datatype map or 0 or 1 language map".
+            return invalid("a term map has a datatype map or a language map, not both");
+        }
+        if let Expression::Constant(c) = &self.expression {
+            if self.datatype.is_some() || self.language.is_some() || self.term_type.is_some() {
+                return invalid(
+                    "a constant-valued term map has no term type, datatype or language map (RML-Core §8.4.2)",
+                );
+            }
+            if position != Position::Object && matches!(c, Constant::Literal(_)) {
+                return invalid("a subject or predicate map generates an IRI (§8)");
+            }
+            return Ok(());
+        }
+        let term_type = self.term_type(position);
+        let allowed: &[TermType] = match position {
+            // §8.4: a subject map: rml:IRI, rml:URI or rml:BlankNode; a predicate map: rml:IRI, rml:URI.
+            // UnsafeIRI is the term type of the generation rules of §12.2 and is allowed where IRI is.
+            Position::Subject => &[TermType::Iri, TermType::UnsafeIri, TermType::BlankNode],
+            Position::Predicate => &[TermType::Iri, TermType::UnsafeIri],
+            Position::Object => &[
+                TermType::Iri,
+                TermType::UnsafeIri,
+                TermType::BlankNode,
+                TermType::Literal,
+            ],
+        };
+        if !allowed.contains(&term_type) {
+            return invalid(&format!("a {position:?} map cannot generate a {term_type:?} (§8.4)"));
+        }
+        if (self.datatype.is_some() || self.language.is_some()) && term_type != TermType::Literal {
+            // §8.5: a language-taggable term map has a term type of rml:Literal; §8.6 likewise.
+            return invalid("a datatype or a language map belongs to a map of term type rml:Literal (§8.5, §8.6)");
+        }
+        Ok(())
+    }
+}
+
+impl Mapping {
+    pub fn triples_map(&self, id: &Node) -> Option<&TriplesMap> {
+        self.triples_maps.iter().find(|m| &m.id == id)
+    }
+
+    /// Checks what RML-Core says a mapping MUST be, and the restrictions of this
+    /// AST: identifiers are unique, a referencing object map's parent exists,
+    /// each term map generates what its position allows (§8), and a
+    /// referencing object map with no join condition joins logical sources that
+    /// are equal (§9.2: "if the logical sources … are not effectively equal,
+    /// then the referencing object map MUST have one or more join conditions").
+    pub fn validate(&self) -> Result<(), Error> {
+        for (i, m) in self.triples_maps.iter().enumerate() {
+            let at = m.id.to_string();
+            if self.triples_maps[..i].iter().any(|o| o.id == m.id) {
+                return Err(Error::invalid(&at, "two triples maps have this identifier"));
+            }
+            m.subject_map
+                .term
+                .check(Position::Subject, &format!("{at} subject map"))?;
+            if m.predicate_object_maps
+                .iter()
+                .any(|p| p.predicates.is_empty() || p.objects.is_empty())
+            {
+                // §6.3: "one or more predicate maps", "one or more object maps".
+                return Err(Error::invalid(
+                    &at,
+                    "a predicate-object map has one or more predicate maps and one or more object maps",
+                ));
+            }
+            for pom in &m.predicate_object_maps {
+                for p in &pom.predicates {
+                    p.check(Position::Predicate, &format!("{at} predicate map"))?;
+                }
+                for o in &pom.objects {
+                    match o {
+                        ObjectMap::Term(t) => t.check(Position::Object, &format!("{at} object map"))?,
+                        ObjectMap::Reference(r) => {
+                            let at = format!("{at} referencing object map");
+                            let Some(parent) = self.triples_map(&r.parent) else {
+                                return Err(Error::invalid(
+                                    &at,
+                                    &format!("the parent triples map {} is not in the mapping", r.parent),
+                                ));
+                            };
+                            if r.join_conditions.is_empty() && parent.logical_source != m.logical_source {
+                                return Err(Error::invalid(
+                                    &at,
+                                    "the logical sources are not equal, so a join condition is required (§9.2)",
+                                ));
+                            }
+                        },
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The mapping with every unordered collection sorted, and duplicates
+    /// removed. An RDF graph has no order, so this is the form the parser
+    /// answers and the one two mappings are compared in.
+    pub fn canonical(mut self) -> Self {
+        for m in &mut self.triples_maps {
+            m.subject_map.classes.sort();
+            m.subject_map.classes.dedup();
+            for pom in &mut m.predicate_object_maps {
+                pom.predicates.sort();
+                pom.predicates.dedup();
+                pom.objects.sort();
+                pom.objects.dedup();
+                for o in &mut pom.objects {
+                    if let ObjectMap::Reference(r) = o {
+                        r.join_conditions.sort();
+                        r.join_conditions.dedup();
+                    }
+                }
+            }
+            m.predicate_object_maps.sort();
+            m.predicate_object_maps.dedup();
+        }
+        self.triples_maps.sort();
+        self.annotations.sort();
+        self.annotations.dedup();
+        self
+    }
+}

@@ -1,0 +1,6 @@
+<http://example.com/a> <http://example.com/home> <http://example.com/h/1> .
+<http://example.com/a> <http://example.com/page> <http://example.com/pages/one%20two> .
+<http://example.com/a> <http://example.com/abs> <https://other.example/one%20two> .
+<http://example.com/b> <http://example.com/home> <urn:isbn:0451450523> .
+<http://example.com/b> <http://example.com/page> <http://example.com/pages/three> .
+<http://example.com/b> <http://example.com/abs> <https://other.example/three> .

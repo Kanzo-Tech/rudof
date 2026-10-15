@@ -18,7 +18,7 @@ pub struct JsEngine {
     signal: JsValue,
 }
 
-fn message(e: JsValue) -> String {
+pub(crate) fn message(e: JsValue) -> String {
     match e.dyn_ref::<js_sys::Error>() {
         Some(error) => String::from(error.message()),
         None => e.as_string().unwrap_or_else(|| format!("{e:?}")),

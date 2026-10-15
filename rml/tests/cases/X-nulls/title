@@ -1,0 +1,1 @@
+NULL values: no term, no triple; a NULL subject drops the row; a template with a NULL reference generates nothing.

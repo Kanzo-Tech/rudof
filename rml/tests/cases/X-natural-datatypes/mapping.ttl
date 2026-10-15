@@ -1,0 +1,18 @@
+@prefix rml: <http://w3id.org/rml/> .
+@prefix ex: <http://example.com/> .
+# No datatype is stated: each column's natural datatype and lexical form decide (RML-Core 11.1, 11.3).
+<#T> a rml:TriplesMap ;
+  rml:logicalSource [ a rml:LogicalSource ; rml:source [ a rml:Source ] ; rml:referenceFormulation rml:SQL2008Table ; rml:iterator "t" ] ;
+  rml:subjectMap [ rml:reference "subject" ; rml:termType rml:IRI ] ;
+  rml:predicateObjectMap
+    [ rml:predicate ex:i   ; rml:objectMap [ rml:reference "i" ] ] ,
+    [ rml:predicate ex:d   ; rml:objectMap [ rml:reference "d" ] ] ,
+    [ rml:predicate ex:f   ; rml:objectMap [ rml:reference "f" ] ] ,
+    [ rml:predicate ex:b   ; rml:objectMap [ rml:reference "b" ] ] ,
+    [ rml:predicate ex:day ; rml:objectMap [ rml:reference "day" ] ] ,
+    [ rml:predicate ex:ts  ; rml:objectMap [ rml:reference "ts" ] ] ,
+    [ rml:predicate ex:tm  ; rml:objectMap [ rml:reference "tm" ] ] ,
+    [ rml:predicate ex:dec ; rml:objectMap [ rml:reference "dec" ] ] ,
+    [ rml:predicate ex:bin ; rml:objectMap [ rml:reference "bin" ] ] ,
+    [ rml:predicate ex:s   ; rml:objectMap [ rml:reference "s" ] ] ,
+    [ rml:predicate ex:ref ; rml:objectMap [ rml:reference "ref" ; rml:termType rml:IRI ] ] .

@@ -1,0 +1,4 @@
+<http://example.com/p/1> <http://example.com/nickname> "Ali"@en .
+<http://example.com/p/1> <http://example.com/nickname> "Alí"@es .
+<http://example.com/p/4> <http://example.com/nickname> "Zed"@en-gb .
+<http://example.com/p/5> <http://example.com/nickname> "Kept"@de .

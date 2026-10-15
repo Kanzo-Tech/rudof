@@ -1,0 +1,17 @@
+@prefix ex: <http://example.com/> .
+@prefix rml: <http://w3id.org/rml/> .
+<http://example.com/base/TriplesMap1> a rml:TriplesMap;
+  rml:logicalSource [ a rml:LogicalSource;
+      rml:source [ a rml:Source ];
+      rml:referenceFormulation rml:SQL2008Table;
+      rml:iterator "persons"
+    ];
+  rml:predicateObjectMap [
+      rml:objectMap [
+          rml:reference "DateOfBirth"
+        ];
+      rml:predicate ex:BirthDay
+    ];
+  rml:subjectMap [
+      rml:template "http://example.com/Person/{ID}/{Name}/{DateOfBirth}"
+    ] .

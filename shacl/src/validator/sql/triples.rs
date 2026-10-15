@@ -157,3 +157,15 @@ impl Triples {
         with(vec![cte("sub", sub)], true, instances)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::COLUMNS;
+
+    /// `rml::sql::triples` is the producer of the relation this module's consumers read, and it names
+    /// its columns itself: the two lists are one.
+    #[test]
+    fn the_columns_are_the_ones_rml_produces() {
+        assert_eq!(COLUMNS, rml::sql::COLUMNS);
+    }
+}
